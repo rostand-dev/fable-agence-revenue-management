@@ -1,0 +1,98 @@
+/* Compléments applicatifs — uniquement à partir des tokens NuitSignal. */
+.btn[disabled], .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
+form.inline { display: contents; }
+.muted { color: var(--quiet); font-size: 13.5px; }
+.mono { font-family: var(--mono); }
+.stack { display: grid; gap: var(--gap, 14px); }
+.row-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.spacer { margin-left: auto; }
+.topbar .user-menu { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--quiet); }
+.topbar .user-menu .who { max-width: 22ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 767px) { .topbar .user-menu .who { display: none; } .topbar > div:first-of-type { min-width: 0; } .topbar-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } }
+
+/* avatars illustrés de l'équipe */
+.avatar { display: block; border-radius: 50%; flex: none; border: 1px solid var(--line-strong); background: var(--space-700); }
+.byline { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--quiet); }
+.byline strong { color: var(--ink); font-weight: 600; }
+.crew { display: flex; align-items: center; }
+.crew .avatar + .avatar { margin-left: -8px; }
+
+/* options instruites */
+.options { display: grid; gap: 10px; }
+.option { border: 1px solid var(--line); border-radius: var(--r-md); background: rgb(10 12 22 / 60%); padding: 14px 16px; display: grid; gap: 10px; }
+.option.is-selected { border-color: rgb(96 165 250 / 55%); background: rgb(37 99 235 / 10%); }
+.option.is-rejected { opacity: .78; }
+.option-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.option-head h4 { margin: 0; font-size: 15px; font-weight: 640; }
+.option-head p { margin: 3px 0 0; font-size: 13.5px; color: var(--quiet); }
+.option-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: flex-end; }
+.option label.pick { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; min-height: 44px; cursor: pointer; }
+.option input[type="radio"] { width: 18px; height: 18px; accent-color: var(--blue-core); }
+.rules { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.rules li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; }
+.rules code { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.rules .rule-detail { color: var(--quiet); }
+
+/* calendrier 90 jours */
+.cal { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
+@media (max-width: 767px) { .cal { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+.cal-day { border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; min-height: 54px; display: grid; gap: 1px; align-content: start; font-size: 11px; background: rgb(255 255 255 / 2%); }
+.cal-day .d { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
+.cal-day .p { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.cal-day .m { color: var(--faint); font-size: 10px; }
+.cal-day.is-booked { background: rgb(96 165 250 / 16%); border-color: rgb(96 165 250 / 40%); }
+.cal-day.is-booked .p { color: var(--blue); }
+.cal-day.is-blocked { background: repeating-linear-gradient(45deg, rgb(255 255 255 / 3%) 0 4px, transparent 4px 8px); }
+.cal-day.is-flag { border-color: rgb(251 191 36 / 55%); border-style: dashed; }
+.cal-day.is-veto { border-color: rgb(251 113 133 / 60%); }
+.cal-day.is-month { box-shadow: inset 2px 0 0 var(--violet); }
+
+/* organigramme et workflows */
+.org { display: grid; gap: 14px; }
+.org-row { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.org-node { display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: var(--r-md); padding: 12px 14px; background: var(--surface); text-decoration: none; color: inherit; }
+.org-node .t { display: grid; gap: 1px; min-width: 0; }
+.org-node .t strong { font-size: 14.5px; }
+.org-node .t span { font-size: 12.5px; color: var(--quiet); }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+.flow > li { display: grid; grid-template-columns: 28px 150px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 14px; background: rgb(10 12 22 / 62%); font-size: 14px; }
+.flow .n { font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
+.flow .who { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13.5px; }
+.flow .who.is-you { color: var(--blue); }
+@media (max-width: 767px) { .flow > li { grid-template-columns: 24px minmax(0, 1fr); } .flow > li > :nth-child(3) { grid-column: 2; } }
+
+/* écrans de connexion */
+.auth { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+.auth-pitch { padding: clamp(28px, 6vw, 72px); display: grid; align-content: center; gap: 22px; border-right: 1px solid var(--line); }
+.auth-pitch h1 { margin: 0; font-size: clamp(26px, 3.4vw, 40px); line-height: 1.15; letter-spacing: -.02em; font-weight: 650; max-width: 18ch; }
+.auth-pitch p { margin: 0; color: var(--quiet); max-width: 52ch; }
+.auth-form { padding: clamp(24px, 5vw, 64px); display: grid; align-content: center; }
+.auth-form .card { max-width: 440px; width: 100%; margin: 0 auto; padding: 26px; }
+.auth-form h2 { margin: 0 0 4px; font-size: 20px; }
+@media (max-width: 899px) { .auth { grid-template-columns: minmax(0, 1fr); } .auth-pitch { border-right: 0; border-bottom: 1px solid var(--line); padding-bottom: 28px; } .auth-pitch .crew-line { display: none; } }
+
+/* graphiques */
+.chart-bars rect.bar { fill: var(--blue); }
+.chart text { fill: var(--faint); font-size: 11px; font-family: var(--mono); }
+.chart .grid { stroke: var(--line); }
+.chart .lbl { fill: var(--ink); font-size: 11px; }
+
+details.fold { border: 1px solid var(--line); border-radius: var(--r-md); background: rgb(255 255 255 / 2%); }
+details.fold > summary { cursor: pointer; padding: 12px 14px; font-size: 14px; font-weight: 600; min-height: 44px; display: flex; align-items: center; gap: 8px; }
+details.fold > .fold-body { padding: 0 14px 14px; }
+.kpi-note { font-size: 12.5px; color: var(--faint); margin: 10px 0 0; }
+.demo-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--violet); border: 1px dashed rgb(167 139 250 / 50%); border-radius: 999px; padding: 1px 9px; }
+textarea.note { width: 100%; min-height: 76px; padding: 10px 12px; border-radius: var(--r-sm); border: 1px solid var(--line-strong); background: rgb(4 5 10 / 60%); color: var(--ink); font: inherit; font-size: 14px; }
+a.chip { text-decoration: none; }
+a.chip[aria-current="true"] { color: var(--ink); border-color: rgb(96 165 250 / 50%); background: rgb(37 99 235 / 20%); }
+a.chip[aria-current="true"]::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); flex: none; }
+a.btn { text-decoration: none; }
+.runbook { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.runbook li::marker { font-family: var(--mono); color: var(--faint); font-size: 12px; }
+.subnav > a.subnav-link { min-height: 44px; padding: 0 14px; display: inline-flex; align-items: center; border-bottom: 2px solid transparent; color: var(--quiet); font-size: 14px; font-weight: 600; text-decoration: none; white-space: nowrap; flex: none; }
+.subnav > a.subnav-link[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue); }
+@media (hover: hover) { .subnav > a.subnav-link:hover { color: var(--ink); } }
+@media (min-width: 900px) { .org-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.frieze > li { min-width: 150px; }
+.cal-day { overflow: hidden; white-space: nowrap; }
+@media (max-width: 479px) { .cal-day { padding: 4px 3px; } .cal-day .d { font-size: 9px; } .cal-day .p { font-size: 11px; } .cal-day .m { font-size: 9px; } }

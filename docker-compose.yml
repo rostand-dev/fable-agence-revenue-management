@@ -1,0 +1,32 @@
+# NuitSignal — déploiement Coolify (Docker Compose) ou local : docker compose up --build
+# Coolify génère le domaine (SERVICE_URL_APP_3000) et le mot de passe PostgreSQL (SERVICE_PASSWORD_POSTGRES).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      - SERVICE_URL_APP_3000
+      - APP_URL=${SERVICE_URL_APP:-http://localhost:3000}
+      - DATABASE_URL=postgresql://nuitsignal:${SERVICE_PASSWORD_POSTGRES:-nuitsignal_local}@db:5432/nuitsignal
+      # Facultatif : active le raisonnement LLM des agents. Vide = repli déterministe.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=nuitsignal
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES:-nuitsignal_local}
+      - POSTGRES_DB=nuitsignal
+    volumes:
+      - nuitsignal-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nuitsignal -d nuitsignal"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+volumes:
+  nuitsignal-db:
