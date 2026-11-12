@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
@@ -17,30 +17,51 @@ async function getProp(tenantId: string, id: string) {
 }
 const wrap = (e: unknown) => (e instanceof PriceLabsError || e instanceof SyncError ? e.message : e instanceof Error && e.message.startsWith("APP_SECRET") ? e.message : "Erreur technique pendant la lecture PriceLabs.");
 
-/** Enregistre la clé (chiffrée) après l'avoir vérifiée auprès de PriceLabs. Une seule annonce sur le compte : elle est rattachée d'office. */
-export async function connectPriceLabs(tenantId: string, propertyId: string, apiKeyRaw: string, actor: string): Promise<{ listings: number; synced: boolean }> {
+/** Annonces PriceLabs déjà rattachées à un autre logement du même propriétaire : clé « id|pms » → nom du logement. */
+export async function linkedElsewhere(tenantId: string, propertyId: string): Promise<Map<string, string>> {
+  const others = await db.select({ name: properties.name, pl: properties.pricelabs }).from(properties).where(and(eq(properties.tenantId, tenantId), ne(properties.id, propertyId)));
+  return new Map(others.filter((o) => o.pl?.listingId).map((o) => [`${o.pl!.listingId}|${o.pl!.pms}`, o.name]));
+}
+
+/**
+ * Enregistre la clé (chiffrée) après l'avoir vérifiée auprès de PriceLabs.
+ * Aucune annonce n'est rattachée ici, même s'il n'y en a qu'une : le propriétaire confirme toujours le rattachement.
+ */
+export async function connectPriceLabs(tenantId: string, propertyId: string, apiKeyRaw: string, actor: string): Promise<{ listings: number }> {
   const p = await getProp(tenantId, propertyId);
   const apiKey = apiKeyRaw.trim();
   if (apiKey.length < 20 || /\s/.test(apiKey)) throw new SyncError("Cette clé ne ressemble pas à une clé API PriceLabs. Copiez-la en entier depuis PriceLabs.");
   let listings;
   try { listings = await listListings(apiKey); } catch (e) { throw new SyncError(wrap(e)); }
   if (listings.length === 0) throw new SyncError("La clé est valide, mais ce compte PriceLabs ne contient aucune annonce.");
-  const one = listings.length === 1 ? listings[0] : null;
   await db.update(properties).set({
-    pricelabs: { apiKeyEnc: encryptSecret(apiKey), keyHint: secretHint(apiKey), connectedAt: new Date().toISOString(), candidates: listings.map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city })), listingId: one?.id ?? null, pms: one?.pms ?? null, listingName: one?.name ?? null },
+    pricelabs: { apiKeyEnc: encryptSecret(apiKey), keyHint: secretHint(apiKey), connectedAt: new Date().toISOString(), candidates: listings.map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })), listingId: null, pms: null, listingName: null },
   }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_connected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs enregistrée pour ${p.name} (${secretHint(apiKey)}), ${listings.length} annonce${listings.length > 1 ? "s" : ""} sur le compte.` });
-  if (!one) return { listings: listings.length, synced: false };
-  await syncPriceLabs(tenantId, p.id);
-  return { listings: 1, synced: true };
+  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_connected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs enregistrée pour ${p.name} (${secretHint(apiKey)}), ${listings.length} annonce${listings.length > 1 ? "s" : ""} sur le compte. Rattachement à confirmer.` });
+  return { listings: listings.length };
 }
 
-export async function selectListing(tenantId: string, propertyId: string, listingId: string): Promise<void> {
+/** Rattachement confirmé par le propriétaire. Une annonce ne peut être liée qu'à un seul de ses logements. */
+export async function selectListing(tenantId: string, propertyId: string, listingId: string, actor: string): Promise<void> {
   const p = await getProp(tenantId, propertyId);
   const c = (p.pricelabs?.candidates ?? []).find((x: any) => x.id === listingId);
   if (!p.pricelabs?.apiKeyEnc || !c) throw new SyncError("Annonce inconnue pour cette clé.");
+  const taken = (await linkedElsewhere(tenantId, p.id)).get(`${c.id}|${c.pms}`);
+  if (taken) throw new SyncError(`Cette annonce PriceLabs est déjà rattachée à votre logement « ${taken} ». Une annonce ne peut alimenter qu'un seul logement.`);
   await db.update(properties).set({ pricelabs: { ...p.pricelabs, listingId: c.id, pms: c.pms, listingName: c.name } }).where(eq(properties.id, p.id));
+  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_listing_linked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs « ${c.name} » (${c.id} · ${c.pms}) rattachée à ${p.name}.` });
   await syncPriceLabs(tenantId, p.id);
+}
+
+/** Détache l'annonce sans supprimer la clé, pour en choisir une autre. Les données déjà lues sont conservées jusqu'à la prochaine lecture. */
+export async function detachListing(tenantId: string, propertyId: string, actor: string): Promise<void> {
+  const p = await getProp(tenantId, propertyId);
+  if (!p.pricelabs?.apiKeyEnc) throw new SyncError("Aucune clé PriceLabs sur ce logement.");
+  let candidates = p.pricelabs.candidates ?? [];
+  try { candidates = (await listListings(decryptSecret(p.pricelabs.apiKeyEnc))).map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })); } catch { /* liste précédente conservée */ }
+  const { lastSync, ...rest } = p.pricelabs;
+  await db.update(properties).set({ pricelabs: { ...rest, candidates, listingId: null, pms: null, listingName: null } }).where(eq(properties.id, p.id));
+  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_listing_unlinked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs détachée de ${p.name}.` });
 }
 
 export async function disconnectPriceLabs(tenantId: string, propertyId: string, actor: string): Promise<void> {

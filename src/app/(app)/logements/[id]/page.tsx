@@ -15,6 +15,7 @@ import { channelShare, lastMonths, leadTimes, medianLos, monthlyKpis, windowStat
 import { CHANNEL_LABEL, type Channel, type EconomicModel, type Strategy } from "@/lib/engine/types";
 import { euro, pct, pts } from "@/lib/format";
 import { loadEngineInput } from "@/lib/services/review";
+import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 
 const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"]] as const;
@@ -50,7 +51,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
           <div className="idmeta"><span>{p.kind}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
         </div>
-        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : <State role="neutre">PriceLabs non connecté</State>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
+        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : p.pricelabs?.apiKeyEnc ? <State role="attention">Rattachement à confirmer</State> : <State role="neutre">PriceLabs non connecté</State>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
       {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Valeurs inconnues : {miss.join(", ")}. Aucun plancher n'est calculé et aucune opportunité financière n'est ouverte tant qu'elles manquent — elles ne sont jamais remplacées par zéro.</Banner>}
@@ -182,7 +183,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </section>
       )}
 
-      {tab === "pricelabs" && <PriceLabsPanel propertyId={p.id} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} />}
+      {tab === "pricelabs" && <PriceLabsPanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} />}
 
       {tab === "donnees" && (
         <section className="stack">

@@ -56,7 +56,7 @@ src/app/            écrans et actions serveur
 
 ## Connexion PriceLabs
 
-La clé API est rattachée à **un logement**, pas au compte : elle se saisit à la création du logement (étape 6 de l'onboarding) ou dans sa fiche, onglet *PriceLabs*. Elle est vérifiée auprès de PriceLabs, chiffrée (AES-256-GCM, `APP_SECRET`) et n'est jamais réaffichée. Si le compte PriceLabs contient plusieurs annonces, le propriétaire choisit celle du logement.
+La clé API est rattachée à **un logement**, pas au compte : elle se saisit à la création du logement (étape 6 de l'onboarding) ou dans sa fiche, onglet *PriceLabs*. Elle est vérifiée auprès de PriceLabs, chiffrée (AES-256-GCM, `APP_SECRET`) et n'est jamais réaffichée. Le rattachement à une annonce PriceLabs (identifiant + PMS) est toujours confirmé par le propriétaire, même s'il n'y en a qu'une, et une annonce ne peut alimenter qu'un seul de ses logements.
 
 Code : `src/lib/integrations/pricelabs.ts` (client), `pricelabs-map.ts` (traduction, testée sur des réponses de forme réelle), `src/lib/services/pricelabs-sync.ts` (lecture avant chaque revue).
 

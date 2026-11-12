@@ -9,7 +9,6 @@ import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
-import { runDailyReview } from "@/lib/services/review";
 
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 /** Champ vide = inconnu (null), jamais zéro. */
@@ -40,7 +39,7 @@ export async function createPropertyAction(_: FormState, fd: FormData): Promise<
   const key = txt(fd, "pricelabsKey");
   let plError = "";
   if (key) {
-    try { const r = await connectPriceLabs(u.tenantId, id, key, "user:" + u.id); if (r.synced) await runDailyReview(u.tenantId, "MANUAL"); }
+    try { await connectPriceLabs(u.tenantId, id, key, "user:" + u.id); }
     catch (e) { plError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à PriceLabs."; }
   }
   revalidatePath("/", "layout");

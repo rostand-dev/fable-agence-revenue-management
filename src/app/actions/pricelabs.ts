@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
-import { connectPriceLabs, disconnectPriceLabs, selectListing, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
+import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
 import { runDailyReview } from "@/lib/services/review";
 
 async function run(fn: (u: { id: string; tenantId: string }) => Promise<string | void>): Promise<FormState> {
@@ -17,12 +17,14 @@ const s = (fd: FormData, k: string) => String(fd.get(k) ?? "");
 export async function connectPriceLabsAction(_: FormState, fd: FormData) {
   return run(async (u) => {
     const r = await connectPriceLabs(u.tenantId, s(fd, "propertyId"), s(fd, "apiKey"), "user:" + u.id);
-    if (r.synced) await runDailyReview(u.tenantId, "MANUAL");
-    return r.synced ? "Clé vérifiée, annonce rattachée et première lecture effectuée." : `Clé vérifiée : ${r.listings} annonces sur ce compte. Choisissez celle de ce logement.`;
+    return `Clé vérifiée : ${r.listings} annonce${r.listings > 1 ? "s" : ""} sur ce compte. Confirmez celle de ce logement.`;
   });
 }
 export async function selectListingAction(_: FormState, fd: FormData) {
-  return run(async (u) => { await selectListing(u.tenantId, s(fd, "propertyId"), s(fd, "listingId")); await runDailyReview(u.tenantId, "MANUAL"); return "Annonce rattachée et première lecture effectuée."; });
+  return run(async (u) => { await selectListing(u.tenantId, s(fd, "propertyId"), s(fd, "listingId"), "user:" + u.id); await runDailyReview(u.tenantId, "MANUAL"); return "Annonce rattachée et première lecture effectuée."; });
+}
+export async function detachListingAction(_: FormState, fd: FormData) {
+  return run(async (u) => { await detachListing(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Annonce détachée. Choisissez celle de ce logement."; });
 }
 export async function syncPriceLabsAction(_: FormState, fd: FormData) {
   return run(async (u) => { const r = await syncPriceLabs(u.tenantId, s(fd, "propertyId")); await runDailyReview(u.tenantId, "MANUAL"); return `Lecture terminée : ${r.days} jours de grille, ${r.reservations} réservations. Revue relancée.`; });

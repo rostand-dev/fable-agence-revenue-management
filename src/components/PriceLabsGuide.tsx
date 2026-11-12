@@ -15,7 +15,7 @@ export function PriceLabsGuide({ open = false }: { open?: boolean }) {
           <li><strong>Synchronisation active</strong> : l'annonce doit avoir sa synchronisation activée dans PriceLabs, sinon aucun prix n'est fourni.</li>
           <li><strong>Lecture seule</strong> : NuitSignal lit la grille, le marché et les réservations. Rien n'est modifié dans PriceLabs.</li>
           <li><strong>Confidentialité</strong> : la clé est chiffrée sur le serveur et n'est plus jamais affichée en entier. Vous pouvez la supprimer ici, ou la régénérer dans PriceLabs pour la rendre inutilisable.</li>
-          <li>La clé donne accès à toutes les annonces du compte : s'il y en a plusieurs, vous choisirez celle qui correspond à ce logement.</li>
+          <li><strong>Rattachement</strong> : la clé donne accès à toutes les annonces du compte. Vous confirmez toujours celle qui correspond à ce logement, et une annonce ne peut alimenter qu'un seul logement.</li>
         </ul>
       </div>
     </details>

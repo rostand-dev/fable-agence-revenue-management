@@ -1,11 +1,11 @@
-import { connectPriceLabsAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction } from "@/app/actions/pricelabs";
+import { connectPriceLabsAction, detachListingAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction } from "@/app/actions/pricelabs";
 import { fmtDateTime } from "@/lib/dates";
 import { ActionForm, Submit } from "./forms";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner, Recap, State, Vq } from "./ui";
 
 /** Connexion PriceLabs d'un logement : saisie de la clé, choix de l'annonce, état de la dernière lecture. */
-export function PriceLabsPanel({ propertyId, isDemo, pl, error }: { propertyId: string; isDemo: boolean; pl: Record<string, any> | null; error?: string }) {
+export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string> }) {
   if (isDemo) return <Banner role="tech" title="Logement de démonstration">Ses données sont simulées : il ne se connecte pas à PriceLabs. Ajoutez votre propre logement pour brancher votre clé.</Banner>;
   const ls = pl?.lastSync, cands: any[] = pl?.candidates ?? [];
   return (
@@ -28,7 +28,7 @@ export function PriceLabsPanel({ propertyId, isDemo, pl, error }: { propertyId: 
         <>
           <Recap rows={[
             ["Clé API", <span key="k">{pl.keyHint} · chiffrée</span>, true],
-            ["Annonce rattachée", pl.listingId ? `${pl.listingName ?? pl.listingId} · ${pl.pms}` : <Vq>à choisir</Vq>],
+            ["Annonce rattachée", pl.listingId ? `${pl.listingName ?? pl.listingId} · ${pl.pms} · identifiant ${pl.listingId}` : <Vq>à confirmer</Vq>],
             ["Dernière lecture", ls?.at ? <>{fmtDateTime(new Date(ls.at))} · {ls.ok ? <State role="sain">réussie</State> : <State role="attention">en échec</State>}</> : <Vq>aucune</Vq>],
             ...(ls?.ok ? [
               ["Grille de prix", `${ls.days} jours${ls.unknownPrices ? ` · ${ls.unknownPrices} prix inconnus` : ""}${ls.gridRefreshedAt ? ` · calculée par PriceLabs le ${fmtDateTime(new Date(ls.gridRefreshedAt))}` : ""}`],
@@ -39,20 +39,40 @@ export function PriceLabsPanel({ propertyId, isDemo, pl, error }: { propertyId: 
           ]} />
           {ls && !ls.ok && <Banner role="attention" title="Dernière lecture en échec">{ls.error} Les données précédentes sont conservées.</Banner>}
           {ls?.ok && ls.pushEnabled === false && <Banner role="attention" title="Synchronisation désactivée dans PriceLabs">Les prix lus ne sont peut-être pas ceux réellement publiés sur vos canaux.</Banner>}
-          {!pl.listingId && (
-            <ActionForm action={selectListingAction} hidden={{ propertyId }}>
-              <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
-                <label htmlFor="listingId">Quelle annonce PriceLabs correspond à ce logement ? <span className="req" aria-hidden="true">*</span></label>
-                <select id="listingId" name="listingId" required defaultValue="">
-                  <option value="" disabled>Choisir une annonce</option>
-                  {cands.map((c) => <option key={c.id} value={c.id}>{c.name}{c.city ? ` — ${c.city}` : ""} ({c.pms})</option>)}
-                </select>
-              </div>
-              <Submit icon="check" pendingLabel="Première lecture…">Rattacher cette annonce</Submit>
-            </ActionForm>
-          )}
+          {!pl.listingId && (() => {
+            const free = cands.filter((c) => !taken[`${c.id}|${c.pms}`]);
+            const desc = (c: any) => `${c.name}${c.city ? " — " + c.city : ""}${c.bedrooms !== null && c.bedrooms !== undefined ? ` — ${c.bedrooms} chambre${c.bedrooms > 1 ? "s" : ""}` : ""} (${c.pms})`;
+            return (
+              <>
+                <Banner role="attention" title="Rattachement à confirmer">
+                  Le lien se fait sur votre confirmation, pas sur le nom : vérifiez que l'annonce PriceLabs est bien celle de <strong>{propertyName}</strong> ({propertyCity}). Rien n'est lu tant que vous n'avez pas confirmé.
+                </Banner>
+                {cands.filter((c) => taken[`${c.id}|${c.pms}`]).map((c) => <p key={c.id} className="muted" style={{ margin: 0 }}>« {c.name} » est déjà rattachée à votre logement « {taken[`${c.id}|${c.pms}`]} » : elle n'est pas proposée.</p>)}
+                {free.length === 0 ? (
+                  <Banner role="tech" title="Aucune annonce disponible sur ce compte">Toutes les annonces de ce compte PriceLabs sont déjà rattachées à vos autres logements. Ajoutez d'abord ce logement dans PriceLabs, ou utilisez la clé du compte qui le contient.</Banner>
+                ) : free.length === 1 ? (
+                  <ActionForm action={selectListingAction} hidden={{ propertyId, listingId: free[0].id }}>
+                    <Recap rows={[["Annonce PriceLabs", free[0].name], ["Ville", free[0].city ?? <Vq key="v">inconnue</Vq>], ["Chambres", free[0].bedrooms ?? <Vq key="b">inconnu</Vq>], ["PMS", free[0].pms], ["Identifiant", free[0].id, true]]} />
+                    <div style={{ marginTop: 14 }}><Submit icon="check" pendingLabel="Première lecture…">Oui, c'est bien ce logement : rattacher</Submit></div>
+                  </ActionForm>
+                ) : (
+                  <ActionForm action={selectListingAction} hidden={{ propertyId }}>
+                    <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
+                      <label htmlFor="listingId">Quelle annonce PriceLabs correspond à ce logement ? <span className="req" aria-hidden="true">*</span></label>
+                      <select id="listingId" name="listingId" required defaultValue="">
+                        <option value="" disabled>Choisir une annonce</option>
+                        {free.map((c) => <option key={c.id} value={c.id}>{desc(c)}</option>)}
+                      </select>
+                    </div>
+                    <Submit icon="check" pendingLabel="Première lecture…">Rattacher cette annonce</Submit>
+                  </ActionForm>
+                )}
+              </>
+            );
+          })()}
           <div className="row-wrap">
             {pl.listingId && <ActionForm action={syncPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire PriceLabs maintenant</Submit></ActionForm>}
+            {pl.listingId && <ActionForm action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}
             <ActionForm action={disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer la clé</Submit></ActionForm>
           </div>
           <p className="muted" style={{ margin: 0 }}>Lecture seule. PriceLabs est relu avant chaque revue quotidienne ; ses prix sont recalculés par PriceLabs toutes les 24 heures.</p>
