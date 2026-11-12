@@ -72,4 +72,13 @@ describe("PriceLabs → modèle interne", () => {
     expect(st).toMatchObject({ old: "DUPLICATE", n1: "CONFIRMED", n2: "CONFIRMED", n3: "CONFIRMED", s1: "CONFIRMED", s2: "CONFIRMED", x1: "DUPLICATE", x2: "CONFIRMED" });
     expect(dedupeConfirmed([]).length).toBe(0);
   });
+  it("applique le canal précisé par le propriétaire, uniquement quand le PMS n'en fournit pas", () => {
+    const row = (id: string, ch: string, com?: string) => ({ reservation_id: id, check_in: "2026-01-09", check_out: "2026-01-11", booking_status: "booked", booked_date: "2026-01-09", rental_revenue: "NA", total_cost: "200.0", no_of_days: 2, booking_channel: ch, ota_commission: com });
+    const model: any = { channels: { BOOKING: { commissionPct: 16, paymentFeePct: 1.4 } } };
+    const [a, b, c, d] = mapReservations([row("a", "", "0.0"), row("b", ""), row("c", "airbnb"), row("d", "")], model, { a: "BOOKING", b: "EXCLUDE", c: "BOOKING", d: "DIRECT" });
+    expect(a).toMatchObject({ channel: "BOOKING", commissionCents: 3200, commissionEstimated: true });
+    expect(b.status).toBe("DUPLICATE");
+    expect(c.channel).toBe("AIRBNB");                    // un canal fourni par le PMS n'est jamais écrasé
+    expect(d).toMatchObject({ channel: "DIRECT", commissionCents: 0, paymentFeeCents: 0 });
+  });
 });

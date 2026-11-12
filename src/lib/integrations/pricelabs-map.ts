@@ -91,24 +91,30 @@ export const mapChannel = (c: unknown) => (typeof c === "string" && c.trim() ? C
  * Une réservation confirmée à 0 € est un blocage propriétaire. Quand le PMS ne fournit pas la commission,
  * elle est estimée avec le taux déclaré du canal et signalée comme telle ; sans taux déclaré, elle reste inconnue.
  */
-export function mapReservations(rows: any[], model: EconomicModel | null): PlReservation[] {
+export type ChannelOverride = "AIRBNB" | "BOOKING" | "DIRECT" | "EXCLUDE";
+
+export function mapReservations(rows: any[], model: EconomicModel | null, overrides: Record<string, ChannelOverride> = {}): PlReservation[] {
   const out: PlReservation[] = [];
   for (const r of rows ?? []) {
     if (!r?.reservation_id || !r.check_in || !r.check_out) continue;
     const st = String(r.booking_status ?? "").toLowerCase();
     if (st === "available") continue;
     const gross = num(r.rental_revenue) ?? num(r.total_cost) ?? 0;
-    const channel = mapChannel(r.booking_channel);
+    // canal précisé par le propriétaire pour une réservation que le PMS a transmise sans canal
+    const ov = overrides[String(r.reservation_id)];
+    const raw = mapChannel(r.booking_channel);
+    const channel = raw === "INCONNU" && ov && ov !== "EXCLUDE" ? ov : raw;
     const cancelled = st.startsWith("cancel");
-    const status: PlReservation["status"] = cancelled ? "CANCELLED" : st === "blocked" || gross <= 0 ? "BLOCKED" : "CONFIRMED";
+    const status: PlReservation["status"] = cancelled ? "CANCELLED" : st === "blocked" || gross <= 0 ? "BLOCKED" : raw === "INCONNU" && ov === "EXCLUDE" ? "DUPLICATE" : "CONFIRMED";
     const rate = model?.channels?.[channel as "AIRBNB" | "BOOKING"];
     const given = pos(r.ota_commission);
     const grossCents = Math.round(gross * 100);
     out.push({
       externalId: String(r.reservation_id), channel, checkIn: String(r.check_in).slice(0, 10), checkOut: String(r.check_out).slice(0, 10),
       nights: num(r.no_of_days) ?? 0, grossRoomCents: grossCents, cleaningCents: cents(pos(r.cleaning_fees)),
-      commissionCents: given !== null ? Math.round(given * 100) : rate ? Math.round(grossCents * rate.commissionPct / 100) : null,
-      paymentFeeCents: rate ? Math.round(grossCents * rate.paymentFeePct / 100) : null,
+      // une réservation en direct ne supporte aucune commission de plateforme
+      commissionCents: given !== null ? Math.round(given * 100) : channel === "DIRECT" ? 0 : rate ? Math.round(grossCents * rate.commissionPct / 100) : null,
+      paymentFeeCents: channel === "DIRECT" ? 0 : rate ? Math.round(grossCents * rate.paymentFeePct / 100) : null,
       status, bookedAt: String(r.booked_date ?? r.check_in).slice(0, 10), commissionEstimated: given === null && !!rate,
     });
   }

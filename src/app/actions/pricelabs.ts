@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
-import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
+import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, setChannelOverrides, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
 import { runDailyReview } from "@/lib/services/review";
 
 async function run(fn: (u: { id: string; tenantId: string }) => Promise<string | void>): Promise<FormState> {
@@ -31,4 +31,13 @@ export async function syncPriceLabsAction(_: FormState, fd: FormData) {
 }
 export async function disconnectPriceLabsAction(_: FormState, fd: FormData) {
   return run(async (u) => { await disconnectPriceLabs(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Clé supprimée."; });
+}
+export async function channelOverridesAction(_: FormState, fd: FormData) {
+  return run(async (u) => {
+    const choices: Record<string, string> = {};
+    for (const [k, v] of fd.entries()) if (k.startsWith("canal-") && typeof v === "string" && v) choices[k.slice(6)] = v;
+    const n = await setChannelOverrides(u.tenantId, s(fd, "propertyId"), choices, "user:" + u.id);
+    await runDailyReview(u.tenantId, "MANUAL");
+    return `${n} réservation${n > 1 ? "s" : ""} précisée${n > 1 ? "s" : ""}. Lecture et revue relancées.`;
+  });
 }

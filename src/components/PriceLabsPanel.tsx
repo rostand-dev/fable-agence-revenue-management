@@ -1,11 +1,14 @@
-import { connectPriceLabsAction, detachListingAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction } from "@/app/actions/pricelabs";
-import { fmtDate, fmtDateTime } from "@/lib/dates";
+import { channelOverridesAction, connectPriceLabsAction, detachListingAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction } from "@/app/actions/pricelabs";
+import { fmtDate, fmtDateTime, fmtDay } from "@/lib/dates";
+import { euro } from "@/lib/format";
 import { ActionForm, Submit } from "./forms";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner, Recap, State, Vq } from "./ui";
 
 /** Connexion PriceLabs d'un logement : saisie de la clé, choix de l'annonce, état de la dernière lecture. */
-export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string> }) {
+export type NoChannel = { externalId: string; checkIn: string; checkOut: string; nights: number; grossRoomCents: number; commissionCents: number | null; choice: string };
+
+export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken, noChannel = [] }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string>; noChannel?: NoChannel[] }) {
   if (isDemo) return <Banner role="tech" title="Logement de démonstration">Ses données sont simulées : il ne se connecte pas à PriceLabs. Ajoutez votre propre logement pour brancher votre clé.</Banner>;
   const ls = pl?.lastSync, cands: any[] = pl?.candidates ?? [];
   return (
@@ -33,7 +36,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
             ...(ls?.ok ? [
               ["Grille de prix", `${ls.days} jours${ls.unknownPrices ? ` · ${ls.unknownPrices} prix inconnus` : ""}${ls.gridRefreshedAt ? ` · calculée par PriceLabs le ${fmtDateTime(new Date(ls.gridRefreshedAt))}` : ""}`],
               ["Réservations", `${ls.reservations} confirmées · ${ls.cancelled} annulées ou remplacées · ${ls.ownerBlocks} blocage${ls.ownerBlocks > 1 ? "s" : ""} propriétaire${ls.historyFrom ? ` · historique depuis le ${fmtDate(ls.historyFrom)}` : ""}`],
-              ...(ls.duplicates ? [["Doublons écartés", `${ls.duplicates} réservation${ls.duplicates > 1 ? "s" : ""} confirmée${ls.duplicates > 1 ? "s" : ""} chevauchai${ls.duplicates > 1 ? "ent" : "t"} une autre sur les mêmes nuits : reliquat${ls.duplicates > 1 ? "s" : ""} du PMS, sorti${ls.duplicates > 1 ? "s" : ""} des calculs pour ne pas compter deux fois`] as [string, React.ReactNode]] : []),
+              ...(ls.duplicates ? [["Écartées du calcul", `${ls.duplicates} réservation${ls.duplicates > 1 ? "s" : ""} : chevauchement d'une autre réservation confirmée sur les mêmes nuits (reliquat du PMS), ou choix de votre part ci-dessous`] as [string, React.ReactNode]] : []),
               ["Commissions", ls.unknownCommissions
                 ? <Vq key="c">{ls.unknownCommissions} inconnue{ls.unknownCommissions > 1 ? "s" : ""} : {ls.undeclaredRates?.length ? `taux non déclaré pour ${ls.undeclaredRates.join(", ")} — complétez le dossier du logement` : "réservations sans canal identifié, leur revenu net est partiel"}</Vq>
                 : ls.estimatedCommissions ? `${ls.estimatedCommissions} estimées au taux déclaré (le PMS ne les fournit pas)` : "fournies par le PMS"],
@@ -74,6 +77,28 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
               </>
             );
           })()}
+          {pl.listingId && noChannel.length > 0 && (
+            <section>
+              <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Réservations transmises sans canal</h2>
+              <p className="section-note" style={{ margin: "0 0 10px" }}>Votre PMS a transmis ces réservations sans indiquer leur plateforme. Précisez-la si vous la connaissez : votre choix est mémorisé et réappliqué à chaque lecture. Sans précision, elles restent « canal non identifié ».</p>
+              <ActionForm action={channelOverridesAction} hidden={{ propertyId }}>
+                <div className="table-wrap"><table className="econ">
+                  <thead><tr><th scope="col">Séjour</th><th scope="col" className="num">Nuits</th><th scope="col" className="num">Montant</th><th scope="col" className="num">Commission retenue</th><th scope="col">Canal</th></tr></thead>
+                  <tbody>{noChannel.map((r) => (
+                    <tr key={r.externalId}>
+                      <th scope="row">{fmtDay(r.checkIn)} → {fmtDate(r.checkOut)}<span className="src">réservation {r.externalId}</span></th>
+                      <td className="num">{r.nights}</td><td className="num">{euro(r.grossRoomCents)}</td>
+                      <td className="num">{r.commissionCents === null ? "inconnue" : euro(r.commissionCents)}</td>
+                      <td><label className="visually-hidden" htmlFor={"canal-" + r.externalId}>Canal de la réservation {r.externalId}</label>
+                        <select id={"canal-" + r.externalId} name={"canal-" + r.externalId} defaultValue={r.choice} style={{ minHeight: 40, padding: "0 10px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "rgb(4 5 10 / 60%)", color: "var(--ink)", font: "inherit", fontSize: 14 }}>
+                          <option value="">Non identifié</option><option value="AIRBNB">Airbnb</option><option value="BOOKING">Booking.com</option><option value="DIRECT">Réservation directe</option><option value="EXCLUDE">Écarter du calcul</option>
+                        </select></td>
+                    </tr>
+                  ))}</tbody></table></div>
+                <div style={{ marginTop: 12 }}><Submit className="btn btn-ghost" icon="check" pendingLabel="Enregistrement et relecture…">Enregistrer ces canaux</Submit></div>
+              </ActionForm>
+            </section>
+          )}
           <div className="row-wrap">
             {pl.listingId && <ActionForm action={syncPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire PriceLabs maintenant</Submit></ActionForm>}
             {pl.listingId && <ActionForm action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}

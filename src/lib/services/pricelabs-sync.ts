@@ -3,7 +3,7 @@ import { db, newId, schema } from "@/db";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
 import { getNeighborhood, getPrices, getReservations, horizon, listListings, PriceLabsError } from "../integrations/pricelabs";
-import { mapMarket, mapPrices, mapReservations } from "../integrations/pricelabs-map";
+import { mapMarket, mapPrices, mapReservations, type ChannelOverride } from "../integrations/pricelabs-map";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
 
 const { properties, calendarDays, marketDays, reservations, agentRuns, auditEvents } = schema;
@@ -98,7 +98,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   try { market = await getNeighborhood(apiKey, pl.listingId, pl.pms); } catch (e) { marketError = wrap(e); }
 
   const model = p.economics as EconomicModel;
-  const resas = mapReservations(resaRows, model);
+  const resas = mapReservations(resaRows, model, pl.overrides ?? {});
   let days = mapPrices(priceItem).filter((d) => d.date >= h.from && d.date <= h.to);
   if (days.length === 0) throw await fail("PriceLabs n'a renvoyé aucun prix sur les 90 prochains jours.");
   // une réservation confirmée à 0 € est un blocage propriétaire : ces nuits sortent du disponible
@@ -141,4 +141,17 @@ export async function syncIfStale(tenantId: string, p: typeof properties.$inferS
   const at = p.pricelabs.lastSync?.at ? +new Date(p.pricelabs.lastSync.at) : 0;
   if (Date.now() - at < 3 * 3600000 && p.pricelabs.lastSync?.ok) return;
   try { await syncPriceLabs(tenantId, p.id); } catch { /* consigné par syncPriceLabs ; la revue continue sur les données précédentes */ }
+}
+
+/** Le propriétaire précise le canal de réservations transmises sans canal par le PMS, ou les écarte du calcul. Mémorisé d'une lecture à l'autre. */
+export async function setChannelOverrides(tenantId: string, propertyId: string, choices: Record<string, string>, actor: string): Promise<number> {
+  const p = await getProp(tenantId, propertyId);
+  if (!p.pricelabs?.listingId) throw new SyncError("Aucune annonce PriceLabs n'est rattachée à ce logement.");
+  const overrides: Record<string, ChannelOverride> = {};
+  for (const [id, v] of Object.entries(choices)) if (["AIRBNB", "BOOKING", "DIRECT", "EXCLUDE"].includes(v)) overrides[id] = v as ChannelOverride;
+  await db.update(properties).set({ pricelabs: { ...p.pricelabs, overrides } }).where(eq(properties.id, p.id));
+  const n = Object.keys(overrides).length;
+  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "reservations.channel_overrides", entity: "Property", entityId: p.id, summary: `Canal précisé à la main pour ${n} réservation${n > 1 ? "s" : ""} de ${p.name} transmise${n > 1 ? "s" : ""} sans canal.`, payload: overrides });
+  await syncPriceLabs(tenantId, p.id);
+  return n;
 }

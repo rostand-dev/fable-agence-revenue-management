@@ -18,6 +18,12 @@ import { loadEngineInput } from "@/lib/services/review";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 
+async function noChannelRows(propertyId: string, overrides: Record<string, string>) {
+  const rows = await db.select().from(schema.reservations).where(and(eq(schema.reservations.propertyId, propertyId), eq(schema.reservations.source, "PRICELABS")));
+  return rows.filter((r) => overrides[r.externalId] || (r.channel === "INCONNU" && r.status === "CONFIRMED")).sort((a, b) => a.checkIn.localeCompare(b.checkIn))
+    .map((r) => ({ externalId: r.externalId, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, choice: overrides[r.externalId] ?? "" }));
+}
+
 const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"]] as const;
 
 export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string }> }) {
@@ -184,7 +190,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </section>
       )}
 
-      {tab === "pricelabs" && <PriceLabsPanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} />}
+      {tab === "pricelabs" && <PriceLabsPanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} />}
 
       {tab === "donnees" && (
         <section className="stack">
