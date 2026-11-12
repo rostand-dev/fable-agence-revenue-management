@@ -2,6 +2,7 @@ import { createPropertyAction } from "@/app/actions/settings";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Banner, Byline } from "@/components/ui";
+import { PriceLabsGuide } from "@/components/PriceLabsGuide";
 import { requireUser } from "@/lib/auth";
 
 export const metadata = { title: "Ajouter un logement" };
@@ -26,8 +27,8 @@ const SECTIONS: { title: string; note: string; fields: F[] }[] = [
     { name: "strategyContribution", label: "Contribution de sécurité par nuit", unit: "€", help: "En dessous, une validation commentée vous est demandée." },
     { name: "targetContribution", label: "Contribution visée par nuit", unit: "€" },
   ] },
-  { title: "5 · Réglages PriceLabs actuels", note: "Tels qu'ils sont aujourd'hui : ils serviront de point de départ, pas de vérité.", fields: [
-    { name: "basePrice", label: "Prix de base", unit: "€" }, { name: "minPrice", label: "Prix minimum", unit: "€" }, { name: "maxPrice", label: "Prix maximum", unit: "€" }, { name: "minStay", label: "Séjour minimum", unit: "nuits", type: "number" },
+  { title: "5 · Séjour minimum", note: "Les prix de base, minimum et maximum sont lus directement dans PriceLabs.", fields: [
+    { name: "minStay", label: "Séjour minimum habituel", unit: "nuits", type: "number" },
   ] },
 ];
 
@@ -55,7 +56,17 @@ export default async function Nouveau() {
             </div>
           </section>
         ))}
-        <Banner role="tech" title="Et ensuite ?" style={{ margin: "28px 0 18px" }}>Dossier complet : le logement entre en période d'observation — l'équipe recommande, rien n'est écrit. Les réservations et la grille de prix seront lues dès que SuperHote et PriceLabs seront connectés.</Banner>
+        <section className="section" style={{ marginTop: 28 }}>
+          <h2>6 · Connexion PriceLabs</h2>
+          <p className="section-note">La clé est rattachée à ce logement. Elle permet de lire sa grille de prix, son marché et ses réservations. Vous pouvez aussi l'ajouter plus tard depuis la fiche du logement.</p>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label htmlFor="pricelabsKey">Clé API PriceLabs</label>
+            <input id="pricelabsKey" name="pricelabsKey" type="password" autoComplete="off" spellCheck={false} placeholder="collez la clé ici" aria-describedby="pricelabsKey-h" />
+            <span className="help" id="pricelabsKey-h">Vérifiée auprès de PriceLabs à la création, puis chiffrée. Jamais réaffichée en entier.</span>
+          </div>
+          <PriceLabsGuide />
+        </section>
+        <Banner role="tech" title="Et ensuite ?" style={{ margin: "28px 0 18px" }}>Dossier complet : le logement entre en période d'observation — l'équipe recommande, rien n'est écrit. Avec une clé PriceLabs valide, la grille, le marché et les réservations sont lus immédiatement et la première revue est lancée.</Banner>
         <Submit icon="check" pendingLabel="Création du dossier…">Créer le dossier et calculer les planchers</Submit>
       </ActionForm>
     </Page>

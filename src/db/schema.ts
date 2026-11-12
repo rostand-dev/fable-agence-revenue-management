@@ -46,6 +46,8 @@ export const properties = pgTable("properties", {
   /** Stratégie : base / min / max, séjour minimum, objectifs */
   strategy: jsonb("strategy").$type<Record<string, any>>().notNull().default({}),
   strategyVersion: integer("strategy_version").notNull().default(1),
+  /** Connexion PriceLabs propre au logement : clé chiffrée, annonce rattachée, état de la dernière lecture */
+  pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
   createdAt: created(),
 }, (t) => [index("properties_tenant").on(t.tenantId)]);
 

@@ -8,6 +8,8 @@ import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
+import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
+import { runDailyReview } from "@/lib/services/review";
 
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 /** Champ vide = inconnu (null), jamais zéro. */
@@ -34,8 +36,15 @@ export async function createPropertyAction(_: FormState, fd: FormData): Promise<
   await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city, kind, bedrooms: num(fd, "bedrooms"), capacity: num(fd, "capacity"), status: complete ? "SHADOW" : "ONBOARDING", isDemo: false, profile: { positioning: strategy.positioning ?? null, channels: Object.keys(channels) }, economics, strategy });
   await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: complete ? `${name} : dossier complet, planchers calculés. Le logement entre en période d'observation.` : `${name} : dossier créé, incomplet (${missingEconomics(economics).join(", ")}). Ces valeurs restent inconnues tant que vous ne les avez pas fournies.` });
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: "property.created", entity: "Property", entityId: id, summary: `${u.name} ajoute le logement ${name}.` });
+  // La clé PriceLabs est rattachée au logement : elle est vérifiée maintenant, le dossier est créé dans tous les cas.
+  const key = txt(fd, "pricelabsKey");
+  let plError = "";
+  if (key) {
+    try { const r = await connectPriceLabs(u.tenantId, id, key, "user:" + u.id); if (r.synced) await runDailyReview(u.tenantId, "MANUAL"); }
+    catch (e) { plError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à PriceLabs."; }
+  }
   revalidatePath("/", "layout");
-  redirect(`/logements/${id}?tab=economie`);
+  redirect(`/logements/${id}?tab=pricelabs${plError ? "&erreur=" + encodeURIComponent(plError) : ""}`);
 }
 
 export async function renameAgentsAction(_: FormState, fd: FormData): Promise<FormState> {

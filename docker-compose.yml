@@ -8,6 +8,8 @@ services:
       - SERVICE_URL_APP_3000
       - APP_URL=${SERVICE_URL_APP:-http://localhost:3000}
       - DATABASE_URL=postgresql://nuitsignal:${SERVICE_PASSWORD_POSTGRES:-nuitsignal_local}@db:5432/nuitsignal
+      # Chiffre les clés API enregistrées (PriceLabs). Générée par Coolify ; ne pas la changer ensuite.
+      - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
       # Facultatif : active le raisonnement LLM des agents. Vide = repli déterministe.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}

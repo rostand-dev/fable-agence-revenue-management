@@ -61,7 +61,7 @@ function expected(ctx: Ctx, dates: ISODate[], channel: Channel, priceFactor: num
 function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: ISODate): Candidate {
   return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, conflict: draft.type !== "NO_ACTION" && overlaps(ctx, from, to) }) };
 }
-const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.property.isDemo || ctx.capabilities["pricelabs.write"] ? "API_PRICELABS" : "MANUAL_RUNBOOK");
+const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.property.isDemo ? "API_PRICELABS" : "MANUAL_RUNBOOK");
 
 function noAction(ctx: Ctx, from: ISODate, to: ISODate, current: StackResult | null, why: string, reviewInDays = 7): Candidate {
   return finalize(ctx, {
@@ -94,7 +94,7 @@ function avgDay(ctx: Ctx, dates: ISODate[]) {
   const num = (f: (d: Day) => number | null) => { const xs = ds.map(f).filter((x): x is number => x !== null); return xs.length ? avg(xs) : null; };
   return { price: num((d) => d.priceCents), occ: num((d) => d.marketOccupancy), pctl: num((d) => d.pricePercentile), minStay: num((d) => d.minStay) };
 }
-const srcCal = (ctx: Ctx) => (ctx.property.isDemo ? "Calendrier de démonstration" : "SuperHote · calendrier");
+const srcCal = (ctx: Ctx) => (ctx.property.isDemo ? "Calendrier de démonstration" : "PriceLabs · disponibilités");
 const srcMkt = (ctx: Ctx) => (ctx.property.isDemo ? "Marché de démonstration" : "PriceLabs · marché");
 const srcPL = (ctx: Ctx) => (ctx.property.isDemo ? "Grille de démonstration" : "PriceLabs · grille publiée");
 

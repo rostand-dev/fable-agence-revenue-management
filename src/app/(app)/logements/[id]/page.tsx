@@ -4,6 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { BarChart } from "@/components/BarChart";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
+import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { Badge, Banner, Byline, Cascade, Metric, Money, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
@@ -16,12 +17,13 @@ import { euro, pct, pts } from "@/lib/format";
 import { loadEngineInput } from "@/lib/services/review";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 
-const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"]] as const;
+const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"]] as const;
 
-export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string }> }) {
   const user = await requireUser();
   const { id } = await params;
-  const tab = (await searchParams).tab ?? "apercu";
+  const sp = await searchParams;
+  const tab = sp.tab ?? "apercu";
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, user.tenantId)));
   if (!p) notFound();
   const today = todayISO(), now = new Date();
@@ -48,11 +50,11 @@ export default async function Logement({ params, searchParams }: { params: Promi
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
           <div className="idmeta"><span>{p.kind}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
         </div>
-        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge><span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
+        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : <State role="neutre">PriceLabs non connecté</State>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
       {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Valeurs inconnues : {miss.join(", ")}. Aucun plancher n'est calculé et aucune opportunité financière n'est ouverte tant qu'elles manquent — elles ne sont jamais remplacées par zéro.</Banner>}
-      {!hasCal && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue quotidienne démarre dès que les réservations (SuperHote) et la grille (PriceLabs) sont lisibles. <Link href="/integrations">Voir les intégrations</Link></Banner>}
+      {!hasCal && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue quotidienne démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
 
       <div className="subnav" role="tablist" aria-label="Sections du logement" style={{ marginBottom: 22 }}>
         {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={`/logements/${p.id}?tab=${k}`} scroll={false} className="subnav-link">{l}</Link>)}
@@ -180,12 +182,14 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </section>
       )}
 
+      {tab === "pricelabs" && <PriceLabsPanel propertyId={p.id} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} />}
+
       {tab === "donnees" && (
         <section className="stack">
           <div className="table-wrap"><table className="econ">
             <thead><tr><th scope="col">Donnée</th><th scope="col">Source</th><th scope="col">État</th><th scope="col">Détail</th></tr></thead>
             <tbody>
-              <tr><th scope="row">Réservations</th><td>{p.isDemo ? "Démonstration" : "SuperHote"}</td><td>{hasHistory ? <State role="sain">lues</State> : <State role="attention">absentes</State>}</td><td>{input.resas.length} réservations{hasHistory ? ` · dernière arrivée ${fmtDate(input.resas.map((r) => r.checkIn).sort().at(-1)!)}` : ""}</td></tr>
+              <tr><th scope="row">Réservations</th><td>{p.isDemo ? "Démonstration" : "PriceLabs · relais du PMS"}</td><td>{hasHistory ? <State role="sain">lues</State> : <State role="attention">absentes</State>}</td><td>{input.resas.length} réservations{hasHistory ? ` · dernière arrivée ${fmtDate(input.resas.map((r) => r.checkIn).sort().at(-1)!)}` : ""}</td></tr>
               <tr><th scope="row">Calendrier et prix</th><td>{p.isDemo ? "Démonstration" : "PriceLabs"}</td><td>{hasCal ? <State role="sain">lus</State> : <State role="attention">absents</State>}</td><td>{input.days.length} jours · {input.days.filter((d) => d.priceCents === null).length} prix inconnus</td></tr>
               <tr><th scope="row">Marché</th><td>{p.isDemo ? "Démonstration" : "PriceLabs"}</td><td>{input.days.some((d) => d.marketOccupancy !== null) ? <State role="sain">lu</State> : <State role="attention">absent</State>}</td><td>{input.days.filter((d) => d.marketOccupancy === null).length} jours sans occupation de marché</td></tr>
               <tr><th scope="row">Promotions</th><td>Registre manuel</td><td>{input.promos.some((x) => !x.verifiedAt || +now - +x.verifiedAt > 7 * 86400000) ? <State role="attention">à vérifier</State> : <State role="sain">à jour</State>}</td><td>{input.promos.length} active(s)</td></tr>

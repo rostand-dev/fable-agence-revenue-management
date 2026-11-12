@@ -6,6 +6,7 @@ import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Str
 import { llmEnabled } from "../agents/llm";
 import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
+import { syncIfStale } from "./pricelabs-sync";
 
 const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, auditEvents, integrations, reviewRuns } = schema;
 const ACTIVE_ACTION = ["APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING"];
@@ -82,10 +83,11 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
 
   for (const p of props) {
     if (p.isDemo) await db.update(calendarDays).set({ observedAt: now }).where(eq(calendarDays.propertyId, p.id));
+    await syncIfStale(tenantId, p);
     const input = await loadEngineInput(tenantId, p.id, today, now);
     if (!input) continue;
     if (input.days.length === 0) {
-      blocked++; log("onboarding", "reconcile", `${p.name} : aucun calendrier à lire. Les intégrations ne sont pas encore connectées ; aucune revue possible.`);
+      blocked++; log("onboarding", "reconcile", `${p.name} : aucun calendrier à lire. PriceLabs n'est pas encore connecté à ce logement ; aucune revue possible.`);
       continue;
     }
     const unknownPrice = input.days.filter((d) => d.priceCents === null).length;

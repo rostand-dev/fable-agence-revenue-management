@@ -11,7 +11,7 @@ import { fmtDateTime } from "@/lib/dates";
 export const metadata = { title: "Intégrations" };
 const INFO: Record<string, { name: string; role: string; next: string }> = {
   superhote: { name: "SuperHote", role: "PMS et channel manager · source des réservations", next: "Connexion réelle : webhooks via Make (création, modification) et rapprochement planifié. Adaptateur prévu, non branché dans cette version." },
-  pricelabs: { name: "PriceLabs", role: "Moteur de prix · grille, réglages et marché", next: "Connexion réelle : clé de l'API client PriceLabs. Lecture d'abord ; l'écriture ne s'active qu'après la période d'observation." },
+  pricelabs: { name: "PriceLabs", role: "Moteur de prix · grille, réglages et marché", next: "La connexion se fait par logement : ouvrez la fiche du logement, onglet PriceLabs, et collez sa clé API. Lecture seule dans cette version." },
   booking: { name: "Booking.com", role: "Canal · promotions et commissions", next: "L'API Promotions exige un accès Connectivity Partner. D'ici là : procédure manuelle guidée, avec preuve." },
   airbnb: { name: "Airbnb", role: "Canal · promotions et commissions", next: "Aucune automatisation de navigateur : les conditions d'Airbnb l'interdisent. Procédure manuelle guidée, avec preuve." },
 };
@@ -27,7 +27,7 @@ export default async function Integrations() {
         <h1>Ce que l'agence peut lire et écrire</h1>
         <p>Chaque capacité est affichée telle qu'elle est : une capacité absente est une dépendance visible, pas un prérequis caché. Une action n'est proposable en exécution que si la capacité, la permission et les garde-fous sont réunis.</p>
       </div>
-      <Banner role="tech" title="Version actuelle : sources simulées" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques. Les adaptateurs SuperHote et PriceLabs réels sont la prochaine étape ; vos propres logements restent en attente de données d'ici là.</Banner>
+      <Banner role="tech" title="Démonstration simulée, logements réels par clé PriceLabs" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques. Vos propres logements lisent PriceLabs dès que leur clé API est renseignée dans leur fiche (onglet PriceLabs) : grille, marché et réservations relayées par votre PMS.</Banner>
       <div className="stack">
         {["superhote", "pricelabs", "booking", "airbnb"].map((k) => {
           const i = ints.find((x) => x.provider === k), info = INFO[k], [label, role] = ST[i?.status ?? "NOT_CONNECTED"];

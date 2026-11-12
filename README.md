@@ -18,8 +18,9 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 
 | Sujet | État |
 |---|---|
-| Données | Deux logements de **démonstration** (données synthétiques). Les adaptateurs SuperHote et PriceLabs réels ne sont pas encore branchés : un logement ajouté par onboarding obtient ses planchers, mais pas de revue tant qu'il n'a pas de calendrier. |
-| Écriture PriceLabs | **Simulée** sur les logements de démonstration. |
+| Données | Deux logements de **démonstration** (données synthétiques). Un logement réel lit **PriceLabs** dès que sa clé API est renseignée : grille J+0 à J+90, marché, réglages de prix et réservations relayées par le PMS. L'adaptateur SuperHote direct n'est pas encore branché. |
+| Écriture PriceLabs | **Simulée** sur les logements de démonstration ; **lecture seule** sur les logements réels (procédure manuelle guidée pour appliquer une décision). |
+| Promotions et événements | Non fournis par PriceLabs : le registre des promotions reste manuel, les événements ne sont pas détectés sur les logements réels. |
 | Promotions Airbnb / Booking.com | Procédure manuelle guidée avec preuve. Aucune automatisation de navigateur. |
 | Modèle de vente | Heuristique simple et affichée comme telle ; chaque montant est une simulation, pas une prévision. |
 | LLM | Facultatif. Sans `ANTHROPIC_API_KEY`, synthèses et réponses sont composées par règles. Les calculs et garde-fous n'utilisent jamais de LLM. |
@@ -53,6 +54,12 @@ src/app/            écrans et actions serveur
 
 Écarts par rapport au blueprint, pour tenir dans un seul service simple à exploiter : pas de NestJS, Redis ni BullMQ (la revue est planifiée dans le processus, toutes les 15 minutes, une fois par jour et par propriétaire après 06:00 Europe/Paris) ; Drizzle à la place de Prisma ; authentification par e-mail et mot de passe à la place d'OIDC/MFA ; isolation par propriétaire appliquée dans le code, sans Row Level Security.
 
+## Connexion PriceLabs
+
+La clé API est rattachée à **un logement**, pas au compte : elle se saisit à la création du logement (étape 6 de l'onboarding) ou dans sa fiche, onglet *PriceLabs*. Elle est vérifiée auprès de PriceLabs, chiffrée (AES-256-GCM, `APP_SECRET`) et n'est jamais réaffichée. Si le compte PriceLabs contient plusieurs annonces, le propriétaire choisit celle du logement.
+
+Code : `src/lib/integrations/pricelabs.ts` (client), `pricelabs-map.ts` (traduction, testée sur des réponses de forme réelle), `src/lib/services/pricelabs-sync.ts` (lecture avant chaque revue).
+
 ## Développement
 
 ```bash
@@ -68,7 +75,7 @@ npm run db:generate         # après une modification de src/db/schema.ts
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM) et `ANTHROPIC_MODEL`.
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM) et `ANTHROPIC_MODEL`.
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 
