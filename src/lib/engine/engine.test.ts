@@ -144,3 +144,38 @@ describe("métriques", () => {
   });
 });
 void auditCandidate;
+
+import { answersFromModel, modelFromAnswers, parseNum, variablePerNight } from "./costs";
+describe("parcours Coûts et seuils", () => {
+  it("déduit le modèle des réponses concrètes", () => {
+    const m = modelFromAnswers({ airbnbPct: "17,6", bookingPct: "16,3", bookingFeePct: "1,4", cleaningFee: "55", cleaningCost: "62", linenMode: "included", nightMode: "calc", energyYear: "900", waterYear: "300", nightsYear: "200", consumablesStay: "9", avgStay: "3", hard: "20", rent: "900", insurance: "30", nightsMonth: "15", goalMonth: "600", provisional: ["hard", "inconnu"] });
+    expect(m.channels.AIRBNB!.commissionPct).toBe(17.6);
+    expect(m.linenCostCents).toBe(0);                       // « compris dans le ménage » est un zéro déclaré
+    expect(m.nightlyVariableCostCents).toBe(900);           // 1 200 / 200 + 9 / 3
+    expect(m.strategyContributionPerNightCents).toBe(6200); // 930 / 15
+    expect(m.targetContributionPerNightCents).toBe(10200);  // (930 + 600) / 15
+    expect(m.provisional).toEqual(["seuil de dérangement"]);
+    expect(missingEconomics(m)).toHaveLength(0);
+  });
+  it("une réponse absente reste inconnue et bloque le plancher", () => {
+    const m = modelFromAnswers({ bookingPct: "16", cleaningFee: "55", cleaningCost: "62", linenMode: "self", hard: "20" });
+    expect(m.linenCostCents).toBeNull(); expect(m.nightlyVariableCostCents).toBeNull(); expect(m.strategyContributionPerNightCents).toBeNull();
+    expect(missingEconomics(m)).toEqual(expect.arrayContaining(["coût du linge", "coûts variables par nuit", "couverture des charges fixes"]));
+    expect(parseNum("")).toBeNull(); expect(parseNum("0")).toBe(0); expect(parseNum("abc")).toBeNull();
+    expect(variablePerNight({ nightMode: "calc", energyYear: "900" })).toBeNull(); // sans nombre de nuits, pas de division
+    expect(modelFromAnswers({ taxMode: "calc", taxYear: "1946,49", grossYear: "27527,45" }).touristTaxPct).toBe(7.1);
+    expect(modelFromAnswers({ taxMode: "none" }).touristTaxPct).toBe(0); expect(modelFromAnswers({ taxMode: "calc", taxYear: "100" }).touristTaxPct).toBeNull();
+  });
+  it("le plancher stratégique ne passe jamais sous le seuil de dérangement, et un ancien dossier se reprend", () => {
+    expect(modelFromAnswers({ hard: "50", rent: "300", nightsMonth: "20" }).strategyContributionPerNightCents).toBe(5000);
+    const back = answersFromModel({ ...model, cleaningCostCents: 6250, linenCostCents: 0, nightlyVariableCostCents: 600 });
+    expect(back).toMatchObject({ bookingPct: "17", cleaningCost: "62,5", linenMode: "included", nightMode: "direct", variableDirect: "6" });
+  });
+});
+describe("occupation", () => {
+  it("retire les nuits bloquées par le propriétaire du disponible", () => {
+    const r = (status: string, ci: string, co: string, g = 0) => ({ channel: "AIRBNB", checkIn: ci, checkOut: co, nights: 0, grossRoomCents: g, commissionCents: 0, paymentFeeCents: 0, bookedAt: ci, status });
+    const [k] = monthlyKpis([{ ...r("CONFIRMED", "2026-04-01", "2026-04-19", 180000), nights: 18 }, r("BLOCKED", "2026-04-25", "2026-05-11")], ["2026-04"]);
+    expect(k.blockedNights).toBe(6); expect(k.available).toBe(24); expect(k.occupancy).toBeCloseTo(0.75);
+  });
+});

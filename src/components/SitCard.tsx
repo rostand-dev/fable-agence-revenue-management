@@ -10,7 +10,7 @@ import { Byline, confidenceScale, OppStatus, riskScale, State, Steps, Vq } from 
 
 export function needsComment(c: Candidate) { return c.audit.verdict === "NEEDS_HUMAN" || c.risk === "HIGH" || c.risk === "CRITICAL"; }
 
-export function SitCard({ o, rank, propertyName, names }: { o: OppWithAction; rank: number | null; propertyName: string; names?: Record<string, string> | null }) {
+export function SitCard({ o, rank, propertyName, names, provisional }: { o: OppWithAction; rank: number | null; propertyName: string; names?: Record<string, string> | null; provisional?: boolean }) {
   const c = (o.candidates as Candidate[])[o.selected];
   const conf = confidenceScale(o.confidence), risk = riskScale(o.risk);
   const open = o.status === "OPEN";
@@ -24,6 +24,7 @@ export function SitCard({ o, rank, propertyName, names }: { o: OppWithAction; ra
         <OppStatus status={o.status} decision={o.decision} actionStatus={o.action?.status} />
         <span className="tag tag-mono">{o.code}</span>
         <span className="tag">{o.playbook}</span>
+        {provisional && <span className="tag" title="Certains coûts ou seuils de ce logement sont des estimations à confirmer">planchers provisoires</span>}
       </div>
       <div className="sit-body">
         <div className="sit-head">

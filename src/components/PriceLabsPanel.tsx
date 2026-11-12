@@ -8,7 +8,7 @@ import { Banner, Recap, State, Vq } from "./ui";
 /** Connexion PriceLabs d'un logement : saisie de la clé, choix de l'annonce, état de la dernière lecture. */
 export type NoChannel = { externalId: string; checkIn: string; checkOut: string; nights: number; grossRoomCents: number; commissionCents: number | null; choice: string };
 
-export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken, noChannel = [] }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string>; noChannel?: NoChannel[] }) {
+export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken, noChannel = [], costsMissing = 0 }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string>; noChannel?: NoChannel[]; costsMissing?: number }) {
   if (isDemo) return <Banner role="tech" title="Logement de démonstration">Ses données sont simulées : il ne se connecte pas à PriceLabs. Ajoutez votre propre logement pour brancher votre clé.</Banner>;
   const ls = pl?.lastSync, cands: any[] = pl?.candidates ?? [];
   return (
@@ -44,6 +44,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
               ["Marché", ls.marketError ? <Vq key="m" kind="obsolete">indisponible — {ls.marketError}</Vq> : `${ls.marketDays} jours · ${ls.marketListings ?? "?"} annonces comparables · catégorie ${ls.marketCategory === "-1" ? "chambre" : ls.marketCategory + " chambre(s)"} · ${ls.marketSource ?? ""}`],
             ] as [string, React.ReactNode][] : []),
           ]} />
+          {pl.listingId && costsMissing > 0 && <Banner role="attention" title="Étape suivante : vos coûts et vos seuils">PriceLabs est lu, mais il manque {costsMissing} valeur{costsMissing > 1 ? "s" : ""} pour calculer vos planchers : sans elles, aucune situation n'est ouverte. <a href={`/logements/${propertyId}/couts`}>Les renseigner pas à pas</a></Banner>}
           {ls && !ls.ok && <Banner role="attention" title="Dernière lecture en échec">{ls.error} Les données précédentes sont conservées.</Banner>}
           {ls?.ok && ls.pushEnabled === false && <Banner role="attention" title="Synchronisation désactivée dans PriceLabs">Les prix lus ne sont peut-être pas ceux réellement publiés sur vos canaux.</Banner>}
           {!pl.listingId && (() => {

@@ -206,7 +206,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               <div className="bound bound-cible"><span className="bound-k">Contribution visée par nuit</span><span className="bound-v"><Money cents={model.targetContributionPerNightCents} /></span></div>
               <div className="bound bound-plancher"><span className="bound-k">Plancher stratégique · prix vendu</span><span className="bound-v">{euro(strategyFloorCents(model, ref.channel, ref.nights))}</span></div>
               <div className="bound bound-plancher"><span className="bound-k">Plancher absolu · prix vendu</span><span className="bound-v">{euro(hardFloorCents(model, ref.channel, ref.nights))}</span></div>
-              <div className="bound"><span className="bound-k">Origine des bornes</span><span className="bound-v" style={{ fontFamily: "var(--font)", fontSize: 13, color: "var(--quiet)" }}>{model.origin === "DEMO" ? "Valeurs de démonstration" : "Modèle économique déclaré"} · stratégie v{p.strategyVersion}</span></div>
+              <div className="bound"><span className="bound-k">Origine des bornes</span><span className="bound-v" style={{ fontFamily: "var(--font)", fontSize: 13, color: "var(--quiet)" }}>{model.origin === "DEMO" ? "Valeurs de démonstration" : (model.provisional?.length ?? 0) > 0 ? `Planchers provisoires — à confirmer : ${model.provisional!.join(", ")}` : "Modèle économique déclaré"} · stratégie v{p.strategyVersion}</span></div>
             </div>
             {o.veto && o.signals.vetoText && (
               <div className="veto-strip"><Icon name="ban" /><div><h4>Veto économique sur la situation actuelle</h4><p>{o.signals.vetoText}</p></div></div>

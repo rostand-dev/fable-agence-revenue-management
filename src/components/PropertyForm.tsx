@@ -1,5 +1,6 @@
 import { createPropertyAction, updatePropertyAction } from "@/app/actions/settings";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
+void (null as unknown as EconomicModel);
 import { ActionForm, Submit } from "./forms";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner } from "./ui";
@@ -12,36 +13,20 @@ const SECTIONS: { title: string; note: string; fields: F[] }[] = [
     { name: "positioning", label: "Clientèle visée", help: "Par exemple : professionnels en semaine, familles le week-end.", full: true },
     { name: "objective", label: "Votre objectif", help: "Par exemple : +20 % de chiffre d'affaires sur un an, sans sacrifier le prix à la nuit.", full: true },
   ] },
-  { title: "2 · Commissions par canal", note: "Relevez-les sur vos relevés de versement, pas de mémoire.", fields: [
-    { name: "airbnbCommission", label: "Commission Airbnb", unit: "%" }, { name: "bookingCommission", label: "Commission Booking.com", unit: "%" },
-    { name: "bookingPaymentFee", label: "Frais de paiement Booking.com", unit: "%", help: "Laissez vide si vous n'utilisez pas les paiements par Booking.com." },
-  ] },
-  { title: "3 · Coûts", note: "Ce que coûte réellement un séjour et une nuit occupée.", fields: [
-    { name: "cleaningFee", label: "Frais de ménage facturés au voyageur", unit: "€" }, { name: "cleaningCost", label: "Coût réel du ménage", unit: "€" },
-    { name: "linenCost", label: "Linge et consommables par séjour", unit: "€" }, { name: "variableCost", label: "Coûts variables par nuit occupée", unit: "€", help: "Énergie, eau, consommables." },
-  ] },
-  { title: "4 · Vos seuils", note: "Ils fondent les planchers : sous le premier, l'auditeur oppose son veto.", fields: [
-    { name: "hardContribution", label: "Contribution minimale absolue par nuit", unit: "€", help: "Ce qu'une nuit doit vous laisser au minimum, coûts et commissions déduits." },
-    { name: "strategyContribution", label: "Contribution de sécurité par nuit", unit: "€", help: "En dessous, une validation commentée vous est demandée." },
-    { name: "targetContribution", label: "Contribution visée par nuit", unit: "€" },
-  ] },
-  { title: "5 · Séjour minimum", note: "Les prix de base, minimum et maximum sont lus directement dans PriceLabs.", fields: [
+  { title: "2 · Séjour minimum", note: "Les prix de base, minimum et maximum sont lus directement dans PriceLabs.", fields: [
     { name: "minStay", label: "Séjour minimum habituel", unit: "nuits" },
   ] },
 ];
 
 type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean };
 const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
-const e = (cents: number | null | undefined) => (cents === null || cents === undefined ? "" : String(cents / 100).replace(".", ","));
 
 /** Une valeur inconnue repart vide ; rien n'est prérempli à la place du propriétaire. */
 export function valuesOf(p: Existing): Record<string, string> {
-  const m = p.economics ?? ({} as EconomicModel), s = p.strategy ?? ({} as Strategy);
+  const s = p.strategy ?? ({} as Strategy);
   return {
     name: p.name === "Logement sans nom" ? "" : p.name, city: p.city, kind: p.kind, bedrooms: n(p.bedrooms), capacity: n(p.capacity), positioning: s.positioning ?? p.profile?.positioning ?? "", objective: s.objective ?? "",
-    airbnbCommission: n(m.channels?.AIRBNB?.commissionPct), bookingCommission: n(m.channels?.BOOKING?.commissionPct), bookingPaymentFee: m.channels?.BOOKING ? n(m.channels.BOOKING.paymentFeePct) : "",
-    cleaningFee: e(m.cleaningFeeChargedCents), cleaningCost: e(m.cleaningCostCents), linenCost: e(m.linenCostCents), variableCost: e(m.nightlyVariableCostCents),
-    hardContribution: e(m.hardContributionPerNightCents), strategyContribution: e(m.strategyContributionPerNightCents), targetContribution: e(m.targetContributionPerNightCents), minStay: n(s.minStay),
+    minStay: n(s.minStay),
   };
 }
 
@@ -67,7 +52,7 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
         </section>
       ))}
       <section className="section" style={{ marginTop: 28 }}>
-        <h2>6 · Connexion PriceLabs</h2>
+        <h2>3 · Connexion PriceLabs</h2>
         {existing?.hasKey ? (
           <p className="section-note">Une clé PriceLabs est déjà enregistrée pour ce logement. Elle se gère dans sa fiche, onglet PriceLabs.</p>
         ) : (
@@ -82,11 +67,11 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
           </>
         )}
       </section>
-      <Banner role="tech" title="Deux façons de terminer" style={{ margin: "28px 0 18px" }}>
-        <strong>Enregistrer et reprendre plus tard</strong> garde votre saisie telle quelle, sans champ obligatoire : vous la retrouvez dans Logements. <strong>Valider le dossier</strong> demande le nom, la ville et le type ; s'il est complet, les planchers sont calculés et le logement entre en période d'observation.
+      <Banner role="tech" title="Et les coûts, les commissions, les seuils ?" style={{ margin: "28px 0 18px" }}>
+        Ils ne se saisissent plus ici : {existing ? "ils se renseignent" : "une fois le logement créé, vous les renseignez"} pas à pas avec votre chargée d'onboarding, qui en déduit vos planchers. <strong>Enregistrer et reprendre plus tard</strong> garde votre saisie telle quelle, sans champ obligatoire.
       </Banner>
       <div className="row-wrap">
-        <Submit icon="check" name="intent" value="final" pendingLabel="Enregistrement…">{existing ? "Valider le dossier" : "Créer le dossier et calculer les planchers"}</Submit>
+        <Submit icon="check" name="intent" value="final" pendingLabel="Enregistrement…">{existing ? "Enregistrer le dossier" : "Créer le logement et passer aux coûts"}</Submit>
         <Submit className="btn btn-ghost" icon="clock" name="intent" value="draft" formNoValidate pendingLabel="Enregistrement…">Enregistrer et reprendre plus tard</Submit>
       </div>
     </ActionForm>

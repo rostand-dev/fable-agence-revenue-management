@@ -96,3 +96,13 @@ a.btn { text-decoration: none; }
 .frieze > li { min-width: 150px; }
 .cal-day { overflow: hidden; white-space: nowrap; }
 @media (max-width: 479px) { .cal-day { padding: 4px 3px; } .cal-day .d { font-size: 9px; } .cal-day .p { font-size: 11px; } .cal-day .m { font-size: 9px; } }
+
+/* parcours pas à pas */
+.wiz-steps { margin-bottom: 22px; display: grid; gap: 10px; }
+.wiz-here { margin: 0; font-size: 14px; color: var(--quiet); }
+.wiz-here strong { color: var(--ink); font-size: 16px; }
+.wiz-steps ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.wiz-steps button { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line-strong); background: transparent; color: var(--quiet); font: inherit; font-family: var(--mono); font-size: 12.5px; cursor: pointer; display: grid; place-items: center; }
+.wiz-steps button.is-done { color: var(--mint, #34d399); border-color: rgb(52 211 153 / 45%); }
+.wiz-steps button.is-here { color: var(--ink); border-color: var(--blue); background: rgb(37 99 235 / 22%); }
+.wiz-steps button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }

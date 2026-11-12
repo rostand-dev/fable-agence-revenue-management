@@ -21,6 +21,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const [props, all, review] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN", "DEFERRED", "DECIDED"]), lastReview(user.tenantId)]);
   const names = user.settings.agentNames ?? null;
   const pname = new Map(props.map((p) => [p.id, p.name]));
+  const prov = new Set(props.filter((p) => ((p.economics as any)?.provisional?.length ?? 0) > 0).map((p) => p.id));
   const open = all.filter((o) => o.status === "OPEN");
   const sel = (o: (typeof all)[number]) => (o.candidates as Candidate[])[o.selected];
   const guard = open.filter((o) => o.veto || (o.candidates as Candidate[]).some((c) => c.audit.verdict === "REJECT"));
@@ -74,7 +75,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           {FILTERS.map(([k, label]) => <Link key={k} className="chip" href={k === "a-traiter" ? "/" : `/?f=${k}`} aria-current={f === k ? "true" : undefined} scroll={false}>{label}</Link>)}
         </div>
         {shown.length > 0 ? (
-          <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={o.status === "OPEN" ? open.indexOf(o) + 1 : null} propertyName={pname.get(o.propertyId) ?? ""} names={names} />)}</div>
+          <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={o.status === "OPEN" ? open.indexOf(o) + 1 : null} propertyName={pname.get(o.propertyId) ?? ""} names={names} provisional={prov.has(o.propertyId)} />)}</div>
         ) : (
           <div className="empty">
             <h3>{f === "a-traiter" ? "Rien à arbitrer" : "Aucune entrée"}</h3>

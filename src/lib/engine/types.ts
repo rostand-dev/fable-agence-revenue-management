@@ -21,6 +21,12 @@ export type EconomicModel = {
   targetContributionPerNightCents: number | null;
   /** DEMO = valeurs de démonstration ; DECLARED = saisies par le propriétaire. */
   origin: "DEMO" | "DECLARED";
+  /** Part de taxe de séjour dans le montant total des réservations transmis par le PMS, en %. null = inconnue. */
+  touristTaxPct?: number | null;
+  /** Libellés des valeurs données comme estimations provisoires, à confirmer */
+  provisional?: string[];
+  /** Réponses brutes du parcours « Coûts et seuils », pour pouvoir le reprendre */
+  answers?: Record<string, any>;
 };
 
 export type Strategy = {

@@ -40,7 +40,7 @@ export function windowStats(days: Day[], today: ISODate): WindowStat[] {
 }
 
 export type MonthKpi = {
-  month: string; nights: number; available: number; occupancy: number; grossCents: number; netCents: number;
+  month: string; nights: number; available: number; blockedNights: number; occupancy: number; grossCents: number; netCents: number;
   adrCents: number | null; netAdrCents: number | null; netRevpanCents: number; byChannel: Record<string, number>;
   /** true si une commission est inconnue sur au moins une réservation : le net est alors partiel */
   netIncomplete: boolean;
@@ -49,8 +49,12 @@ export type MonthKpi = {
 /** KPI mensuels : chaque nuit est attribuée à son mois de séjour. Net = brut − commissions − frais de paiement. */
 export function monthlyKpis(resas: Resa[], months: string[]): MonthKpi[] {
   const map = new Map<string, MonthKpi>();
-  for (const m of months) map.set(m, { month: m, nights: 0, available: daysInMonth(m), occupancy: 0, grossCents: 0, netCents: 0, adrCents: null, netAdrCents: null, netRevpanCents: 0, byChannel: {}, netIncomplete: false });
+  for (const m of months) map.set(m, { month: m, nights: 0, blockedNights: 0, available: daysInMonth(m), occupancy: 0, grossCents: 0, netCents: 0, adrCents: null, netAdrCents: null, netRevpanCents: 0, byChannel: {}, netIncomplete: false });
   for (const r of resas) {
+    if (r.status === "BLOCKED") { // blocage propriétaire : ni vendu, ni disponible à la vente
+      for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) { const k = map.get(monthKey(d)); if (k) k.blockedNights += 1; }
+      continue;
+    }
     if (r.status !== "CONFIRMED" || r.nights <= 0) continue;
     const perNightGross = r.grossRoomCents / r.nights;
     const unknownFees = r.commissionCents === null;
@@ -65,10 +69,11 @@ export function monthlyKpis(resas: Resa[], months: string[]): MonthKpi[] {
   }
   for (const k of map.values()) {
     k.grossCents = Math.round(k.grossCents); k.netCents = Math.round(k.netCents);
-    k.occupancy = k.nights / k.available;
+    k.available = Math.max(k.nights, k.available - k.blockedNights);
+    k.occupancy = k.available ? k.nights / k.available : 0;
     k.adrCents = k.nights ? Math.round(k.grossCents / k.nights) : null;
     k.netAdrCents = k.nights ? Math.round(k.netCents / k.nights) : null;
-    k.netRevpanCents = Math.round(k.netCents / k.available);
+    k.netRevpanCents = k.available ? Math.round(k.netCents / k.available) : 0;
   }
   return months.map((m) => map.get(m)!);
 }

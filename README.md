@@ -12,7 +12,7 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 - **Dossier de décision** : preuves sourcées, arbre de diagnostic, hypothèses alternatives, options comparées (dont l'inaction), cascade du prix publié à la contribution, verdict d'audit règle par règle.
 - **Cycle d'action tracé** : approuver → exécuter → vérifier → mesurer, avec machine à états, retour arrière et journal d'audit en ajout seul.
 - **Équipe IA** : huit postes avec fiche de poste, workflows, activité et conversation.
-- **Onboarding d'un logement** : coûts et commissions → planchers par canal et par durée de séjour. Un champ vide reste *inconnu*, jamais zéro.
+- **Onboarding d'un logement** : identité et clé PriceLabs, puis parcours « Coûts et seuils » pas à pas avec la chargée d'onboarding (commissions relevées sur les réservations, taxe de séjour, ménage, coût d'une nuit, seuil de dérangement, charges fixes, objectif) → planchers par canal et par durée de séjour. Une réponse absente reste *inconnue* ; une estimation peut être marquée *provisoire* et les dossiers la signalent.
 
 ### Limites connues, assumées
 

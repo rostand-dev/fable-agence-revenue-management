@@ -11,8 +11,8 @@ export function missingEconomics(m: EconomicModel, channel?: Channel): string[] 
   const need: [keyof EconomicModel, string][] = [
     ["cleaningFeeChargedCents", "frais de ménage facturés"], ["cleaningCostCents", "coût du ménage"],
     ["linenCostCents", "coût du linge"], ["nightlyVariableCostCents", "coûts variables par nuit"],
-    ["hardContributionPerNightCents", "contribution minimale absolue"],
-    ["strategyContributionPerNightCents", "contribution de sécurité"],
+    ["hardContributionPerNightCents", "seuil de dérangement"],
+    ["strategyContributionPerNightCents", "couverture des charges fixes"],
   ];
   for (const [k, label] of need) if (m[k] === null || m[k] === undefined) miss.push(label);
   const chans = channel ? [channel] : (Object.keys(m.channels ?? {}) as Channel[]);

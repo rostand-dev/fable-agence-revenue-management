@@ -81,4 +81,10 @@ describe("PriceLabs → modèle interne", () => {
     expect(c.channel).toBe("AIRBNB");                    // un canal fourni par le PMS n'est jamais écrasé
     expect(d).toMatchObject({ channel: "DIRECT", commissionCents: 0, paymentFeeCents: 0 });
   });
+  it("retire la part de taxe de séjour déclarée avant de calculer le revenu et la commission estimée", () => {
+    const row = { reservation_id: "t", check_in: "2026-03-01", check_out: "2026-03-03", booking_status: "booked", booked_date: "2026-02-01", rental_revenue: "NA", total_cost: "1000", no_of_days: 2, booking_channel: "airbnb", ota_commission: "0.0" };
+    const model: any = { touristTaxPct: 7, channels: { AIRBNB: { commissionPct: 10, paymentFeePct: 0 } } };
+    expect(mapReservations([row], model)[0]).toMatchObject({ grossRoomCents: 93000, commissionCents: 9300 });
+    expect(mapReservations([row], { ...model, touristTaxPct: null })[0].grossRoomCents).toBe(100000); // inconnue : rien n'est retiré
+  });
 });

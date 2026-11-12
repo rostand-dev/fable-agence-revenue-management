@@ -7,6 +7,7 @@ import { Page } from "@/components/Page";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { Badge, Banner, Byline, Cascade, Metric, Money, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
+import { agentName } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { addDays, diffDays, fmtDate, fmtDateTime, fmtDay, fmtMonth, fmtMonthShort, todayISO } from "@/lib/dates";
 import { promosOn } from "@/lib/engine/detect";
@@ -63,7 +64,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
         <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : p.pricelabs?.apiKeyEnc ? <State role="attention">Rattachement à confirmer</State> : <State role="neutre">PriceLabs non connecté</State>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
-      {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Valeurs inconnues : {miss.join(", ")}. Aucun plancher n'est calculé et aucune opportunité financière n'est ouverte tant qu'elles manquent — elles ne sont jamais remplacées par zéro.</Banner>}
+      {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Il manque : {miss.join(", ")}. Aucun plancher n'est calculé et aucune situation n'est ouverte tant que ces valeurs manquent ; une estimation provisoire suffit pour démarrer.{!p.isDemo && <> <Link href={`/logements/${p.id}/couts`}>Les renseigner pas à pas avec {agentName("onboarding", names)}</Link></>}</Banner>}
       {!hasCal && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue quotidienne démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
 
       {!p.isDemo && <p style={{ margin: "0 0 16px" }}><Link className={p.status === "ONBOARDING" ? "btn btn-primary" : "btn btn-ghost btn-sm"} href={`/logements/${p.id}/modifier`}><Icon name={p.status === "ONBOARDING" ? "arrow" : "sliders"} />{p.status === "ONBOARDING" ? "Reprendre la saisie du dossier" : "Modifier le dossier"}</Link></p>}
@@ -74,13 +75,13 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "apercu" && (
         <>
           <div className="synth">
-            <Metric label="Revenu net · 12 mois" value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source={`${period} · montant des réservations − commissions − frais de paiement`} />
+            <Metric label="Revenu net · 12 mois" value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source={`${period} · montant des réservations${model.touristTaxPct ? " hors taxe de séjour" : ""} − commissions − frais de paiement`} />
             <Metric label="Occupation · 12 mois" value={hasHistory ? pct(sum((k) => k.nights) / sum((k) => k.available)) : <Vq>inconnue</Vq>} source={`${sum((k) => k.nights)} nuits vendues · ${period}`} />
             <Metric label="Prix moyen net" value={hasHistory && sum((k) => k.nights) ? euro(sum((k) => k.netCents) / sum((k) => k.nights)) : <Vq>inconnu</Vq>} source="Par nuit occupée" />
             <Metric label="Revenu net par nuit disponible" value={hasHistory ? euro(sum((k) => k.netCents) / sum((k) => k.available)) : <Vq>inconnu</Vq>} source={trend ? `Tendance ${trend} sur 12 mois` : "Tendance inconnue"} />
           </div>
           {hasHistory && (
-            <p className="kpi-note">Période : <strong>{period}</strong>, soit les douze derniers mois complets ; le mois en cours et les séjours à venir n'y figurent pas. Chaque nuit est comptée dans son mois de séjour.{partial && ` L'historique lu ne commence que le ${fmtDate(firstStay!)} : les mois antérieurs sont vides, pas nuls.`}{!p.isDemo && " PriceLabs transmet le montant total de chaque réservation, qui peut inclure le ménage et la taxe de séjour : ce revenu net n'est donc pas directement comparable au « revenu net versé à l'hôte » de votre PMS."}</p>
+            <p className="kpi-note">Période : <strong>{period}</strong>, soit les douze derniers mois complets ; le mois en cours et les séjours à venir n'y figurent pas. Chaque nuit est comptée dans son mois de séjour.{partial && ` L'historique lu ne commence que le ${fmtDate(firstStay!)} : les mois antérieurs sont vides, pas nuls.`}{!p.isDemo && (model.touristTaxPct === null || model.touristTaxPct === undefined ? " Le montant transmis par PriceLabs est ce que paie le voyageur, ménage et taxe de séjour compris : tant que la part de taxe n'est pas déclarée (Coûts et seuils), ce revenu net est surestimé d'autant." : " Le montant des réservations comprend les frais de ménage ; la taxe de séjour déclarée en est retirée.")}</p>
           )}
           {hasHistory && (
             <section className="section">
@@ -153,12 +154,15 @@ export default async function Logement({ params, searchParams }: { params: Promi
 
       {tab === "economie" && (
         <section className="stack">
+          {!p.isDemo && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/couts`}><Icon name="chat" />{miss.length ? "Renseigner" : "Revoir"} coûts et seuils avec {agentName("onboarding", names)}</Link></p>}
+          {(model.provisional?.length ?? 0) > 0 && <Banner role="tech" title={`Planchers provisoires : ${model.provisional!.length} valeur${model.provisional!.length > 1 ? "s" : ""} à confirmer`}>{model.provisional!.join(", ")}. Les planchers ci-dessous en dépendent ; les dossiers ouverts portent la même mention.</Banner>}
           <Recap rows={[
             ...(["AIRBNB", "BOOKING"] as Channel[]).map((c) => [`Commission ${CHANNEL_LABEL[c]}`, model.channels?.[c] ? `${String(model.channels[c]!.commissionPct).replace(".", ",")} % + ${String(model.channels[c]!.paymentFeePct).replace(".", ",")} % de frais de paiement` : <Vq>inconnue</Vq>, true] as [string, React.ReactNode, boolean]),
             ["Frais de ménage facturés", <Money key="1" cents={model.cleaningFeeChargedCents} />, true], ["Coût du ménage", <Money key="2" cents={model.cleaningCostCents} />, true], ["Coût du linge", <Money key="3" cents={model.linenCostCents} />, true],
             ["Coûts variables par nuit", <Money key="4" cents={model.nightlyVariableCostCents} />, true],
-            ["Contribution minimale absolue · par nuit", <Money key="5" cents={model.hardContributionPerNightCents} />, true], ["Contribution de sécurité · par nuit", <Money key="6" cents={model.strategyContributionPerNightCents} />, true], ["Contribution visée · par nuit", <Money key="7" cents={model.targetContributionPerNightCents} />, true],
-            ["Origine", model.origin === "DEMO" ? "Valeurs de démonstration, à remplacer" : "Déclarées par vous à l'onboarding"],
+            ["Seuil de dérangement · par nuit (plancher absolu)", <Money key="5" cents={model.hardContributionPerNightCents} />, true], ["Charges fixes à couvrir · par nuit vendue (plancher stratégique)", <Money key="6" cents={model.strategyContributionPerNightCents} />, true], ["Objectif · par nuit vendue", <Money key="7" cents={model.targetContributionPerNightCents} />, true],
+            ["Taxe de séjour dans les montants", model.touristTaxPct === null || model.touristTaxPct === undefined ? <Vq key="t">inconnue : le revenu net affiché l'inclut</Vq> : `${String(model.touristTaxPct).replace(".", ",")} % retirés de chaque réservation`],
+            ["Origine", model.origin === "DEMO" ? "Valeurs de démonstration, à remplacer" : "Déclarées par vous, pas à pas"],
           ]} />
           {miss.length === 0 && (
             <>
@@ -196,7 +200,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </section>
       )}
 
-      {tab === "pricelabs" && <PriceLabsPanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} />}
+      {tab === "pricelabs" && <PriceLabsPanel costsMissing={miss.length} propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} />}
 
       {tab === "donnees" && (
         <section className="stack">

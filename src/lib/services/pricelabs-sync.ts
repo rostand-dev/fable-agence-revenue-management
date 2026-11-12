@@ -3,7 +3,7 @@ import { db, newId, schema } from "@/db";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
 import { getNeighborhood, getPrices, getReservations, horizon, listListings, PriceLabsError } from "../integrations/pricelabs";
-import { mapMarket, mapPrices, mapReservations, type ChannelOverride } from "../integrations/pricelabs-map";
+import { mapChannel, mapMarket, mapPrices, mapReservations, type ChannelOverride } from "../integrations/pricelabs-map";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
 
 const { properties, calendarDays, marketDays, reservations, agentRuns, auditEvents } = schema;
@@ -112,10 +112,17 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   const strategy: Strategy = { ...strat, basePriceCents: listing.baseCents ?? strat.basePriceCents ?? null, minPriceCents: listing.minCents ?? strat.minPriceCents ?? null, maxPriceCents: listing.maxCents ?? strat.maxPriceCents ?? null, maxDiscountStackPct: strat.maxDiscountStackPct ?? 20, maxPriceChangePct: strat.maxPriceChangePct ?? 5 };
   const changed = strategy.basePriceCents !== strat.basePriceCents || strategy.minPriceCents !== strat.minPriceCents || strategy.maxPriceCents !== strat.maxPriceCents;
   const confirmed = resas.filter((r) => r.status === "CONFIRMED");
+  // taux réellement constatés quand le PMS transmet la commission : proposés au propriétaire, jamais appliqués d'office
+  const observedCommission: Record<string, { pct: number; n: number }> = {};
+  for (const ch of ["AIRBNB", "BOOKING"]) {
+    const rows = (resaRows as any[]).map((r) => ({ c: Number(r.ota_commission), g: Number(r.total_cost), ch: mapChannel(r.booking_channel), ok: !String(r.booking_status ?? "").toLowerCase().startsWith("cancel") })).filter((x) => x.ok && x.ch === ch && x.c > 0 && x.g > 0);
+    if (rows.length) observedCommission[ch] = { pct: Math.round((rows.reduce((a, x) => a + x.c, 0) / rows.reduce((a, x) => a + x.g, 0)) * 1000) / 10, n: rows.length };
+  }
   const lastSync = {
-    ok: true, at: now.toISOString(), days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
+    ok: true, at: now.toISOString(), observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
     reservations: confirmed.length, cancelled: resas.filter((r) => r.status === "CANCELLED").length, ownerBlocks: resas.filter((r) => r.status === "BLOCKED").length, duplicates: resas.filter((r) => r.status === "DUPLICATE").length,
     historyFrom: confirmed.map((r) => r.checkIn).sort()[0] ?? null,
+    touristTaxPct: model?.touristTaxPct ?? null,
     estimatedCommissions: confirmed.filter((r) => r.commissionEstimated).length, unknownCommissions: confirmed.filter((r) => r.commissionCents === null).length, unknownChannel: confirmed.filter((r) => r.channel === "INCONNU").length,
     undeclaredRates: [...new Set(confirmed.filter((r) => r.commissionCents === null && r.channel !== "INCONNU").map((r) => r.channel))],
     marketDays: mk.market.filter((m) => m.marketOccupancy !== null).length, marketCategory: mk.category, marketListings: mk.listingsUsed, marketSource: mk.source, marketError,

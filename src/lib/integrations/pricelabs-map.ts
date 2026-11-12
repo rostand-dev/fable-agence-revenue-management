@@ -88,6 +88,8 @@ export const mapChannel = (c: unknown) => (typeof c === "string" && c.trim() ? C
 
 /**
  * Réservations du PMS relayées par PriceLabs. Montant = `rental_revenue` s'il est fourni, sinon `total_cost`.
+ * Ce total est ce que paie le voyageur, taxe de séjour comprise : si le propriétaire a déclaré la part de taxe,
+ * elle est retirée, car une taxe collectée puis reversée n'est pas un revenu.
  * Une réservation confirmée à 0 € est un blocage propriétaire. Quand le PMS ne fournit pas la commission,
  * elle est estimée avec le taux déclaré du canal et signalée comme telle ; sans taux déclaré, elle reste inconnue.
  */
@@ -108,7 +110,8 @@ export function mapReservations(rows: any[], model: EconomicModel | null, overri
     const status: PlReservation["status"] = cancelled ? "CANCELLED" : st === "blocked" || gross <= 0 ? "BLOCKED" : raw === "INCONNU" && ov === "EXCLUDE" ? "DUPLICATE" : "CONFIRMED";
     const rate = model?.channels?.[channel as "AIRBNB" | "BOOKING"];
     const given = pos(r.ota_commission);
-    const grossCents = Math.round(gross * 100);
+    const tax = model?.touristTaxPct && model.touristTaxPct > 0 && model.touristTaxPct < 50 ? model.touristTaxPct : 0;
+    const grossCents = Math.round(gross * 100 * (1 - tax / 100));
     out.push({
       externalId: String(r.reservation_id), channel, checkIn: String(r.check_in).slice(0, 10), checkOut: String(r.check_out).slice(0, 10),
       nights: num(r.no_of_days) ?? 0, grossRoomCents: grossCents, cleaningCents: cents(pos(r.cleaning_fees)),
