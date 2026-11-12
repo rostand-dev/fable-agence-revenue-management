@@ -77,28 +77,47 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
               </>
             );
           })()}
-          {pl.listingId && noChannel.length > 0 && (
-            <section>
-              <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Réservations transmises sans canal</h2>
-              <p className="section-note" style={{ margin: "0 0 10px" }}>Votre PMS a transmis ces réservations sans indiquer leur plateforme. Précisez-la si vous la connaissez : votre choix est mémorisé et réappliqué à chaque lecture. Sans précision, elles restent « canal non identifié ».</p>
-              <ActionForm action={channelOverridesAction} hidden={{ propertyId }}>
-                <div className="table-wrap"><table className="econ">
-                  <thead><tr><th scope="col">Séjour</th><th scope="col" className="num">Nuits</th><th scope="col" className="num">Montant</th><th scope="col" className="num">Commission retenue</th><th scope="col">Canal</th></tr></thead>
-                  <tbody>{noChannel.map((r) => (
-                    <tr key={r.externalId}>
-                      <th scope="row">{fmtDay(r.checkIn)} → {fmtDate(r.checkOut)}<span className="src">réservation {r.externalId}</span></th>
-                      <td className="num">{r.nights}</td><td className="num">{euro(r.grossRoomCents)}</td>
-                      <td className="num">{r.commissionCents === null ? "inconnue" : euro(r.commissionCents)}</td>
-                      <td><label className="visually-hidden" htmlFor={"canal-" + r.externalId}>Canal de la réservation {r.externalId}</label>
-                        <select id={"canal-" + r.externalId} name={"canal-" + r.externalId} defaultValue={r.choice} style={{ minHeight: 40, padding: "0 10px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "rgb(4 5 10 / 60%)", color: "var(--ink)", font: "inherit", fontSize: 14 }}>
-                          <option value="">Non identifié</option><option value="AIRBNB">Airbnb</option><option value="BOOKING">Booking.com</option><option value="DIRECT">Réservation directe</option><option value="EXCLUDE">Écarter du calcul</option>
-                        </select></td>
-                    </tr>
-                  ))}</tbody></table></div>
-                <div style={{ marginTop: 12 }}><Submit className="btn btn-ghost" icon="check" pendingLabel="Enregistrement et relecture…">Enregistrer ces canaux</Submit></div>
-              </ActionForm>
-            </section>
-          )}
+          {pl.listingId && noChannel.length > 0 && (() => {
+            const todo = noChannel.filter((r) => !r.choice), done = noChannel.filter((r) => r.choice);
+            const LABEL: Record<string, string> = { AIRBNB: "Airbnb", BOOKING: "Booking.com", DIRECT: "Réservation directe", EXCLUDE: "Écartée du calcul" };
+            const table = (rows: NoChannel[]) => (
+              <div className="table-wrap"><table className="econ">
+                <thead><tr><th scope="col">Séjour</th><th scope="col" className="num">Nuits</th><th scope="col" className="num">Montant</th><th scope="col" className="num">Commission retenue</th><th scope="col">Canal</th></tr></thead>
+                <tbody>{rows.map((r) => (
+                  <tr key={r.externalId}>
+                    <th scope="row">{fmtDay(r.checkIn)} → {fmtDate(r.checkOut)}<span className="src">réservation {r.externalId}</span></th>
+                    <td className="num">{r.nights}</td><td className="num">{euro(r.grossRoomCents)}</td>
+                    <td className="num">{r.commissionCents === null ? "inconnue" : euro(r.commissionCents)}</td>
+                    <td><label className="visually-hidden" htmlFor={"canal-" + r.externalId}>Canal de la réservation {r.externalId}</label>
+                      <select id={"canal-" + r.externalId} name={"canal-" + r.externalId} defaultValue={r.choice} style={{ minHeight: 40, padding: "0 10px", borderRadius: 8, border: "1px solid var(--line-strong)", background: "rgb(4 5 10 / 60%)", color: "var(--ink)", font: "inherit", fontSize: 14 }}>
+                        <option value="">Non identifié</option>{Object.entries(LABEL).map(([k, l]) => <option key={k} value={k}>{k === "EXCLUDE" ? "Écarter du calcul" : l}</option>)}
+                      </select></td>
+                  </tr>
+                ))}</tbody></table></div>
+            );
+            return (
+              <section>
+                <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Réservations transmises sans canal{todo.length > 0 && <span className="rail-count" style={{ marginLeft: 8, verticalAlign: "middle" }}>{todo.length}</span>}</h2>
+                <ActionForm action={channelOverridesAction} hidden={{ propertyId }}>
+                  {todo.length > 0 ? (
+                    <>
+                      <p className="section-note" style={{ margin: "0 0 10px" }}>Votre PMS a transmis {todo.length > 1 ? "ces réservations" : "cette réservation"} sans indiquer la plateforme. Précisez-la si vous la connaissez : la ligne quitte alors cette liste, et votre choix est réappliqué à chaque lecture.</p>
+                      {table(todo)}
+                    </>
+                  ) : (
+                    <p className="section-note" style={{ margin: "0 0 10px" }}><State role="sain">Liste vide</State> Toutes les réservations transmises sans canal ont été précisées.</p>
+                  )}
+                  {done.length > 0 && (
+                    <details className="fold" style={{ marginTop: 12 }}>
+                      <summary>Déjà précisées ({done.length}) — {Object.entries(LABEL).map(([k, l]) => [done.filter((r) => r.choice === k).length, l] as const).filter(([n]) => n > 0).map(([n, l]) => `${n} ${l}`).join(" · ")}</summary>
+                      <div className="fold-body"><p className="muted" style={{ margin: "0 0 10px" }}>Pour corriger un choix, modifiez-le ici puis enregistrez. « Non identifié » renvoie la ligne dans la liste.</p>{table(done)}</div>
+                    </details>
+                  )}
+                  <div style={{ marginTop: 12 }}><Submit className="btn btn-ghost" icon="check" pendingLabel="Enregistrement et relecture…">Enregistrer</Submit></div>
+                </ActionForm>
+              </section>
+            );
+          })()}
           <div className="row-wrap">
             {pl.listingId && <ActionForm action={syncPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire PriceLabs maintenant</Submit></ActionForm>}
             {pl.listingId && <ActionForm action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}
