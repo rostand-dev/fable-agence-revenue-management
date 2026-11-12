@@ -9,7 +9,7 @@ import type { EconomicModel } from "../engine/types";
 export type PlListing = { id: string; pms: string; name: string; city: string | null; bedrooms: number | null; currency: string | null; minCents: number | null; baseCents: number | null; maxCents: number | null; pushEnabled: boolean | null; lastRefreshedAt: string | null };
 export type PlDay = { date: ISODate; state: "FREE" | "BOOKED" | "BLOCKED"; priceCents: number | null; minStay: number | null; rule: string | null };
 export type PlMarketDay = { date: ISODate; marketOccupancy: number | null; marketAdrCents: number | null; pricePercentile: number | null; event: string | null };
-export type PlReservation = { externalId: string; channel: string; checkIn: ISODate; checkOut: ISODate; nights: number; grossRoomCents: number; cleaningCents: number | null; commissionCents: number | null; paymentFeeCents: number | null; status: "CONFIRMED" | "CANCELLED" | "BLOCKED"; bookedAt: ISODate; commissionEstimated: boolean };
+export type PlReservation = { externalId: string; channel: string; checkIn: ISODate; checkOut: ISODate; nights: number; grossRoomCents: number; cleaningCents: number | null; commissionCents: number | null; paymentFeeCents: number | null; status: "CONFIRMED" | "CANCELLED" | "BLOCKED" | "DUPLICATE"; bookedAt: ISODate; commissionEstimated: boolean };
 
 const num = (v: unknown): number | null => { if (v === null || v === undefined || v === "" || v === "NA") return null; const n = typeof v === "number" ? v : Number(v); return Number.isFinite(n) ? n : null; };
 const pos = (v: unknown): number | null => { const n = num(v); return n !== null && n > 0 ? n : null; };
@@ -83,7 +83,7 @@ export function mapMarket(data: any, bedrooms: number | null, days: PlDay[]): { 
   return { market, ...meta };
 }
 
-const CHANNEL: Record<string, string> = { airbnb: "AIRBNB", bcom: "BOOKING", booking: "BOOKING", "booking.com": "BOOKING", bookingcom: "BOOKING" };
+const CHANNEL: Record<string, string> = { manual: "MANUEL", airbnb: "AIRBNB", bcom: "BOOKING", booking: "BOOKING", "booking.com": "BOOKING", bookingcom: "BOOKING" };
 export const mapChannel = (c: unknown) => (typeof c === "string" && c.trim() ? CHANNEL[c.trim().toLowerCase()] ?? c.trim().toUpperCase().slice(0, 24) : "INCONNU");
 
 /**
@@ -112,5 +112,25 @@ export function mapReservations(rows: any[], model: EconomicModel | null): PlRes
       status, bookedAt: String(r.booked_date ?? r.check_in).slice(0, 10), commissionEstimated: given === null && !!rate,
     });
   }
-  return out;
+  return dedupeConfirmed(out);
+}
+
+/**
+ * Un logement ne peut pas être réservé deux fois la même nuit. Quand deux réservations confirmées se chevauchent,
+ * l'une est un reliquat (migration ou modification dans le PMS) : elle est marquée DUPLICATE et sort des calculs,
+ * sans être supprimée. On garde celle dont le canal est identifié ; à défaut, la plus récemment réservée.
+ */
+export function dedupeConfirmed(rows: PlReservation[]): PlReservation[] {
+  const live = rows.filter((r) => r.status === "CONFIRMED").sort((a, b) => a.checkIn.localeCompare(b.checkIn));
+  const known = (r: PlReservation) => r.channel !== "INCONNU";
+  for (let i = 0; i < live.length; i++) for (let j = i + 1; j < live.length; j++) {
+    const a = live[i], b = live[j];
+    if (a.status !== "CONFIRMED" || b.status !== "CONFIRMED") continue;
+    if (b.checkIn >= a.checkOut) break;
+    if (!(a.checkIn < b.checkOut && b.checkIn < a.checkOut)) continue;
+    const loser = known(a) !== known(b) ? (known(a) ? b : a) : a.bookedAt <= b.bookedAt ? a : b;
+    loser.status = "DUPLICATE";
+    if (loser === a) break;
+  }
+  return rows;
 }

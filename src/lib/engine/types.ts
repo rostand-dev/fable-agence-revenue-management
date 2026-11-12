@@ -2,7 +2,7 @@ import type { ISODate } from "../dates";
 
 export type Channel = "AIRBNB" | "BOOKING";
 export const CHANNELS: Channel[] = ["AIRBNB", "BOOKING"];
-export const CHANNEL_LABEL: Record<string, string> = { AIRBNB: "Airbnb", BOOKING: "Booking.com", DIRECT: "Direct" };
+export const CHANNEL_LABEL: Record<string, string> = { AIRBNB: "Airbnb", BOOKING: "Booking.com", DIRECT: "Direct", MANUEL: "Saisie manuelle", INCONNU: "Canal non identifié" };
 
 export type ChannelEconomics = { commissionPct: number; paymentFeePct: number };
 

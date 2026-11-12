@@ -1,5 +1,5 @@
 import { connectPriceLabsAction, detachListingAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction } from "@/app/actions/pricelabs";
-import { fmtDateTime } from "@/lib/dates";
+import { fmtDate, fmtDateTime } from "@/lib/dates";
 import { ActionForm, Submit } from "./forms";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner, Recap, State, Vq } from "./ui";
@@ -32,8 +32,12 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
             ["Dernière lecture", ls?.at ? <>{fmtDateTime(new Date(ls.at))} · {ls.ok ? <State role="sain">réussie</State> : <State role="attention">en échec</State>}</> : <Vq>aucune</Vq>],
             ...(ls?.ok ? [
               ["Grille de prix", `${ls.days} jours${ls.unknownPrices ? ` · ${ls.unknownPrices} prix inconnus` : ""}${ls.gridRefreshedAt ? ` · calculée par PriceLabs le ${fmtDateTime(new Date(ls.gridRefreshedAt))}` : ""}`],
-              ["Réservations", `${ls.reservations} confirmées · ${ls.cancelled} annulées · ${ls.ownerBlocks} blocage${ls.ownerBlocks > 1 ? "s" : ""} propriétaire`],
-              ["Commissions", ls.unknownCommissions ? <Vq key="c">{ls.unknownCommissions} inconnues : renseignez les taux de commission du logement</Vq> : ls.estimatedCommissions ? `${ls.estimatedCommissions} estimées au taux déclaré (le PMS ne les fournit pas)` : "fournies par le PMS"],
+              ["Réservations", `${ls.reservations} confirmées · ${ls.cancelled} annulées ou remplacées · ${ls.ownerBlocks} blocage${ls.ownerBlocks > 1 ? "s" : ""} propriétaire${ls.historyFrom ? ` · historique depuis le ${fmtDate(ls.historyFrom)}` : ""}`],
+              ...(ls.duplicates ? [["Doublons écartés", `${ls.duplicates} réservation${ls.duplicates > 1 ? "s" : ""} confirmée${ls.duplicates > 1 ? "s" : ""} chevauchai${ls.duplicates > 1 ? "ent" : "t"} une autre sur les mêmes nuits : reliquat${ls.duplicates > 1 ? "s" : ""} du PMS, sorti${ls.duplicates > 1 ? "s" : ""} des calculs pour ne pas compter deux fois`] as [string, React.ReactNode]] : []),
+              ["Commissions", ls.unknownCommissions
+                ? <Vq key="c">{ls.unknownCommissions} inconnue{ls.unknownCommissions > 1 ? "s" : ""} : {ls.undeclaredRates?.length ? `taux non déclaré pour ${ls.undeclaredRates.join(", ")} — complétez le dossier du logement` : "réservations sans canal identifié, leur revenu net est partiel"}</Vq>
+                : ls.estimatedCommissions ? `${ls.estimatedCommissions} estimées au taux déclaré (le PMS ne les fournit pas)` : "fournies par le PMS"],
+              ...(ls.unknownCommissions && ls.estimatedCommissions ? [["Commissions estimées", `${ls.estimatedCommissions} au taux déclaré (le PMS ne les fournit pas)`] as [string, React.ReactNode]] : []),
               ["Marché", ls.marketError ? <Vq key="m" kind="obsolete">indisponible — {ls.marketError}</Vq> : `${ls.marketDays} jours · ${ls.marketListings ?? "?"} annonces comparables · catégorie ${ls.marketCategory === "-1" ? "chambre" : ls.marketCategory + " chambre(s)"} · ${ls.marketSource ?? ""}`],
             ] as [string, React.ReactNode][] : []),
           ]} />

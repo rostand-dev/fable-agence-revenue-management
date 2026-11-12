@@ -114,8 +114,10 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   const confirmed = resas.filter((r) => r.status === "CONFIRMED");
   const lastSync = {
     ok: true, at: now.toISOString(), days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
-    reservations: confirmed.length, cancelled: resas.filter((r) => r.status === "CANCELLED").length, ownerBlocks: resas.filter((r) => r.status === "BLOCKED").length,
-    estimatedCommissions: confirmed.filter((r) => r.commissionEstimated).length, unknownCommissions: confirmed.filter((r) => r.commissionCents === null).length,
+    reservations: confirmed.length, cancelled: resas.filter((r) => r.status === "CANCELLED").length, ownerBlocks: resas.filter((r) => r.status === "BLOCKED").length, duplicates: resas.filter((r) => r.status === "DUPLICATE").length,
+    historyFrom: confirmed.map((r) => r.checkIn).sort()[0] ?? null,
+    estimatedCommissions: confirmed.filter((r) => r.commissionEstimated).length, unknownCommissions: confirmed.filter((r) => r.commissionCents === null).length, unknownChannel: confirmed.filter((r) => r.channel === "INCONNU").length,
+    undeclaredRates: [...new Set(confirmed.filter((r) => r.commissionCents === null && r.channel !== "INCONNU").map((r) => r.channel))],
     marketDays: mk.market.filter((m) => m.marketOccupancy !== null).length, marketCategory: mk.category, marketListings: mk.listingsUsed, marketSource: mk.source, marketError,
     gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
   };
@@ -129,7 +131,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
     for (let i = 0; i < resas.length; i += 200) await tx.insert(reservations).values(resas.slice(i, i + 200).map(({ commissionEstimated, ...r }) => ({ id: newId("res"), tenantId, propertyId: p.id, ...r, source: "PRICELABS" }))).onConflictDoNothing();
     await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync } }).where(eq(properties.id, p.id));
   });
-  await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}.` });
+  await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}.` });
   return { days: days.length, reservations: confirmed.length };
 }
 

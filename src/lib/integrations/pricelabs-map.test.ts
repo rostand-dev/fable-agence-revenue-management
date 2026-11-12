@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapChannel, mapListing, mapMarket, mapPrices, mapReservations, percentileOf } from "./pricelabs-map";
+import { dedupeConfirmed, mapChannel, mapListing, mapMarket, mapPrices, mapReservations, percentileOf } from "./pricelabs-map";
 
 // Extraits de la forme réellement renvoyée par l'API (valeurs relevées sur un compte SuperHote).
 const prices = { id: "97999683013", pms: "superhote", currency: "EUR", data: [
@@ -59,5 +59,17 @@ describe("PriceLabs → modèle interne", () => {
   it("lit une annonce et ses bornes, max absent compris", () => {
     expect(mapListing({ id: 9, pms: "superhote", name: "A", min: 95, base: 126, max: null, no_of_bedrooms: 2 })).toMatchObject({ id: "9", minCents: 9500, baseCents: 12600, maxCents: null, bedrooms: 2 });
     expect(mapChannel("bcom")).toBe("BOOKING"); expect(mapChannel("")).toBe("INCONNU");
+  });
+  it("écarte un reliquat qui chevauche des réservations confirmées, sans toucher aux séjours qui se suivent", () => {
+    const mk = (id: string, ci: string, co: string, ch: string, gross: number, booked = "2026-01-01") => ({ reservation_id: id, check_in: ci, check_out: co, booking_status: "booked", booked_date: booked, rental_revenue: "NA", total_cost: String(gross), no_of_days: 1, booking_channel: ch });
+    const r = mapReservations([
+      mk("old", "2026-06-03", "2026-06-30", "", 5036),               // reliquat sans canal, 27 nuits
+      mk("n1", "2026-06-03", "2026-06-08", "airbnb", 700), mk("n2", "2026-06-08", "2026-06-12", "bcom", 600), mk("n3", "2026-06-20", "2026-06-30", "airbnb", 1500),
+      mk("s1", "2026-07-01", "2026-07-03", "airbnb", 300), mk("s2", "2026-07-03", "2026-07-05", "airbnb", 300), // dos à dos : pas un doublon
+      mk("x1", "2026-08-01", "2026-08-04", "airbnb", 400, "2026-05-01"), mk("x2", "2026-08-02", "2026-08-05", "airbnb", 420, "2026-06-01"), // deux canaux connus : on garde la plus récente
+    ], null);
+    const st = Object.fromEntries(r.map((x) => [x.externalId, x.status]));
+    expect(st).toMatchObject({ old: "DUPLICATE", n1: "CONFIRMED", n2: "CONFIRMED", n3: "CONFIRMED", s1: "CONFIRMED", s2: "CONFIRMED", x1: "DUPLICATE", x2: "CONFIRMED" });
+    expect(dedupeConfirmed([]).length).toBe(0);
   });
 });
