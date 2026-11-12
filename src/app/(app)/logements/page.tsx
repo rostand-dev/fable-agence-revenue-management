@@ -38,7 +38,7 @@ export default async function Logements() {
             <Link key={p.id} href={`/logements/${p.id}`} className="idhead" style={{ textDecoration: "none", color: "inherit", marginBottom: 0 }}>
               <div>
                 <h1 style={{ fontSize: 19 }}>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démo</span>}</h1>
-                <div className="idmeta"><span>{p.kind} · {p.city}</span><span>{p.capacity ? `${p.capacity} voyageurs` : "capacité inconnue"}</span><span>stratégie v{p.strategyVersion}</span></div>
+                <div className="idmeta"><span>{[p.kind, p.city].filter(Boolean).join(" · ") || "type et ville non renseignés"}</span><span>{p.capacity ? `${p.capacity} voyageurs` : "capacité inconnue"}</span><span>stratégie v{p.strategyVersion}</span></div>
                 <div className="row-wrap" style={{ marginTop: 12, gap: "8px 22px" }}>
                   <span className="amount"><span className="gauge-label">Occupation · 3 mois</span><span className="amount-value">{has ? pct(nights / avail) : <Vq>inconnue</Vq>}</span></span>
                   <span className="amount"><span className="gauge-label">Revenu net · 3 mois</span><span className="amount-value">{has ? <Money cents={net} /> : <Vq>inconnu</Vq>}</span></span>
@@ -46,7 +46,7 @@ export default async function Logements() {
                 </div>
               </div>
               <div className="idsync">
-                <Badge family={fam} icon={ico}>{label}</Badge>
+                <Badge family={fam} icon={ico}>{p.status === "ONBOARDING" && !p.isDemo ? "Saisie à reprendre" : label}</Badge>
                 {miss.length > 0 ? <State role="attention">{miss.length} donnée{miss.length > 1 ? "s" : ""} manquante{miss.length > 1 ? "s" : ""}</State> : <State role="sain">Planchers calculés</State>}
               </div>
             </Link>

@@ -45,11 +45,11 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const allPromos = await db.select().from(schema.promotions).where(eq(schema.promotions.propertyId, p.id));
 
   return (
-    <Page title={p.name} sub={`${p.kind} · ${p.city} · stratégie v${p.strategyVersion}`} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name }]}>
+    <Page title={p.name} sub={`${[p.kind, p.city].filter(Boolean).join(" · ") || "dossier en cours de saisie"} · stratégie v${p.strategyVersion}`} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name }]}>
       <div className="idhead">
         <div>
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
-          <div className="idmeta"><span>{p.kind}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
+          <div className="idmeta"><span>{p.kind || "type non renseigné"}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city || "ville non renseignée"}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
         </div>
         <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : p.pricelabs?.apiKeyEnc ? <State role="attention">Rattachement à confirmer</State> : <State role="neutre">PriceLabs non connecté</State>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
@@ -57,6 +57,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Valeurs inconnues : {miss.join(", ")}. Aucun plancher n'est calculé et aucune opportunité financière n'est ouverte tant qu'elles manquent — elles ne sont jamais remplacées par zéro.</Banner>}
       {!hasCal && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue quotidienne démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
 
+      {!p.isDemo && <p style={{ margin: "0 0 16px" }}><Link className={p.status === "ONBOARDING" ? "btn btn-primary" : "btn btn-ghost btn-sm"} href={`/logements/${p.id}/modifier`}><Icon name={p.status === "ONBOARDING" ? "arrow" : "sliders"} />{p.status === "ONBOARDING" ? "Reprendre la saisie du dossier" : "Modifier le dossier"}</Link></p>}
       <div className="subnav" role="tablist" aria-label="Sections du logement" style={{ marginBottom: 22 }}>
         {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={`/logements/${p.id}?tab=${k}`} scroll={false} className="subnav-link">{l}</Link>)}
       </div>
