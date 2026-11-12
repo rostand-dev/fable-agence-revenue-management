@@ -41,6 +41,9 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const [label, fam, ico] = STATUS[p.status] ?? STATUS.ONBOARDING;
   const months = lastMonths(today, 12), kpis = monthlyKpis(input.resas, months);
   const hasHistory = input.resas.length > 0, hasCal = input.days.length > 0;
+  const period = `${fmtMonth(months[0])} → ${fmtMonth(months[months.length - 1])}`;
+  const firstStay = input.resas.filter((r) => r.status === "CONFIRMED").map((r) => r.checkIn).sort()[0];
+  const partial = !!firstStay && firstStay.slice(0, 7) > months[0];
   const sum = (f: (k: (typeof kpis)[number]) => number) => kpis.reduce((a, k) => a + f(k), 0);
   const stats = windowStats(input.days, today);
   const lead = leadTimes(input.resas), los = medianLos(input.resas), share = channelShare(input.resas);
@@ -71,16 +74,19 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "apercu" && (
         <>
           <div className="synth">
-            <Metric label="Revenu net · 12 mois" value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source="Hébergement − commissions − frais de paiement" />
-            <Metric label="Occupation · 12 mois" value={hasHistory ? pct(sum((k) => k.nights) / sum((k) => k.available)) : <Vq>inconnue</Vq>} source={`${sum((k) => k.nights)} nuits vendues`} />
+            <Metric label="Revenu net · 12 mois" value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source={`${period} · montant des réservations − commissions − frais de paiement`} />
+            <Metric label="Occupation · 12 mois" value={hasHistory ? pct(sum((k) => k.nights) / sum((k) => k.available)) : <Vq>inconnue</Vq>} source={`${sum((k) => k.nights)} nuits vendues · ${period}`} />
             <Metric label="Prix moyen net" value={hasHistory && sum((k) => k.nights) ? euro(sum((k) => k.netCents) / sum((k) => k.nights)) : <Vq>inconnu</Vq>} source="Par nuit occupée" />
             <Metric label="Revenu net par nuit disponible" value={hasHistory ? euro(sum((k) => k.netCents) / sum((k) => k.available)) : <Vq>inconnu</Vq>} source={trend ? `Tendance ${trend} sur 12 mois` : "Tendance inconnue"} />
           </div>
           {hasHistory && (
+            <p className="kpi-note">Période : <strong>{period}</strong>, soit les douze derniers mois complets ; le mois en cours et les séjours à venir n'y figurent pas. Chaque nuit est comptée dans son mois de séjour.{partial && ` L'historique lu ne commence que le ${fmtDate(firstStay!)} : les mois antérieurs sont vides, pas nuls.`}{!p.isDemo && " PriceLabs transmet le montant total de chaque réservation, qui peut inclure le ménage et la taxe de séjour : ce revenu net n'est donc pas directement comparable au « revenu net versé à l'hôte » de votre PMS."}</p>
+          )}
+          {hasHistory && (
             <section className="section">
               <h2>Revenu net mensuel</h2>
               <p className="section-note">Chaque nuit est rattachée à son mois de séjour. Tendance du revenu net par nuit disponible : <strong>{trend}</strong> (trois derniers mois comparés aux trois premiers).</p>
-              <BarChart title="Revenu net d'hébergement par mois" unit="Euros, hors ménage et taxes de séjour · douze derniers mois complets" data={kpis.map((k) => ({ label: fmtMonthShort(k.month), full: fmtMonth(k.month), cents: k.netCents, note: `occupation ${pct(k.occupancy)}` }))} />
+              <BarChart title="Revenu net d'hébergement par mois" unit={`Euros · ${period}${p.isDemo ? " · hors ménage et taxes de séjour" : " · montant total des réservations, net de commissions"}`} data={kpis.map((k) => ({ label: fmtMonthShort(k.month), full: fmtMonth(k.month), cents: k.netCents, note: `occupation ${pct(k.occupancy)}` }))} />
             </section>
           )}
           {hasCal && (

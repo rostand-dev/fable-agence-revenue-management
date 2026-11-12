@@ -3,7 +3,7 @@ import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { Badge, Money, State, Vq } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
-import { todayISO } from "@/lib/dates";
+import { fmtMonthShort, todayISO } from "@/lib/dates";
 import { missingEconomics } from "@/lib/engine/economics";
 import { lastMonths, monthlyKpis } from "@/lib/engine/metrics";
 import type { EconomicModel } from "@/lib/engine/types";
@@ -40,8 +40,8 @@ export default async function Logements() {
                 <h1 style={{ fontSize: 19 }}>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démo</span>}</h1>
                 <div className="idmeta"><span>{[p.kind, p.city].filter(Boolean).join(" · ") || "type et ville non renseignés"}</span><span>{p.capacity ? `${p.capacity} voyageurs` : "capacité inconnue"}</span><span>stratégie v{p.strategyVersion}</span></div>
                 <div className="row-wrap" style={{ marginTop: 12, gap: "8px 22px" }}>
-                  <span className="amount"><span className="gauge-label">Occupation · 3 mois</span><span className="amount-value">{has ? pct(nights / avail) : <Vq>inconnue</Vq>}</span></span>
-                  <span className="amount"><span className="gauge-label">Revenu net · 3 mois</span><span className="amount-value">{has ? <Money cents={net} /> : <Vq>inconnu</Vq>}</span></span>
+                  <span className="amount"><span className="gauge-label">Occupation · {fmtMonthShort(months[0])} → {fmtMonthShort(months[2])}</span><span className="amount-value">{has ? pct(nights / avail) : <Vq>inconnue</Vq>}</span></span>
+                  <span className="amount"><span className="gauge-label">Revenu net · {fmtMonthShort(months[0])} → {fmtMonthShort(months[2])}</span><span className="amount-value">{has ? <Money cents={net} /> : <Vq>inconnu</Vq>}</span></span>
                   <span className="amount"><span className="gauge-label">Situations ouvertes</span><span className="amount-value">{n}</span></span>
                 </div>
               </div>
