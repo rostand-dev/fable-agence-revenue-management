@@ -9,13 +9,14 @@ function Go({ label, pending }: { label: string; pending: string }) {
   const s = useFormStatus();
   return <button type="submit" className="btn btn-primary" disabled={s.pending} style={{ width: "100%", minHeight: 48 }}>{s.pending ? pending : label}</button>;
 }
-export function AuthForm({ mode, action }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState> }) {
+export function AuthForm({ mode, action, expired }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean }) {
   const [state, formAction] = useActionState(action, {});
   const signup = mode === "signup";
   return (
     <div className="card">
       <h2>{signup ? "Créer votre espace" : "Se connecter"}</h2>
       <p className="muted" style={{ margin: "0 0 18px" }}>{signup ? "Deux logements de démonstration sont installés pour découvrir l'agence. Vous ajouterez les vôtres ensuite." : "Retrouvez vos opportunités et vos décisions."}</p>
+      {expired && <div className="banner banner-attention" role="status" style={{ marginBottom: 16 }}><Icon name="alert" /><div><p className="banner-title">Session expirée</p><p className="muted" style={{ margin: 0 }}>Vous avez été déconnecté(e) après 15 minutes d'inactivité.</p></div></div>}
       <form action={formAction} className="stack" style={{ ["--gap" as any]: "16px" }} noValidate>
         {signup && (
           <div className="field"><label htmlFor="name">Votre nom</label><input id="name" name="name" type="text" autoComplete="name" required defaultValue={state.values?.name} /></div>

@@ -1716,3 +1716,17 @@ table.cascade .delta-neu { color: var(--quiet); }
 @media (max-width: 767px) {
   .crumbs ol { font-size: 12px; }
 }
+
+/* Avertissement d'inactivité (IdleGuard) */
+.idle-dialog {
+  width: min(92vw, 420px);
+  padding: 22px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: #0a0d18;
+  color: var(--ink);
+}
+.idle-dialog::backdrop { background: rgb(2 3 8 / 74%); }
+.idle-dialog h2 { margin: 0 0 8px; font-size: 17px; font-weight: 640; }
+.idle-dialog p { margin: 0 0 18px; }
+.idle-actions { display: flex; flex-wrap: wrap; gap: 10px; }
