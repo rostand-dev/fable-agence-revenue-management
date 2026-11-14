@@ -75,7 +75,7 @@ npm run db:generate         # après une modification de src/db/schema.ts
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM) et `ANTHROPIC_MODEL`.
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM), `ANTHROPIC_MODEL` et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification).
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 

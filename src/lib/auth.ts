@@ -4,7 +4,7 @@ import { cache } from "react";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 import { db, ensureMigrated, schema } from "@/db";
-import { isExpired, newExpiry, refreshedExpiry } from "@/lib/session-policy";
+import { idleMsFromEnv, isExpired, newExpiry, refreshedExpiry } from "@/lib/session-policy";
 
 const COOKIE = "ns_session";
 
@@ -21,7 +21,7 @@ export function verifyPassword(pw: string, stored: string): boolean {
 
 export async function createSession(userId: string): Promise<void> {
   const id = randomBytes(32).toString("hex");
-  const expiresAt = newExpiry();
+  const expiresAt = newExpiry(idleMsFromEnv());
   // ménage au passage : les sessions échues ne servent plus à rien
   await db.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));
   await db.insert(schema.sessions).values({ id, userId, expiresAt });
@@ -49,8 +49,8 @@ export const getUser = cache(async (): Promise<CurrentUser | null> => {
     await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
     return null;
   }
-  // expiration glissante : chaque requête authentifiée repousse l'échéance de 15 min (par paliers d'une minute)
-  const next = refreshedExpiry(r.s.expiresAt);
+  // expiration glissante : chaque requête authentifiée repousse l'échéance du délai d'inactivité (SESSION_IDLE_MINUTES, 15 min par défaut), par paliers d'une minute
+  const next = refreshedExpiry(r.s.expiresAt, idleMsFromEnv());
   if (next) await db.update(schema.sessions).set({ expiresAt: next }).where(eq(schema.sessions.id, id));
   return { id: r.u.id, name: r.u.name, email: r.u.email, tenantId: r.u.tenantId, tenantName: r.t.name, settings: r.t.settings ?? {} };
 });

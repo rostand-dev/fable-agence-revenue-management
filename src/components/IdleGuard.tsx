@@ -1,10 +1,9 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { IDLE_MS, WARNING_MS } from "@/lib/session-policy";
+import { WARNING_MS } from "@/lib/session-policy";
 
 const KEY = "ns_last_activity";
-/** Signal envoyé au serveur au plus toutes les 4 min tant que l'utilisateur est actif (l'échéance serveur est de 15 min). */
-const KEEPALIVE_MS = 4 * 60_000;
+
 const EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "scroll", "pointermove"] as const;
 
 function readShared(): number | null {
@@ -15,11 +14,13 @@ function writeShared(t: number) {
 }
 
 /**
- * Déconnecte après 15 min sans activité (clic, frappe, défilement, toucher), tous onglets confondus.
+ * Déconnecte après idleMs sans activité (SESSION_IDLE_MINUTES, 15 min par défaut) (clic, frappe, défilement, toucher), tous onglets confondus.
  * Une minute avant, un dialogue propose de rester connecté. Le serveur reste l'autorité : même sans ce composant,
- * la session expire après 15 min sans requête.
+ * la session expire côté serveur après le même délai sans requête.
  */
-export function IdleGuard() {
+export function IdleGuard({ idleMs }: { idleMs: number }) {
+  // signal envoyé au serveur au plus tous les quarts du délai (4 min pour 15 min) tant que l'utilisateur est actif
+  const keepAliveMs = Math.max(15_000, Math.floor(idleMs / 4));
   const dialog = useRef<HTMLDialogElement>(null);
   const last = useRef(Date.now());
   const lastPing = useRef(Date.now());
@@ -52,7 +53,7 @@ export function IdleGuard() {
 
   useEffect(() => {
     const shared = readShared();
-    if (shared && shared > last.current - IDLE_MS) last.current = Math.max(last.current, shared);
+    if (shared && shared > last.current - idleMs) last.current = Math.max(last.current, shared);
     writeShared(last.current);
 
     const onActivity = () => {
@@ -73,14 +74,14 @@ export function IdleGuard() {
       if (ending.current) return;
       const now = Date.now();
       const idle = now - last.current;
-      if (idle >= IDLE_MS) { logout(); return; }
-      if (idle >= IDLE_MS - WARNING_MS) {
+      if (idle >= idleMs) { logout(); return; }
+      if (idle >= idleMs - WARNING_MS) {
         warning.current = true;
-        setLeft(Math.ceil((IDLE_MS - idle) / 1000));
+        setLeft(Math.ceil((idleMs - idle) / 1000));
         return;
       }
       if (warning.current) { warning.current = false; setLeft(null); }
-      if (last.current > lastPing.current && now - lastPing.current >= KEEPALIVE_MS) ping();
+      if (last.current > lastPing.current && now - lastPing.current >= keepAliveMs) ping();
     };
 
     EVENTS.forEach((ev) => window.addEventListener(ev, onActivity, { capture: true, passive: true }));
@@ -94,7 +95,7 @@ export function IdleGuard() {
       document.removeEventListener("visibilitychange", tick);
       window.clearInterval(timer);
     };
-  }, [logout, ping]);
+  }, [logout, ping, idleMs, keepAliveMs]);
 
   useEffect(() => {
     const d = dialog.current; if (!d) return;
