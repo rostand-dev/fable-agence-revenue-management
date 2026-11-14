@@ -2,11 +2,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, lt } from "drizzle-orm";
 import { db, ensureMigrated, schema } from "@/db";
+import { idleMsFromEnv, isExpired, newExpiry, refreshedExpiry } from "@/lib/session-policy";
 
 const COOKIE = "ns_session";
-const DAYS = 30;
 
 export function hashPassword(pw: string): string {
   const salt = randomBytes(16);
@@ -21,9 +21,12 @@ export function verifyPassword(pw: string, stored: string): boolean {
 
 export async function createSession(userId: string): Promise<void> {
   const id = randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + DAYS * 86400000);
+  const expiresAt = newExpiry(idleMsFromEnv());
+  // ménage au passage : les sessions échues ne servent plus à rien
+  await db.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));
   await db.insert(schema.sessions).values({ id, userId, expiresAt });
-  (await cookies()).set(COOKIE, id, { httpOnly: true, sameSite: "lax", secure: (process.env.APP_URL ?? "").startsWith("https"), path: "/", expires: expiresAt });
+  // cookie de session (sans date) : l'échéance qui fait foi est celle de la base, repoussée à chaque activité
+  (await cookies()).set(COOKIE, id, { httpOnly: true, sameSite: "lax", secure: (process.env.APP_URL ?? "").startsWith("https"), path: "/" });
 }
 export async function destroySession(): Promise<void> {
   const jar = await cookies(); const id = jar.get(COOKIE)?.value;
@@ -41,7 +44,14 @@ export const getUser = cache(async (): Promise<CurrentUser | null> => {
     .innerJoin(schema.users, eq(schema.users.id, schema.sessions.userId)).innerJoin(schema.tenants, eq(schema.tenants.id, schema.users.tenantId))
     .where(eq(schema.sessions.id, id)).limit(1);
   const r = rows[0];
-  if (!r || r.s.expiresAt < new Date()) return null;
+  if (!r) return null;
+  if (isExpired(r.s.expiresAt)) {
+    await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
+    return null;
+  }
+  // expiration glissante : chaque requête authentifiée repousse l'échéance du délai d'inactivité (SESSION_IDLE_MINUTES, 15 min par défaut), par paliers d'une minute
+  const next = refreshedExpiry(r.s.expiresAt, idleMsFromEnv());
+  if (next) await db.update(schema.sessions).set({ expiresAt: next }).where(eq(schema.sessions.id, id));
   return { id: r.u.id, name: r.u.name, email: r.u.email, tenantId: r.u.tenantId, tenantName: r.t.name, settings: r.t.settings ?? {} };
 });
 /** Toute page et toute action du cockpit passe par ici : l'isolation par propriétaire en dépend. */
