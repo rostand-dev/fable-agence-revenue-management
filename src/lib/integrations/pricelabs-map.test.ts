@@ -23,6 +23,20 @@ describe("PriceLabs → modèle interne", () => {
     expect(d[1]).toMatchObject({ state: "BOOKED", priceCents: null });
     expect(d[2]).toMatchObject({ state: "BLOCKED", priceCents: null });
   });
+  it("sépare prix recommandé (price) et prix envoyé (user_price) ; le statut vient de booking_status et unbookable, pas du −1", () => {
+    const d = mapPrices(prices);
+    expect(d[0]).toMatchObject({ state: "FREE", recommendedPriceCents: 12800, sentPriceCents: 13000 });
+    expect(d[1]).toMatchObject({ state: "BOOKED", sentPriceCents: null, recommendedPriceCents: 12800 }); // −1 → inconnu, jamais un prix
+    expect(d[2]).toMatchObject({ state: "BLOCKED", sentPriceCents: null });
+  });
+  it("nuit libre sans user_price : prix envoyé inconnu (pas de repli sur price), statut libre", () => {
+    const [d] = mapPrices({ data: [{ date: "2026-11-20", price: 100, booking_status: "", unbookable: 0 }] });
+    expect(d).toMatchObject({ state: "FREE", sentPriceCents: null, recommendedPriceCents: 10000, priceCents: 10000 });
+  });
+  it("une nuit réservée dont user_price n'est pas −1 reste réservée", () => {
+    const [d] = mapPrices({ data: [{ date: "2026-11-21", price: 100, user_price: 120, booking_status: "Booked", unbookable: 0 }] });
+    expect(d.state).toBe("BOOKED");
+  });
   it("indexe le marché par date, convertit l'occupation 0–100 et situe le prix entre les centiles", () => {
     const { market: m, category, listingsUsed } = mapMarket(market, 2, mapPrices(prices));
     expect(category).toBe("2"); expect(listingsUsed).toBe(350);

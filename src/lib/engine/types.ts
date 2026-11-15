@@ -44,6 +44,9 @@ export type Day = {
   date: ISODate;
   state: "FREE" | "BOOKED" | "BLOCKED";
   priceCents: number | null;
+  /** Prix recommandé par PriceLabs (`price`) et prix envoyé à SuperHote (`user_price`), pour l'affichage uniquement */
+  recommendedPriceCents?: number | null;
+  sentPriceCents?: number | null;
   minStay: number | null;
   rule: string | null;
   marketOccupancy: number | null;

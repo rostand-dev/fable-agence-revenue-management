@@ -27,7 +27,7 @@ export default async function Modifier({ params, searchParams }: { params: Promi
       </div>
       {(await searchParams).enregistre && <Banner role="sain" title="Saisie enregistrée" style={{ marginBottom: 8 }}>Vous pouvez fermer cette page. Le logement apparaît dans Logements avec la mention « Saisie à reprendre ».</Banner>}
       {draft && miss.length > 0 && <Banner role="tech" title={`Il manque encore ${miss.length} valeur${miss.length > 1 ? "s" : ""} pour calculer les planchers`} style={{ marginBottom: 8 }}>{miss.join(", ")}. <Link href={`/logements/${p.id}/couts`}>Les renseigner pas à pas</Link></Banner>}
-      <PropertyForm existing={{ id: p.id, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, economics: p.economics as EconomicModel, strategy: p.strategy as Strategy, profile: p.profile, hasKey: !!p.pricelabs?.apiKeyEnc }} />
+      <PropertyForm existing={{ id: p.id, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, economics: p.economics as EconomicModel, strategy: p.strategy as Strategy, profile: p.profile, hasKey: !!p.pricelabs?.apiKeyEnc, channelMarkups: p.channelMarkups ?? [] }} />
     </Page>
   );
 }

@@ -7,7 +7,7 @@ import type { EconomicModel } from "../engine/types";
  * Règle : une valeur absente, « NA », −1 ou non numérique devient null (inconnue), jamais zéro.
  */
 export type PlListing = { id: string; pms: string; name: string; city: string | null; bedrooms: number | null; currency: string | null; minCents: number | null; baseCents: number | null; maxCents: number | null; pushEnabled: boolean | null; lastRefreshedAt: string | null };
-export type PlDay = { date: ISODate; state: "FREE" | "BOOKED" | "BLOCKED"; priceCents: number | null; minStay: number | null; rule: string | null };
+export type PlDay = { date: ISODate; state: "FREE" | "BOOKED" | "BLOCKED"; priceCents: number | null; recommendedPriceCents: number | null; sentPriceCents: number | null; minStay: number | null; rule: string | null };
 export type PlMarketDay = { date: ISODate; marketOccupancy: number | null; marketAdrCents: number | null; pricePercentile: number | null; event: string | null };
 export type PlReservation = { externalId: string; channel: string; checkIn: ISODate; checkOut: ISODate; nights: number; grossRoomCents: number; cleaningCents: number | null; commissionCents: number | null; paymentFeeCents: number | null; status: "CONFIRMED" | "CANCELLED" | "BLOCKED" | "DUPLICATE"; bookedAt: ISODate; commissionEstimated: boolean };
 
@@ -22,14 +22,18 @@ export function mapListing(l: any): PlListing {
   };
 }
 
-/** Grille : `user_price` est le prix publié ; il vaut −1 sur une nuit réservée ou bloquée. */
+/**
+ * Grille. `price` = prix recommandé par PriceLabs ; `user_price` = prix envoyé à SuperHote (−1 sur une nuit réservée ou bloquée).
+ * Le statut vient de `booking_status` (réservé) et `unbookable` (bloqué), jamais du −1.
+ * `priceCents` (prix retenu par le moteur) est inchangé ; les deux prix ci-dessus ne servent qu'à l'affichage.
+ */
 export function mapPrices(item: any): PlDay[] {
   if (!item || !Array.isArray(item.data)) return [];
   return item.data.filter((d: any) => typeof d?.date === "string").map((d: any) => {
     const booked = typeof d.booking_status === "string" && d.booking_status.trim() !== "";
     const state: PlDay["state"] = booked ? "BOOKED" : num(d.unbookable) === 1 ? "BLOCKED" : "FREE";
     const demand = typeof d.demand_desc === "string" && d.demand_desc !== "Unavailable" ? d.demand_desc : null;
-    return { date: d.date.slice(0, 10), state, priceCents: cents(pos(d.user_price) ?? (state === "FREE" ? pos(d.price) : null)), minStay: pos(d.min_stay), rule: demand };
+    return { date: d.date.slice(0, 10), state, priceCents: cents(pos(d.user_price) ?? (state === "FREE" ? pos(d.price) : null)), recommendedPriceCents: cents(pos(d.price)), sentPriceCents: cents(pos(d.user_price)), minStay: pos(d.min_stay), rule: demand };
   });
 }
 

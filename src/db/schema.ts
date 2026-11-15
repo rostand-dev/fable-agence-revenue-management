@@ -48,6 +48,8 @@ export const properties = pgTable("properties", {
   strategyVersion: integer("strategy_version").notNull().default(1),
   /** Connexion PriceLabs propre au logement : clé chiffrée, annonce rattachée, état de la dernière lecture */
   pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
+  /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
+  channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),
   createdAt: created(),
 }, (t) => [index("properties_tenant").on(t.tenantId)]);
 
@@ -76,6 +78,10 @@ export const calendarDays = pgTable("calendar_days", {
   tenantId: text("tenant_id").notNull(),
   /** Prix publié par PriceLabs, centimes. null = inconnu */
   priceCents: integer("price_cents"),
+  /** `price` PriceLabs : prix recommandé, centimes. null = inconnu */
+  recommendedPriceCents: integer("recommended_price_cents"),
+  /** `user_price` PriceLabs : prix envoyé à SuperHote, centimes. null = inconnu, réservé ou bloqué (−1) */
+  sentPriceCents: integer("sent_price_cents"),
   minStay: integer("min_stay"),
   /** FREE | BOOKED | BLOCKED */
   state: text("state").notNull(),
