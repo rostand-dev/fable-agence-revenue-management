@@ -106,3 +106,17 @@ a.btn { text-decoration: none; }
 .wiz-steps button.is-done { color: var(--mint, #34d399); border-color: rgb(52 211 153 / 45%); }
 .wiz-steps button.is-here { color: var(--ink); border-color: var(--blue); background: rgb(37 99 235 / 22%); }
 .wiz-steps button:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Majorations par canal : une ligne par canal, empilée sur mobile */
+.markup-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 10px; align-items: end; margin-bottom: 12px; }
+@media (max-width: 767px) { .markup-row { grid-template-columns: 1fr 1fr; } .markup-row > .btn { grid-column: 1 / -1; justify-self: start; } }
+/* Calendrier : cases cliquables, sélecteur de canal, détail d'une date */
+a.cal-day { color: inherit; text-decoration: none; }
+a.cal-day:focus-visible, a.cal-day[aria-current="date"] { outline: 2px solid var(--blue); outline-offset: 1px; }
+.cal-day .p.is-est { font-style: italic; }
+.cal-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.date-detail { margin-top: 16px; border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; background: rgb(255 255 255 / 2%); }
+.date-detail h3 { margin: 0 0 8px; font-size: 15px; }
+.date-detail dl { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; font-size: 14px; }
+.date-detail dt { color: var(--faint); }
+.date-detail dd { margin: 0; font-family: var(--mono); text-align: right; }

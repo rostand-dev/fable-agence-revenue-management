@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { BarChart } from "@/components/BarChart";
@@ -14,7 +15,8 @@ import { promosOn } from "@/lib/engine/detect";
 import { floorGrid, missingEconomics, simulateStack } from "@/lib/engine/economics";
 import { channelShare, lastMonths, leadTimes, medianLos, monthlyKpis, windowStats } from "@/lib/engine/metrics";
 import { CHANNEL_LABEL, type Channel, type EconomicModel, type Strategy } from "@/lib/engine/types";
-import { euro, pct, pts } from "@/lib/format";
+import { euro, pct, pts, signedEuro } from "@/lib/format";
+import { estimateAllChannels, estimatePublishedPrice, pickDefaultChannel, sentMinusRecommended, type ChannelMarkup } from "@/lib/pricing/published";
 import { loadEngineInput } from "@/lib/services/review";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
@@ -27,7 +29,7 @@ async function noChannelRows(propertyId: string, overrides: Record<string, strin
 
 const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"]] as const;
 
-export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string }> }) {
+export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string; canal?: string; jour?: string }> }) {
   const user = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
@@ -52,6 +54,18 @@ export default async function Logement({ params, searchParams }: { params: Promi
   for (const o of opps.filter((x) => x.playbook !== "PB-10")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
   const first3 = sum((k) => 1) && kpis.slice(0, 3).reduce((a, k) => a + k.netRevpanCents, 0) / 3, last3 = kpis.slice(-3).reduce((a, k) => a + k.netRevpanCents, 0) / 3;
   const trend = !hasHistory ? null : last3 > first3 * 1.05 ? "croissante" : last3 < first3 * 0.95 ? "décroissante" : "stable";
+  const markups = (p.channelMarkups ?? []) as ChannelMarkup[];
+  const channel = pickDefaultChannel(markups, sp.canal);            // null tant qu'aucune majoration n'est renseignée
+  const unknownChannels = markups.filter((m) => m.pct === null).map((m) => m.label);
+  const calHref = (extra: { canal?: string; jour?: string }) => `/logements/${p.id}?tab=calendrier${extra.canal ? "&canal=" + encodeURIComponent(extra.canal) : ""}${extra.jour ? "&jour=" + extra.jour : ""}`;
+  /** Prix affiché pour une nuit libre, en centimes : estimé sur le canal choisi, sinon prix envoyé à SuperHote ; null = inconnu. */
+  const shownCents = (d: (typeof input.days)[number]): number | null => {
+    if (!channel) return d.sentPriceCents ?? null;
+    const e = estimatePublishedPrice({ state: d.state, sentPriceCents: d.sentPriceCents }, channel.pct);
+    return e ? e.displayEuros * 100 : null;
+  };
+  const stateLabel = (st: string) => (st === "BOOKED" ? "réservé" : st === "BLOCKED" ? "bloqué" : "libre");
+  const detailDay = sp.jour ? input.days.find((d) => d.date === sp.jour) : undefined;
   const allPromos = await db.select().from(schema.promotions).where(eq(schema.promotions.propertyId, p.id));
 
   return (
@@ -119,22 +133,52 @@ export default async function Logement({ params, searchParams }: { params: Promi
         <section>
           <div className="legend" style={{ marginBottom: 12 }}>
             <span className="legend-item"><span className="cal-day is-booked" style={{ minHeight: 14, width: 22, padding: 0 }} />réservé</span>
-            <span className="legend-item"><span className="cal-day" style={{ minHeight: 14, width: 22, padding: 0 }} />libre · prix publié</span>
+            <span className="legend-item"><span className="cal-day" style={{ minHeight: 14, width: 22, padding: 0 }} />{channel ? `libre · prix publié estimé (${channel.label})` : "libre · prix envoyé à SuperHote"}</span>
             <span className="legend-item"><span className="cal-day is-flag" style={{ minHeight: 14, width: 22, padding: 0 }} />dossier ouvert</span>
             <span className="legend-item"><span className="cal-day is-veto" style={{ minHeight: 14, width: 22, padding: 0 }} />veto</span>
           </div>
+          {channel && (
+            <div className="cal-tools" role="group" aria-label="Canal du prix estimé">
+              <span className="muted">Prix estimé pour :</span>
+              {markups.filter((m) => m.pct !== null).map((m) => <Link key={m.key} href={calHref({ canal: m.key, jour: sp.jour })} scroll={false} className="chip" aria-current={m.key === channel.key ? "true" : undefined}>{m.label} · {String(m.pct).replace(".", ",")} %</Link>)}
+            </div>
+          )}
           <div className="cal">{input.days.map((d) => {
-            const fl = flagged.get(d.date);
+            const fl = flagged.get(d.date), cents = d.state === "FREE" ? shownCents(d) : null;
             return (
-              <div key={d.date} className={`cal-day${d.state === "BOOKED" ? " is-booked" : d.state === "BLOCKED" ? " is-blocked" : ""}${fl === true ? " is-veto" : fl === false ? " is-flag" : ""}${d.date.endsWith("-01") ? " is-month" : ""}`}
-                title={`${fmtDate(d.date)} · ${d.state === "BOOKED" ? "réservé" : d.state === "BLOCKED" ? "bloqué" : "libre"}${d.priceCents !== null ? " · " + euro(d.priceCents) : ""}${d.minStay ? " · séjour min. " + d.minStay : ""}${d.rule ? " · " + d.rule : ""}${d.event ? " · " + d.event : ""}`}>
+              <Link key={d.date} href={calHref({ canal: channel?.key, jour: d.date })} scroll={false} aria-current={sp.jour === d.date ? "date" : undefined}
+                className={`cal-day${d.state === "BOOKED" ? " is-booked" : d.state === "BLOCKED" ? " is-blocked" : ""}${fl === true ? " is-veto" : fl === false ? " is-flag" : ""}${d.date.endsWith("-01") ? " is-month" : ""}`}
+                title={`${fmtDate(d.date)} · ${stateLabel(d.state)}${cents !== null ? (channel ? " · prix estimé " + channel.label + " " : " · envoyé à SuperHote ") + euro(cents) : ""}${d.minStay ? " · séjour min. " + d.minStay : ""}${d.rule ? " · " + d.rule : ""}${d.event ? " · " + d.event : ""}`}>
                 <span className="d">{fmtDay(d.date)}</span>
-                <span className="p">{d.state === "BOOKED" ? "rés." : d.state === "BLOCKED" ? "bloqué" : d.priceCents === null ? "?" : euro(d.priceCents)}</span>
+                <span className={`p${channel && cents !== null ? " is-est" : ""}`}>{d.state === "BOOKED" ? "rés." : d.state === "BLOCKED" ? "bloqué" : cents === null ? "?" : (channel ? "~" : "") + euro(cents)}</span>
                 <span className="m">{d.marketOccupancy === null ? "m. ?" : "m. " + pct(d.marketOccupancy)}{d.event ? " ★" : ""}</span>
-              </div>
+              </Link>
             );
           })}</div>
-          <p className="foot">Prix publiés par PriceLabs et occupation du marché (« m. »), par nuit ; « rés. » : nuit réservée. ★ : événement déclaré. Survolez une case pour le détail.</p>
+          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix envoyé à SuperHote × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu. <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
+          {sp.jour && !detailDay && <p className="foot">Date hors du calendrier lu.</p>}
+          {detailDay && (
+            <div className="date-detail" aria-live="polite">
+              <h3>{fmtDate(detailDay.date)} · {stateLabel(detailDay.state)}</h3>
+              {(() => {
+                const gap = sentMinusRecommended(detailDay.sentPriceCents, detailDay.recommendedPriceCents);
+                const rows = estimateAllChannels({ state: detailDay.state, sentPriceCents: detailDay.sentPriceCents }, markups);
+                return (
+                  <dl>
+                    <dt>Prix recommandé (PriceLabs)</dt><dd>{euro(detailDay.recommendedPriceCents, true)}</dd>
+                    <dt>Prix envoyé à SuperHote</dt><dd>{detailDay.state === "FREE" ? euro(detailDay.sentPriceCents, true) : "sans objet"}</dd>
+                    {gap !== null && <><dt>Écart envoyé − recommandé</dt><dd>{signedEuro(gap, true)}</dd></>}
+                    {rows.map((r) => (
+                      <Fragment key={r.key}><dt>Prix publié estimé · {r.label}{r.pct !== null ? ` (+${String(r.pct).replace(".", ",")} %)` : ""}</dt>
+                        <dd>{r.pct === null ? "majoration inconnue" : r.estimate ? `~ ${euro(r.estimate.displayEuros * 100)} (${euro(r.estimate.exactCents, true)})` : "—"}</dd></Fragment>
+                    ))}
+                    {markups.length === 0 && <><dt>Prix publié estimé</dt><dd>aucune majoration renseignée</dd></>}
+                  </dl>
+                );
+              })()}
+              {detailDay.minStay ? <p className="foot" style={{ marginBottom: 0 }}>Séjour minimum : {detailDay.minStay} nuits.</p> : null}
+            </div>
+          )}
         </section>
       ) : <div className="empty"><h3>Aucun calendrier</h3><p>Le calendrier apparaît dès que les intégrations sont connectées.</p></div>)}
 

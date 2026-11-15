@@ -2,7 +2,9 @@ import { createPropertyAction, updatePropertyAction } from "@/app/actions/settin
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 void (null as unknown as EconomicModel);
 import { ActionForm, Submit } from "./forms";
+import { MarkupsEditor } from "./MarkupsEditor";
 import { PriceLabsGuide } from "./PriceLabsGuide";
+import type { ChannelMarkup } from "@/lib/pricing/published";
 import { Banner } from "./ui";
 
 type F = { name: string; label: string; help?: string; req?: boolean; unit?: string; full?: boolean; numeric?: boolean };
@@ -18,7 +20,7 @@ const SECTIONS: { title: string; note: string; fields: F[] }[] = [
   ] },
 ];
 
-type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean };
+type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean; channelMarkups: ChannelMarkup[] };
 const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
 
 /** Une valeur inconnue repart vide ; rien n'est prérempli à la place du propriétaire. */
@@ -52,7 +54,12 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
         </section>
       ))}
       <section className="section" style={{ marginTop: 28 }}>
-        <h2>3 · Connexion PriceLabs</h2>
+        <h2>3 · Majorations par canal</h2>
+        <p className="section-note">Le prix que voit le voyageur est celui de SuperHote, après la majoration propre à chaque canal. SuperHote ne la communique pas : saisissez-la ici, en pourcentage. NuitSignal s'en sert pour estimer le prix publié, sans toucher aux prix de PriceLabs. Un canal laissé sans pourcentage reste « inconnu », jamais 0 %.</p>
+        <MarkupsEditor initial={existing?.channelMarkups ?? []} />
+      </section>
+      <section className="section" style={{ marginTop: 28 }}>
+        <h2>4 · Connexion PriceLabs</h2>
         {existing?.hasKey ? (
           <p className="section-note">Une clé PriceLabs est déjà enregistrée pour ce logement. Elle se gère dans sa fiche, onglet PriceLabs.</p>
         ) : (

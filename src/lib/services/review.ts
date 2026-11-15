@@ -28,7 +28,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
     const k = m.get(c.date);
-    return { date: c.date, state: c.state as Day["state"], priceCents: c.priceCents, minStay: c.minStay, rule: c.rule, marketOccupancy: k?.marketOccupancy ?? null, marketAdrCents: k?.marketAdrCents ?? null, pricePercentile: k?.pricePercentile ?? null, event: k?.event ?? null };
+    return { date: c.date, state: c.state as Day["state"], priceCents: c.priceCents, recommendedPriceCents: c.recommendedPriceCents, sentPriceCents: c.sentPriceCents, minStay: c.minStay, rule: c.rule, marketOccupancy: k?.marketOccupancy ?? null, marketAdrCents: k?.marketAdrCents ?? null, pricePercentile: k?.pricePercentile ?? null, event: k?.event ?? null };
   });
   const capabilities: Record<string, boolean> = {};
   for (const i of ints) if (!i.killSwitch) Object.assign(capabilities, i.capabilities);

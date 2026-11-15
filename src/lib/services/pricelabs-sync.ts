@@ -104,7 +104,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   // une réservation confirmée à 0 € est un blocage propriétaire : ces nuits sortent du disponible
   const blocked = new Set<string>();
   for (const r of resas) if (r.status === "BLOCKED") for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) blocked.add(d);
-  days = days.map((d) => (blocked.has(d.date) ? { ...d, state: "BLOCKED" as const, priceCents: null } : d));
+  days = days.map((d) => (blocked.has(d.date) ? { ...d, state: "BLOCKED" as const, priceCents: null, sentPriceCents: null } : d));
   const bedrooms = p.bedrooms ?? listing.bedrooms;
   const mk = mapMarket(market, bedrooms, days);
 
@@ -133,7 +133,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
     await tx.delete(calendarDays).where(eq(calendarDays.propertyId, p.id));
     await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
     await tx.delete(reservations).where(and(eq(reservations.propertyId, p.id), eq(reservations.source, "PRICELABS")));
-    await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now })));
+    await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now })));
     await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
     for (let i = 0; i < resas.length; i += 200) await tx.insert(reservations).values(resas.slice(i, i + 200).map(({ commissionEstimated, ...r }) => ({ id: newId("res"), tenantId, propertyId: p.id, ...r, source: "PRICELABS" }))).onConflictDoNothing();
     await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync } }).where(eq(properties.id, p.id));

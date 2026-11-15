@@ -8,6 +8,7 @@ import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
+import { parseMarkupList } from "@/lib/pricing/published";
 import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
 
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -23,6 +24,8 @@ function check(v: ReturnType<typeof readProperty>, draft: boolean): string | nul
   if (!draft && (v.name.length < 2 || v.city.length < 2 || !v.kind)) return "Le nom, la ville et le type du logement sont nécessaires pour créer le dossier. Pour vous arrêter ici, utilisez « Enregistrer et reprendre plus tard ».";
   return null;
 }
+/** Majorations par canal : listes parallèles `markupLabel` / `markupPct`. Pourcentage vide = inconnu. */
+const readMarkups = (fd: FormData) => parseMarkupList(fd.getAll("markupLabel").map(String), fd.getAll("markupPct").map(String));
 const identityOk = (v: { name: string; city: string; kind: string }) => v.name.length >= 2 && v.city.length >= 2 && !!v.kind;
 
 /** Création d'un logement. « draft » enregistre la saisie telle quelle, sans champ obligatoire, pour la reprendre plus tard. */
@@ -32,9 +35,11 @@ export async function createPropertyAction(_: FormState, fd: FormData): Promise<
   const v = readProperty(fd);
   const err = check(v, draft);
   if (err) return { error: err };
+  const mk = readMarkups(fd);
+  if (!mk.ok) return { error: mk.error };
   const strategy: Strategy = { basePriceCents: null, minPriceCents: null, maxPriceCents: null, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: 20, maxPriceChangePct: 5 };
   const id = newId("prop"), name = v.name || "Logement sans nom";
-  await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, status: "ONBOARDING", isDemo: false, profile: { positioning: v.positioning ?? null }, economics: EMPTY, strategy });
+  await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, status: "ONBOARDING", isDemo: false, profile: { positioning: v.positioning ?? null }, economics: EMPTY, strategy, channelMarkups: mk.markups });
   await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: draft ? `${name} : saisie enregistrée, à reprendre.` : `${name} : logement créé. Il reste à renseigner ses coûts et ses seuils pour calculer les planchers.` });
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.created", entity: "Property", entityId: id, summary: `${u.name} ${draft ? "enregistre un brouillon de logement" : "ajoute le logement"} ${name}.` });
   // La clé PriceLabs est rattachée au logement : elle est vérifiée maintenant, le dossier est créé dans tous les cas.
@@ -61,12 +66,14 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   const v = readProperty(fd);
   const err = check(v, draft);
   if (err) return { error: err };
+  const mk = readMarkups(fd);
+  if (!mk.ok) return { error: mk.error };
   const old = p.strategy as Strategy;
   const strategy: Strategy = { ...old, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: old.maxDiscountStackPct ?? 20, maxPriceChangePct: old.maxPriceChangePct ?? 5 };
   const complete = missingEconomics(p.economics as EconomicModel).length === 0 && identityOk(v);
   const name = v.name || p.name || "Logement sans nom";
   await db.update(schema.properties).set({
-    name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, strategy, profile: { ...p.profile, positioning: v.positioning ?? null },
+    name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, strategy, channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
     status: !complete ? "ONBOARDING" : p.status === "ONBOARDING" ? "SHADOW" : p.status,
   }).where(eq(schema.properties.id, p.id));
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.` });

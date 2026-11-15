@@ -15,6 +15,13 @@
       "when": 1794445855579,
       "tag": "0001_pricelabs",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794710178503,
+      "tag": "0002_majorations_canal",
+      "breakpoints": true
     }
   ]
 }
