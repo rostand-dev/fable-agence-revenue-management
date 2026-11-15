@@ -7,8 +7,8 @@ import { AuthForm } from "../AuthForm";
 
 export const metadata = { title: "Connexion" };
 export const dynamic = "force-dynamic";
-export default async function Page({ searchParams }: { searchParams: Promise<{ expire?: string }> }) {
+export default async function Page({ searchParams }: { searchParams: Promise<{ expire?: string; reinit?: string }> }) {
   if (await getUser()) redirect("/");
-  const { expire } = await searchParams;
-  return <AuthFrame><AuthForm mode="login" action={loginAction} expired={expire === "1"} idleMinutes={idleMinutesFromEnv()} /></AuthFrame>;
+  const { expire, reinit } = await searchParams;
+  return <AuthFrame><AuthForm mode="login" action={loginAction} expired={expire === "1"} idleMinutes={idleMinutesFromEnv()} reset={reinit === "1"} /></AuthFrame>;
 }

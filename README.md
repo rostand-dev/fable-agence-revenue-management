@@ -60,6 +60,26 @@ La clé API est rattachée à **un logement**, pas au compte : elle se saisit à
 
 Code : `src/lib/integrations/pricelabs.ts` (client), `pricelabs-map.ts` (traduction, testée sur des réponses de forme réelle), `src/lib/services/pricelabs-sync.ts` (lecture avant chaque revue).
 
+## Mot de passe oublié
+
+Parcours : « Mot de passe oublié ? » sur la connexion → `/mot-de-passe-oublie` → e-mail Resend → `/reinitialisation/<jeton>` → nouveau mot de passe → connexion.
+
+**Configuration Resend** (resend.com)
+
+1. Ajoutez et vérifiez votre domaine dans *Domains* (enregistrements SPF, DKIM, et DMARC conseillé). Sans domaine vérifié, Resend n'envoie qu'à l'adresse de votre compte.
+2. Créez une clé API (*API Keys*, droit « Sending access »), puis renseignez dans Coolify (*Environment Variables*) `RESEND_API_KEY` et `EMAIL_FROM` (ex. `NuitSignal <no-reply@votre-domaine.fr>`), et redéployez.
+3. **Désactivez le suivi des clics** (*Click tracking*) du domaine : il réécrit les liens et ferait transiter le lien de réinitialisation par un tiers.
+
+**Sécurité**
+
+- Jeton de 32 octets aléatoires ; seul son hash SHA-256 est enregistré. Valable 30 min (`PASSWORD_RESET_MINUTES`), usage unique, un seul lien actif par utilisateur, consommé de façon atomique.
+- Réponse, message et temps de réponse identiques que le compte existe ou non. Lien construit avec `APP_URL`, jamais avec l'en-tête `Host`.
+- Limitation de débit en base : 3 demandes/heure/e-mail, 10/heure/IP, 10 essais de réinitialisation/heure/IP (clés enregistrées sous forme d'empreinte).
+- Pages sans cache ni `Referer` (`Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `noindex`). Le jeton n'est jamais journalisé en production.
+- Nouveau mot de passe : 10 à 128 caractères, différent de l'ancien et de l'e-mail, refusé s'il figure dans les fuites connues (Have I Been Pwned, par k-anonymité ; sans blocage si le service est indisponible).
+- Après changement : toutes les sessions sont fermées et un e-mail de confirmation est envoyé.
+- E-mails : `src/lib/email/` (client Resend, gabarits HTML + texte, conçus mobile d'abord aux couleurs du design system).
+
 ## Prix publié estimé (majorations par canal)
 
 Le prix qui fait foi auprès des voyageurs est celui de SuperHote, après une majoration en pourcentage propre à chaque canal. SuperHote ne l'expose pas : le propriétaire la saisit dans le dossier du logement (« Majorations par canal »), à la création ou ensuite. Une majoration vide est **inconnue**, jamais 0 %.
@@ -83,7 +103,7 @@ npm run db:generate         # après une modification de src/db/schema.ts
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM), `ANTHROPIC_MODEL` et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification).
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM), `ANTHROPIC_MODEL` et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). Voir la section « Mot de passe oublié ».
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 

@@ -9,7 +9,7 @@ function Go({ label, pending }: { label: string; pending: string }) {
   const s = useFormStatus();
   return <button type="submit" className="btn btn-primary" disabled={s.pending} style={{ width: "100%", minHeight: 48 }}>{s.pending ? pending : label}</button>;
 }
-export function AuthForm({ mode, action, expired, idleMinutes }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean; idleMinutes?: number }) {
+export function AuthForm({ mode, action, expired, idleMinutes, reset }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean; idleMinutes?: number; reset?: boolean }) {
   const [state, formAction] = useActionState(action, {});
   const signup = mode === "signup";
   return (
@@ -17,6 +17,7 @@ export function AuthForm({ mode, action, expired, idleMinutes }: { mode: "login"
       <h2>{signup ? "Créer votre espace" : "Se connecter"}</h2>
       <p className="muted" style={{ margin: "0 0 18px" }}>{signup ? "Deux logements de démonstration sont installés pour découvrir l'agence. Vous ajouterez les vôtres ensuite." : "Retrouvez vos opportunités et vos décisions."}</p>
       {expired && <div className="banner banner-attention" role="status" style={{ marginBottom: 16 }}><Icon name="alert" /><div><p className="banner-title">Session expirée</p><p className="muted" style={{ margin: 0 }}>Vous avez été déconnecté(e) après {idleMinutes ?? 15} minutes d'inactivité.</p></div></div>}
+      {reset && <div className="banner banner-sain" role="status" style={{ marginBottom: 16 }}><Icon name="check" /><div><p className="banner-title">Mot de passe modifié</p><p className="muted" style={{ margin: 0 }}>Connectez-vous avec votre nouveau mot de passe.</p></div></div>}
       <form action={formAction} className="stack" style={{ ["--gap" as any]: "16px" }} noValidate>
         {signup && (
           <div className="field"><label htmlFor="name">Votre nom</label><input id="name" name="name" type="text" autoComplete="name" required defaultValue={state.values?.name} /></div>
@@ -26,6 +27,7 @@ export function AuthForm({ mode, action, expired, idleMinutes }: { mode: "login"
           <label htmlFor="password">Mot de passe</label>
           <input id="password" name="password" type="password" autoComplete={signup ? "new-password" : "current-password"} required minLength={signup ? 10 : undefined} aria-describedby={signup ? "pw-help" : undefined} />
           {signup && <span className="help" id="pw-help">Au moins 10 caractères.</span>}
+          {!signup && <span className="help"><Link href="/mot-de-passe-oublie" style={{ display: "inline-block", padding: "10px 0" }}>Mot de passe oublié ?</Link></span>}
         </div>
         {state.error && <div className="banner banner-attention" role="alert"><Icon name="alert" /><div><p className="banner-title">{state.error}</p></div></div>}
         <Go label={signup ? "Créer mon espace" : "Se connecter"} pending={signup ? "Installation de la démonstration…" : "Connexion…"} />
