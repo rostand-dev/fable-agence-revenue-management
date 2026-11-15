@@ -3,7 +3,7 @@ import { db, newId, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
-import { llmEnabled } from "../agents/llm";
+import { resolveLlm } from "../agents/llm-config";
 import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
@@ -75,6 +75,7 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
 
   const props = await db.select().from(properties).where(eq(properties.tenantId, tenantId));
   const code = await nextCode(tenantId, today);
+  const llm = await resolveLlm(tenantId, "direction");
   let opened = 0, refreshed = 0, expired = 0, blocked = 0, seq = 0, llmBudget = 10;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
 
@@ -119,8 +120,8 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
       }
       let narrative = deterministicNarrative(o);
       const id = newId("opp");
-      if (llmEnabled() && llmBudget-- > 0) {
-        const w = await writeNarrative(o, p.name); narrative = w.narrative;
+      if (llm && llmBudget-- > 0) {
+        const w = await writeNarrative(llm, o, p.name); narrative = w.narrative;
         log("direction", "explainAction", `Synthèse du dossier « ${o.title} » ${w.error ? "rédigée en repli déterministe (" + w.error + ")" : "rédigée"}.`, { mode: narrative.mode, model: narrative.model, promptVersion: narrative.promptVersion, opportunityId: id, inputTokens: w.usage?.inputTokens, outputTokens: w.usage?.outputTokens, durationMs: w.usage?.durationMs ?? 0, error: w.error });
       }
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
@@ -140,7 +141,7 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
   log("reporting", "measure", measured ? `${measured} action${measured > 1 ? "s" : ""} mesurée${measured > 1 ? "s" : ""} à l'échéance de sa fenêtre d'observation.` : "Aucune mesure à échéance aujourd'hui.");
   if (runs.length) await db.insert(agentRuns).values(runs);
   steps.push(...runs.map((r) => ({ agent: r.agentId, label: r.operation, detail: r.summary, ok: !r.error })));
-  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, properties: props.length, llm: llmEnabled() } }).where(eq(reviewRuns.id, runId));
+  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, properties: props.length, llm: !!llm } }).where(eq(reviewRuns.id, runId));
   await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue quotidienne (${trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : "planifiée"}) : ${opened} ouverts, ${expired} expirés.` });
   return { opened, refreshed, expired, blocked };
 }

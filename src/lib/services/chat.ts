@@ -1,7 +1,8 @@
 import { and, desc, eq, isNull } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { AGENT_BY_ID, agentName, type AgentId } from "../agents/registry";
-import { callLlm, HOUSE_RULES, llmEnabled, PROMPT_VERSION } from "../agents/llm";
+import { callLlm, HOUSE_RULES, PROMPT_VERSION } from "../agents/llm";
+import { resolveLlm } from "../agents/llm-config";
 import { fmtPeriod } from "../dates";
 import { signedEuro } from "../format";
 import type { Candidate } from "../engine/types";
@@ -38,7 +39,8 @@ export async function askAgent(tenantId: string, agentIdRaw: string, opportunity
   const history = (await db.select().from(chatMessages).where(and(eq(chatMessages.tenantId, tenantId), eq(chatMessages.agentId, agentId), opportunityId ? eq(chatMessages.opportunityId, opportunityId) : isNull(chatMessages.opportunityId))).orderBy(desc(chatMessages.createdAt)).limit(8)).reverse();
   await db.insert(chatMessages).values({ id: newId("msg"), tenantId, agentId, opportunityId, role: "user", content: question });
   let answer = deterministicAnswer(agentId, question, o), mode = "DETERMINISTIC";
-  if (llmEnabled()) {
+  const llm = await resolveLlm(tenantId, agentId);
+  if (llm) {
     try {
       let context = `Ton poste : ${a.title}. Mission : ${a.mission}\nResponsabilités : ${a.responsibilities.join(" ; ")}\nDroits : ${a.rights}\nLimites : ${a.limits.join(" ; ")}`;
       if (o) {
@@ -49,14 +51,14 @@ export async function askAgent(tenantId: string, agentIdRaw: string, opportunity
         const runs = await db.select().from(agentRuns).where(and(eq(agentRuns.tenantId, tenantId), eq(agentRuns.agentId, agentId))).orderBy(desc(agentRuns.createdAt)).limit(6);
         context += "\n\nTon activité récente :\n" + runs.map((r) => "- " + r.summary).join("\n");
       }
-      const r = await callLlm({
+      const r = await callLlm(llm, {
         system: `Tu es ${agentName(agentId, t?.settings?.agentNames)}, ${a.title.toLowerCase()} dans une agence de revenue management pour locations de courte durée. Tu réponds au propriétaire en 2 à 5 phrases.\n${HOUSE_RULES}\nSi la question sort de ton poste, dis quel collègue de l'agence est compétent. Si une donnée manque pour répondre, dis-le.\n\n${context}`,
         messages: [...history.map((m) => ({ role: m.role === "user" ? "user" as const : "assistant" as const, content: m.content })), { role: "user", content: question }], maxTokens: 500,
       });
       if (r.text) { answer = r.text; mode = "LLM"; }
       await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId, opportunityId, operation: "chat", mode: "LLM", model: r.model, promptVersion: PROMPT_VERSION, summary: "Réponse à une question du propriétaire.", inputTokens: r.inputTokens, outputTokens: r.outputTokens, durationMs: r.durationMs });
     } catch (e: any) {
-      await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId, opportunityId, operation: "chat", mode: "DETERMINISTIC", summary: "Réponse en repli déterministe : fournisseur LLM indisponible.", error: String(e?.message ?? e).slice(0, 200) });
+      await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId, opportunityId, operation: "chat", mode: "DETERMINISTIC", model: llm.model, summary: "Réponse en repli déterministe : fournisseur LLM indisponible.", error: String(e?.message ?? e).slice(0, 200) });
     }
   }
   await db.insert(chatMessages).values({ id: newId("msg"), tenantId, agentId, opportunityId, role: "agent", content: answer, mode });

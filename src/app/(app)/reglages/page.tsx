@@ -1,9 +1,14 @@
+import Link from "next/link";
 import { resetDemoAction } from "@/app/actions/decisions";
+import { saveAgentModelsAction } from "@/app/actions/llm";
 import { renameAgentsAction } from "@/app/actions/settings";
+import { AgentModelSelect } from "@/components/AgentModelSelect";
 import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Recap } from "@/components/ui";
+import { serverDefaultModel } from "@/lib/agents/llm";
+import { getLlmStatus } from "@/lib/agents/llm-config";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/dates";
@@ -12,6 +17,8 @@ export const metadata = { title: "Réglages" };
 export default async function Reglages() {
   const user = await requireUser();
   const names: Record<string, string> = user.settings.agentNames ?? {};
+  const models: Record<string, string> = user.settings.agentModels ?? {};
+  const llm = await getLlmStatus(user.tenantId);
   return (
     <Page title="Réglages" sub="Compte, équipe et démonstration" crumbs={[{ label: "Configuration" }, { label: "Réglages" }]}>
       <div className="page-head"><h1>Réglages</h1><p>Votre espace est isolé : vos logements, vos décisions et votre journal ne sont visibles que de vous.</p></div>
@@ -33,6 +40,25 @@ export default async function Reglages() {
           </div>
           <div style={{ marginTop: 16 }}><Submit icon="check">Enregistrer les prénoms</Submit></div>
         </ActionForm>
+      </section>
+      <section className="section">
+        <h2>Modèles par agent</h2>
+        <p className="section-note">Chaque agent peut utiliser son propre modèle de langage. La liste vient de votre clé API Anthropic : seuls les modèles qu'elle peut utiliser sont proposés. Les postes à règles gardent des calculs déterministes ; leur modèle sert à leur conversation.</p>
+        {llm.source === "utilisateur" ? (
+          <ActionForm action={saveAgentModelsAction}>
+            <div className="form-grid">
+              {AGENTS.map((a) => (
+                <div className="field" key={a.id}>
+                  <label htmlFor={"model-" + a.id} style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar agent={a.id} size={30} />{a.title}</label>
+                  <AgentModelSelect id={"model-" + a.id} name={"model-" + a.id} models={llm.models} current={models[a.id]} defaultLabel={`Modèle par défaut (${serverDefaultModel()})`} />
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: 16 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer les modèles</Submit></div>
+          </ActionForm>
+        ) : (
+          <p className="muted">Pour choisir un modèle par agent, <Link href="/integrations">saisissez d'abord votre clé API Anthropic</Link> dans Intégrations : la liste des modèles dépend d'elle.</p>
+        )}
       </section>
       <section className="section">
         <h2>Démonstration</h2>
