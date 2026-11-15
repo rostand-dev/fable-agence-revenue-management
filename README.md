@@ -80,6 +80,15 @@ Parcours : « Mot de passe oublié ? » sur la connexion → `/mot-de-passe-oubl
 - Après changement : toutes les sessions sont fermées et un e-mail de confirmation est envoyé.
 - E-mails : `src/lib/email/` (client Resend, gabarits HTML + texte, conçus mobile d'abord aux couleurs du design system).
 
+## Inscription neutre (confirmation par e-mail)
+
+Pour ne pas révéler quelles adresses ont déjà un compte, l'inscription ne crée rien tout de suite : la réponse est la même pour toute adresse (« Un e-mail vient d'être envoyé… », durée de réponse égalisée).
+
+- **Adresse nouvelle** : e-mail avec un lien (1 h, usage unique, hash seul stocké). Le compte est créé au clic sur le bouton « Activer mon espace » de la page `/confirmation/<jeton>` (la simple ouverture du lien ne crée rien, pour résister aux aperçus et antivirus d'e-mail).
+- **Adresse déjà inscrite** : e-mail « Vous avez déjà un espace » avec liens de connexion et de réinitialisation. Aucun doublon créé.
+- Limitation : 3 inscriptions/heure/e-mail, 10/heure/IP.
+- **Preview** : `SIGNUP_EMAIL_CONFIRMATION=false` rétablit la création immédiate du compte, sans e-mail (ce mode révèle les adresses déjà inscrites : à réserver aux environnements de test). En production avec la confirmation activée, Resend doit être configuré, sinon l'inscription affiche « momentanément indisponible ».
+
 ## Prix publié estimé (majorations par canal)
 
 Le prix qui fait foi auprès des voyageurs est celui de SuperHote, après une majoration en pourcentage propre à chaque canal. SuperHote ne l'expose pas : le propriétaire la saisit dans le dossier du logement (« Majorations par canal »), à la création ou ensuite. Une majoration vide est **inconnue**, jamais 0 %.
@@ -103,7 +112,7 @@ npm run db:generate         # après une modification de src/db/schema.ts
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM), `ANTHROPIC_MODEL` et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). Voir la section « Mot de passe oublié ».
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM), `ANTHROPIC_MODEL` et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Voir les sections « Mot de passe oublié » et « Inscription neutre ».
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 

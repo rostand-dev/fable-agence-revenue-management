@@ -103,3 +103,26 @@ describe("e-mails", () => {
     expect(c.html).toContain("15 novembre 2026");
   });
 });
+
+import { signupConfirmationEnabled } from "./signup";
+import { confirmSignupEmail } from "./email/templates/confirm-signup";
+import { accountExistsEmail } from "./email/templates/account-exists";
+
+describe("inscription neutre", () => {
+  it("active la confirmation par défaut et la désactive explicitement", () => {
+    for (const v of [undefined, "", "true", "1", "on", "oui"]) expect(signupConfirmationEnabled(v)).toBe(true);
+    for (const v of ["false", "FALSE", " 0 ", "off", "no", "non"]) expect(signupConfirmationEnabled(v)).toBe(false);
+  });
+  it("e-mails de confirmation et de compte existant : lien, mobile d'abord, HTML échappé", () => {
+    const link = "https://rm.exemple.fr/confirmation/ABC_def-123";
+    const c = confirmSignupEmail({ link, minutes: 60, appUrl: "https://rm.exemple.fr", name: "<script>x</script>" });
+    expect(c.html).toContain(`href="${link}"`);
+    expect(c.html).toContain("1 heure");
+    expect(c.html).not.toContain("<script>x</script>");
+    expect(c.text).toContain(link);
+    const e = accountExistsEmail({ appUrl: "https://rm.exemple.fr", name: "Rosy" });
+    expect(e.html).toContain("https://rm.exemple.fr/connexion");
+    expect(e.html).toContain("https://rm.exemple.fr/mot-de-passe-oublie");
+    for (const html of [c.html, e.html]) { expect(html).toContain('name="viewport"'); expect(html).toContain("max-width:480px"); expect(html).toContain("min-height:48px"); }
+  });
+});

@@ -22,6 +22,9 @@ services:
       - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
       # Durée de validité du lien de réinitialisation, en minutes (défaut 30, entre 5 et 120).
       - PASSWORD_RESET_MINUTES=${PASSWORD_RESET_MINUTES:-30}
+      # Inscription : confirmation de l'adresse par e-mail avant création du compte (nécessite Resend).
+      # Mettre false en preview pour créer le compte immédiatement, sans e-mail (révèle alors les adresses déjà inscrites).
+      - SIGNUP_EMAIL_CONFIRMATION=${SIGNUP_EMAIL_CONFIRMATION:-true}
     depends_on:
       db:
         condition: service_healthy

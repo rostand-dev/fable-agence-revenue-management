@@ -9,13 +9,20 @@ function Go({ label, pending }: { label: string; pending: string }) {
   const s = useFormStatus();
   return <button type="submit" className="btn btn-primary" disabled={s.pending} style={{ width: "100%", minHeight: 48 }}>{s.pending ? pending : label}</button>;
 }
-export function AuthForm({ mode, action, expired, idleMinutes, reset }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean; idleMinutes?: number; reset?: boolean }) {
+export function AuthForm({ mode, action, expired, idleMinutes, reset, confirmation }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean; idleMinutes?: number; reset?: boolean; confirmation?: boolean }) {
   const [state, formAction] = useActionState(action, {});
   const signup = mode === "signup";
+  if (signup && state.ok) return (
+    <div className="card">
+      <h2>Vérifiez votre boîte e-mail</h2>
+      <div className="banner banner-sain" role="status" style={{ margin: "12px 0 16px" }}><Icon name="check" /><div><p className="banner-title">{state.ok}</p><p className="muted" style={{ margin: "8px 0 0" }}>Rien reçu ? Regardez dans vos courriers indésirables.</p></div></div>
+      <Link className="btn" href="/connexion" style={{ width: "100%", minHeight: 48 }}>Retour à la connexion</Link>
+    </div>
+  );
   return (
     <div className="card">
       <h2>{signup ? "Créer votre espace" : "Se connecter"}</h2>
-      <p className="muted" style={{ margin: "0 0 18px" }}>{signup ? "Deux logements de démonstration sont installés pour découvrir l'agence. Vous ajouterez les vôtres ensuite." : "Retrouvez vos opportunités et vos décisions."}</p>
+      <p className="muted" style={{ margin: "0 0 18px" }}>{signup ? (confirmation ? "Un e-mail de confirmation vous sera envoyé. Deux logements de démonstration sont installés pour découvrir l'agence." : "Deux logements de démonstration sont installés pour découvrir l'agence. Vous ajouterez les vôtres ensuite.") : "Retrouvez vos opportunités et vos décisions."}</p>
       {expired && <div className="banner banner-attention" role="status" style={{ marginBottom: 16 }}><Icon name="alert" /><div><p className="banner-title">Session expirée</p><p className="muted" style={{ margin: 0 }}>Vous avez été déconnecté(e) après {idleMinutes ?? 15} minutes d'inactivité.</p></div></div>}
       {reset && <div className="banner banner-sain" role="status" style={{ marginBottom: 16 }}><Icon name="check" /><div><p className="banner-title">Mot de passe modifié</p><p className="muted" style={{ margin: 0 }}>Connectez-vous avec votre nouveau mot de passe.</p></div></div>}
       <form action={formAction} className="stack" style={{ ["--gap" as any]: "16px" }} noValidate>
@@ -30,7 +37,7 @@ export function AuthForm({ mode, action, expired, idleMinutes, reset }: { mode: 
           {!signup && <span className="help"><Link href="/mot-de-passe-oublie" style={{ display: "inline-block", padding: "10px 0" }}>Mot de passe oublié ?</Link></span>}
         </div>
         {state.error && <div className="banner banner-attention" role="alert"><Icon name="alert" /><div><p className="banner-title">{state.error}</p></div></div>}
-        <Go label={signup ? "Créer mon espace" : "Se connecter"} pending={signup ? "Installation de la démonstration…" : "Connexion…"} />
+        <Go label={signup ? "Créer mon espace" : "Se connecter"} pending={signup ? (confirmation ? "Envoi…" : "Installation de la démonstration…") : "Connexion…"} />
       </form>
       <p className="muted" style={{ margin: "16px 0 0" }}>
         {signup ? <>Déjà un compte ? <Link href="/connexion">Se connecter</Link></> : <>Pas encore de compte ? <Link href="/inscription">Créer mon espace</Link></>}
