@@ -22,6 +22,13 @@
       "when": 1794710178503,
       "tag": "0002_majorations_canal",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794751840939,
+      "tag": "0003_password_resets",
+      "breakpoints": true
     }
   ]
 }

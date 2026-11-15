@@ -15,6 +15,13 @@ services:
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
       # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2).
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
+      # Mot de passe oublié : envoi des e-mails via Resend. Vide = aucun e-mail envoyé (la demande reste sans effet).
+      - RESEND_API_KEY=${RESEND_API_KEY:-}
+      # Expéditeur sur un domaine vérifié dans Resend, ex. NuitSignal <no-reply@votre-domaine.fr>
+      - EMAIL_FROM=${EMAIL_FROM:-}
+      - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
+      # Durée de validité du lien de réinitialisation, en minutes (défaut 30, entre 5 et 120).
+      - PASSWORD_RESET_MINUTES=${PASSWORD_RESET_MINUTES:-30}
     depends_on:
       db:
         condition: service_healthy

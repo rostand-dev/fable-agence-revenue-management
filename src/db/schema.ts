@@ -239,3 +239,21 @@ export const chatMessages = pgTable("chat_messages", {
   mode: text("mode"),
   createdAt: created(),
 }, (t) => [index("chat_agent").on(t.tenantId, t.agentId, t.createdAt)]);
+
+/** Liens de réinitialisation du mot de passe : seul le hash SHA-256 du jeton est conservé, jamais le jeton lui-même. */
+export const passwordResets = pgTable("password_resets", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("password_resets_token").on(t.tokenHash), index("password_resets_user").on(t.userId)]);
+
+/** Tentatives sensibles (demande de lien, essai de réinitialisation) pour la limitation de débit. La clé est un hash : aucune adresse e-mail ni IP en clair. */
+export const authAttempts = pgTable("auth_attempts", {
+  id: id(),
+  kind: text("kind").notNull(),
+  keyHash: text("key_hash").notNull(),
+  createdAt: created(),
+}, (t) => [index("auth_attempts_lookup").on(t.kind, t.keyHash, t.createdAt)]);

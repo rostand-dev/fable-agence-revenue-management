@@ -4,5 +4,19 @@ const nextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
   experimental: { serverActions: { bodySizeLimit: "1mb" } },
+  // pages de récupération de compte : le jeton est dans l'URL, donc ni cache, ni Referer, ni indexation
+  async headers() {
+    const secure = [
+      { key: "Cache-Control", value: "no-store, max-age=0" },
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Robots-Tag", value: "noindex, nofollow" },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+    ];
+    return [
+      { source: "/reinitialisation/:path*", headers: secure },
+      { source: "/mot-de-passe-oublie", headers: secure },
+    ];
+  },
 };
 export default nextConfig;
