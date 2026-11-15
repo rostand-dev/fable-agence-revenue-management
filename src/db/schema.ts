@@ -257,3 +257,15 @@ export const authAttempts = pgTable("auth_attempts", {
   keyHash: text("key_hash").notNull(),
   createdAt: created(),
 }, (t) => [index("auth_attempts_lookup").on(t.kind, t.keyHash, t.createdAt)]);
+
+/** Inscriptions en attente de confirmation par e-mail : le compte n'existe qu'après clic sur le lien. Seul le hash du jeton est conservé. */
+export const signupConfirmations = pgTable("signup_confirmations", {
+  id: id(),
+  email: text("email").notNull(),
+  name: text("name").notNull(),
+  passwordHash: text("password_hash").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("signup_confirmations_token").on(t.tokenHash), index("signup_confirmations_email").on(t.email)]);

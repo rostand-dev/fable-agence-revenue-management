@@ -15,6 +15,7 @@ const nextConfig = {
     ];
     return [
       { source: "/reinitialisation/:path*", headers: secure },
+      { source: "/confirmation/:path*", headers: secure },
       { source: "/mot-de-passe-oublie", headers: secure },
     ];
   },

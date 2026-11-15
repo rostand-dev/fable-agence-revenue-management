@@ -8,7 +8,10 @@ import { createSession, destroySession, hashPassword, verifyPassword } from "@/l
 import { seedDemo } from "@/lib/services/seed";
 import { clientIp, generateToken, hashToken, isPwned, looksLikeToken, padTo, passwordProblem, rateKey, resetLink, resetMinutesFromEnv } from "@/lib/password-reset";
 import { allowAttempt, purgeOldAttempts } from "@/lib/rate-limit";
-import { sendEmail } from "@/lib/email/resend";
+import { emailConfigured, sendEmail } from "@/lib/email/resend";
+import { SIGNUP_CONFIRM_MINUTES, signupConfirmationEnabled } from "@/lib/signup";
+import { confirmSignupEmail } from "@/lib/email/templates/confirm-signup";
+import { accountExistsEmail } from "@/lib/email/templates/account-exists";
 import { resetPasswordEmail } from "@/lib/email/templates/reset-password";
 import { passwordChangedEmail } from "@/lib/email/templates/password-changed";
 
@@ -16,19 +19,81 @@ export type AuthState = { error?: string; ok?: string; values?: Record<string, s
 const Sign = z.object({ name: z.string().trim().min(2, "Indiquez votre nom."), email: z.string().trim().toLowerCase().email("Adresse e-mail invalide."), password: z.string().min(10, "Le mot de passe doit compter au moins 10 caractères.") });
 
 export async function signupAction(_: AuthState, fd: FormData): Promise<AuthState> {
+  const started = Date.now();
   await ensureMigrated();
   const raw = { name: String(fd.get("name") ?? ""), email: String(fd.get("email") ?? ""), password: String(fd.get("password") ?? "") };
   const p = Sign.safeParse(raw);
   if (!p.success) return { error: p.error.issues[0].message, values: { name: raw.name, email: raw.email } };
-  const [exists] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, p.data.email));
-  if (exists) return { error: "Un compte existe déjà avec cette adresse. Connectez-vous.", values: { name: raw.name, email: raw.email } };
+  const problem = passwordProblem(p.data.password, p.data.email);
+  if (problem) return { error: problem, values: { name: raw.name, email: raw.email } };
+
+  if (!signupConfirmationEnabled()) {
+    // Mode sans confirmation (preview) : compte créé tout de suite. Ce mode révèle les adresses déjà inscrites.
+    const [exists] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, p.data.email));
+    if (exists) return { error: "Un compte existe déjà avec cette adresse. Connectez-vous.", values: { name: raw.name, email: raw.email } };
+    const tenantId = newId("tn"), userId = newId("usr");
+    await db.insert(schema.tenants).values({ id: tenantId, name: p.data.name });
+    await db.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
+    await seedDemo(tenantId);
+    await createSession(userId);
+    redirect("/");
+  }
+
+  if (process.env.NODE_ENV === "production" && !emailConfigured()) {
+    console.error("[inscription] confirmation par e-mail activée mais RESEND_API_KEY/EMAIL_FROM absents : inscription impossible");
+    return { error: "L'inscription est momentanément indisponible. Réessayez plus tard.", values: { name: raw.name, email: raw.email } };
+  }
+  // Réponse identique pour une adresse nouvelle ou déjà inscrite, durée minimale fixe : rien ne révèle l'existence d'un compte.
+  const done: AuthState = { ok: `Un e-mail vient d'être envoyé à ${p.data.email}. Cliquez sur le lien qu'il contient (valable ${SIGNUP_CONFIRM_MINUTES / 60} heure) pour activer votre espace.`, values: { email: p.data.email } };
+  const ip = clientIp(await headers());
+  const byIp = await allowAttempt("signup-ip", rateKey("ip", ip), 10);
+  const byMail = await allowAttempt("signup-email", rateKey("email", p.data.email), 3);
+  if (byIp && byMail) {
+    const [u] = await db.select({ name: schema.users.name }).from(schema.users).where(eq(schema.users.email, p.data.email));
+    if (u) {
+      void sendEmail({ to: p.data.email, ...accountExistsEmail({ appUrl: appUrl(), name: u.name.split(" ")[0] }) });
+    } else {
+      const { token, hash } = generateToken();
+      await db.transaction(async (tx) => {
+        await tx.delete(schema.signupConfirmations).where(and(eq(schema.signupConfirmations.email, p.data.email), isNull(schema.signupConfirmations.usedAt)));
+        await tx.insert(schema.signupConfirmations).values({ id: newId("sgc"), email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password), tokenHash: hash, expiresAt: new Date(Date.now() + SIGNUP_CONFIRM_MINUTES * 60_000) });
+      });
+      const link = `${appUrl()}/confirmation/${token}`;
+      void sendEmail({ to: p.data.email, ...confirmSignupEmail({ link, minutes: SIGNUP_CONFIRM_MINUTES, appUrl: appUrl(), name: p.data.name.split(" ")[0] }), idempotencyKey: `signup-${hash.slice(0, 32)}` });
+    }
+  }
+  await padTo(started, 900);
+  return done;
+}
+
+export type ConfirmState = { error?: string; invalidLink?: boolean };
+
+/** Clic sur le lien de confirmation : le compte est créé ici, et seulement ici. Jeton consommé de façon atomique. */
+export async function confirmSignupAction(_: ConfirmState, fd: FormData): Promise<ConfirmState> {
+  await ensureMigrated();
+  const token = String(fd.get("token") ?? "");
+  const ip = clientIp(await headers());
+  if (!(await allowAttempt("signup-confirm-ip", rateKey("ip", ip), 10))) return { error: "Trop de tentatives. Réessayez dans une heure." };
+  if (!looksLikeToken(token)) return { error: BAD_SIGNUP_LINK, invalidLink: true };
   const tenantId = newId("tn"), userId = newId("usr");
-  await db.insert(schema.tenants).values({ id: tenantId, name: p.data.name });
-  await db.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
+  const created = await db.transaction(async (tx) => {
+    const used = await tx.update(schema.signupConfirmations).set({ usedAt: new Date() })
+      .where(and(eq(schema.signupConfirmations.tokenHash, hashToken(token)), isNull(schema.signupConfirmations.usedAt), gt(schema.signupConfirmations.expiresAt, sql`now()`)))
+      .returning();
+    if (used.length !== 1) return false;
+    const c = used[0];
+    const [taken] = await tx.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, c.email));
+    if (taken) return false;
+    await tx.insert(schema.tenants).values({ id: tenantId, name: c.name });
+    await tx.insert(schema.users).values({ id: userId, tenantId, email: c.email, name: c.name, passwordHash: c.passwordHash });
+    return true;
+  });
+  if (!created) return { error: BAD_SIGNUP_LINK, invalidLink: true };
   await seedDemo(tenantId);
   await createSession(userId);
   redirect("/");
 }
+const BAD_SIGNUP_LINK = "Ce lien n'est plus valable : il a expiré, a déjà été utilisé ou est incorrect. Recommencez votre inscription.";
 
 export async function loginAction(_: AuthState, fd: FormData): Promise<AuthState> {
   await ensureMigrated();
