@@ -2,14 +2,16 @@ import { connectSuperhoteAction, detachRentalAction, disconnectSuperhoteAction, 
 import { fmtDate, fmtDateTime } from "@/lib/dates";
 import { euro } from "@/lib/format";
 import { ActionForm, Submit } from "./forms";
+import { SuperhoteGuide } from "./SuperhoteGuide";
 import { Banner, Recap, State, Vq } from "./ui";
 
 /** Connexion SuperHote d'un logement (lecture seule) : jeton, logement rattaché, canaux relevés, comparaison de prix. */
-export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo, sh, plLinked, taken }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; sh: Record<string, any> | null; plLinked: boolean; taken: Record<string, string> }) {
+export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo, sh, plLinked, taken, error }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; sh: Record<string, any> | null; plLinked: boolean; taken: Record<string, string>; error?: string }) {
   if (isDemo) return <Banner role="tech" title="Logement de démonstration">Ses données sont simulées : il ne se connecte pas à SuperHote. Ajoutez votre propre logement pour brancher votre jeton.</Banner>;
   const ls = sh?.lastSync, pc = ls?.priceCheck, cands: any[] = sh?.candidates ?? [];
   return (
     <section className="stack">
+      {error && <Banner role="attention" title="La connexion à SuperHote a échoué">{error} Le dossier du logement est créé ; vous pouvez ressaisir le jeton ci-dessous.</Banner>}
       {!sh?.apiKeyEnc ? (
         <>
           <Banner role="tech" title="SuperHote n'est pas connecté à ce logement">Sans lui, les réservations transmises sans canal restent à préciser à la main, et le prix réellement publié ne peut pas être comparé à l'estimation.</Banner>
@@ -21,16 +23,7 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
             </div>
             <Submit icon="plug" pendingLabel="Vérification…">Vérifier et connecter</Submit>
           </ActionForm>
-          <details className="fold" open>
-            <summary>Où trouver le jeton ?</summary>
-            <div className="fold-body">
-              <ol style={{ margin: 0, paddingLeft: 20 }}>
-                <li>Dans SuperHote, ouvrez <strong>Plateformes → API</strong> et créez un jeton.</li>
-                <li>Cochez uniquement les droits de <strong>lecture</strong> : <code>rentals.read</code>, <code>calendar.read</code> et <code>reservations.read</code>. NuitSignal n'écrit jamais dans SuperHote.</li>
-                <li>Copiez le jeton tout de suite : SuperHote ne l'affiche qu'une seule fois.</li>
-              </ol>
-            </div>
-          </details>
+          <SuperhoteGuide open />
         </>
       ) : (
         <>

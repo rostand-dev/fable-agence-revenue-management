@@ -10,8 +10,21 @@ import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { parseMarkupList } from "@/lib/pricing/published";
 import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
+import { connectSuperhote } from "@/lib/services/superhote-sync";
 
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
+/** Connexions facultatives saisies à l'onboarding : chacune est vérifiée maintenant, une erreur n'empêche jamais la création du dossier. */
+async function connectKeys(tenantId: string, propertyId: string, actor: string, plKey: string, shKey: string) {
+  let plError = "", shError = "";
+  if (plKey) { try { await connectPriceLabs(tenantId, propertyId, plKey, actor); } catch (e) { plError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à PriceLabs."; } }
+  if (shKey) { try { await connectSuperhote(tenantId, propertyId, shKey, actor); } catch (e) { shError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à SuperHote."; } }
+  return { plError, shError };
+}
+/** Où atterrir : PriceLabs d'abord (premier branchement), sinon SuperHote ; l'erreur de l'autre est rappelée dans le bandeau. */
+function landing(id: string, plKey: string, shKey: string, plError: string, shError: string) {
+  const q = (plError ? "&erreur=" + encodeURIComponent(plError) : "") + (shError ? "&erreurSh=" + encodeURIComponent(shError) : "");
+  return `/logements/${id}?tab=${plKey ? "pricelabs" : "superhote"}${q}`;
+}
 /** Champ vide = inconnu (null), jamais zéro. */
 const num = (fd: FormData, k: string): number | null => { const v = txt(fd, k).replace(",", "."); if (v === "") return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
 
@@ -42,17 +55,13 @@ export async function createPropertyAction(_: FormState, fd: FormData): Promise<
   await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, status: "ONBOARDING", isDemo: false, profile: { positioning: v.positioning ?? null }, economics: EMPTY, strategy, channelMarkups: mk.markups });
   await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: draft ? `${name} : saisie enregistrée, à reprendre.` : `${name} : logement créé. Il reste à renseigner ses coûts et ses seuils pour calculer les planchers.` });
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.created", entity: "Property", entityId: id, summary: `${u.name} ${draft ? "enregistre un brouillon de logement" : "ajoute le logement"} ${name}.` });
-  // La clé PriceLabs est rattachée au logement : elle est vérifiée maintenant, le dossier est créé dans tous les cas.
-  const key = txt(fd, "pricelabsKey");
-  let plError = "";
-  if (key) {
-    try { await connectPriceLabs(u.tenantId, id, key, "user:" + u.id); }
-    catch (e) { plError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à PriceLabs."; }
-  }
+  // Les clés PriceLabs et SuperHote sont rattachées au logement : vérifiées maintenant, le dossier est créé dans tous les cas.
+  const plKey = txt(fd, "pricelabsKey"), shKey = txt(fd, "superhoteKey");
+  const { plError, shError } = await connectKeys(u.tenantId, id, "user:" + u.id, plKey, shKey);
   revalidatePath("/", "layout");
-  if (draft && !key) redirect(`/logements/${id}/modifier?enregistre=1`);
-  if (!key) redirect(`/logements/${id}/couts`);
-  redirect(`/logements/${id}?tab=pricelabs${plError ? "&erreur=" + encodeURIComponent(plError) : ""}`);
+  if (draft && !plKey && !shKey) redirect(`/logements/${id}/modifier?enregistre=1`);
+  if (!plKey && !shKey) redirect(`/logements/${id}/couts`);
+  redirect(landing(id, plKey, shKey, plError, shError));
 }
 
 /** Reprise ou correction d'un dossier. Les prix de base, minimum et maximum lus dans PriceLabs ne sont pas touchés. */
@@ -77,14 +86,11 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
     status: !complete ? "ONBOARDING" : p.status === "ONBOARDING" ? "SHADOW" : p.status,
   }).where(eq(schema.properties.id, p.id));
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.` });
-  const key = txt(fd, "pricelabsKey");
-  let plError = "";
-  if (key && !p.pricelabs?.apiKeyEnc) {
-    try { await connectPriceLabs(u.tenantId, p.id, key, "user:" + u.id); }
-    catch (e) { plError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à PriceLabs."; }
-  }
+  // Une clé déjà enregistrée ne se remplace pas ici : elle se gère dans l'onglet de l'intégration.
+  const plKey = p.pricelabs?.apiKeyEnc ? "" : txt(fd, "pricelabsKey"), shKey = p.superhote?.apiKeyEnc ? "" : txt(fd, "superhoteKey");
+  const { plError, shError } = await connectKeys(u.tenantId, p.id, "user:" + u.id, plKey, shKey);
   revalidatePath("/", "layout");
-  if (plError || (key && !p.pricelabs?.apiKeyEnc)) redirect(`/logements/${p.id}?tab=pricelabs${plError ? "&erreur=" + encodeURIComponent(plError) : ""}`);
+  if (plKey || shKey) redirect(landing(p.id, plKey, shKey, plError, shError));
   if (draft) return { ok: "Saisie enregistrée. Vous pouvez fermer cette page et la reprendre plus tard depuis Logements." };
   if (!complete) redirect(`/logements/${p.id}/couts`);
   redirect(`/logements/${p.id}`);

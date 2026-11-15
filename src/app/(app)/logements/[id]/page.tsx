@@ -31,7 +31,7 @@ async function noChannelRows(propertyId: string, overrides: Record<string, strin
 
 const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"], ["superhote", "SuperHote"]] as const;
 
-export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string; canal?: string; jour?: string }> }) {
+export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string; erreurSh?: string; canal?: string; jour?: string }> }) {
   const user = await requireUser();
   const { id } = await params;
   const sp = await searchParams;
@@ -246,9 +246,10 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </section>
       )}
 
+      {tab === "pricelabs" && sp.erreurSh && <Banner role="attention" title="La connexion à SuperHote a échoué" style={{ marginBottom: 14 }}>{sp.erreurSh} Ressaisissez le jeton dans l'onglet SuperHote.</Banner>}
       {tab === "pricelabs" && <PriceLabsPanel costsMissing={miss.length} propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} />}
 
-      {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} />}
+      {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} error={sp.erreurSh} />}
 
       {tab === "donnees" && (
         <section className="stack">
