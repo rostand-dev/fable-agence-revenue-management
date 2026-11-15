@@ -4,6 +4,7 @@ form.inline { display: contents; }
 .muted { color: var(--quiet); font-size: 13.5px; }
 .mono { font-family: var(--mono); }
 .stack { display: grid; gap: var(--gap, 14px); }
+.stack > * { min-width: 0; }
 .row-wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .spacer { margin-left: auto; }
 .topbar .user-menu { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--quiet); }

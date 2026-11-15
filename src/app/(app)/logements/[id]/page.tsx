@@ -6,6 +6,8 @@ import { BarChart } from "@/components/BarChart";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
+import { SuperhotePanel } from "@/components/SuperhotePanel";
+import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
 import { Badge, Banner, Byline, Cascade, Metric, Money, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
 import { agentName } from "@/lib/agents/registry";
@@ -27,7 +29,7 @@ async function noChannelRows(propertyId: string, overrides: Record<string, strin
     .map((r) => ({ externalId: r.externalId, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, choice: overrides[r.externalId] ?? "" }));
 }
 
-const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"]] as const;
+const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"], ["superhote", "SuperHote"]] as const;
 
 export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string; canal?: string; jour?: string }> }) {
   const user = await requireUser();
@@ -245,6 +247,8 @@ export default async function Logement({ params, searchParams }: { params: Promi
       )}
 
       {tab === "pricelabs" && <PriceLabsPanel costsMissing={miss.length} propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} />}
+
+      {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} />}
 
       {tab === "donnees" && (
         <section className="stack">

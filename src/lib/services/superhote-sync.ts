@@ -1,0 +1,81 @@
+import { and, eq, ne } from "drizzle-orm";
+import { db, newId, schema } from "@/db";
+import { listRentals } from "../integrations/superhote";
+import { encryptSecret, secretHint } from "../secret";
+import { shErrorText, snapshotSuperhote } from "./superhote-read";
+import { SyncError, syncPriceLabs } from "./pricelabs-sync";
+
+const { properties, auditEvents } = schema;
+
+async function getProp(tenantId: string, id: string) {
+  const [p] = await db.select().from(properties).where(and(eq(properties.id, id), eq(properties.tenantId, tenantId)));
+  if (!p) throw new SyncError("Logement introuvable.");
+  if (p.isDemo) throw new SyncError("Un logement de démonstration ne se connecte pas à SuperHote.");
+  return p;
+}
+const audit = (tenantId: string, actor: string, type: string, id: string, summary: string) => db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type, entity: "Property", entityId: id, summary });
+
+/** Logements SuperHote déjà rattachés à un autre logement du même propriétaire : identifiant → nom du logement. */
+export async function rentalLinkedElsewhere(tenantId: string, propertyId: string): Promise<Map<string, string>> {
+  const others = await db.select({ name: properties.name, sh: properties.superhote }).from(properties).where(and(eq(properties.tenantId, tenantId), ne(properties.id, propertyId)));
+  return new Map(others.filter((o) => o.sh?.rentalId).map((o) => [String(o.sh!.rentalId), o.name]));
+}
+
+/** Enregistre le jeton (chiffré) après l'avoir vérifié auprès de SuperHote. Aucun rattachement automatique : le propriétaire confirme. */
+export async function connectSuperhote(tenantId: string, propertyId: string, tokenRaw: string, actor: string): Promise<{ rentals: number }> {
+  const p = await getProp(tenantId, propertyId);
+  const token = tokenRaw.trim();
+  if (token.length < 20 || /\s/.test(token)) throw new SyncError("Ce jeton ne ressemble pas à un jeton API SuperHote. Copiez-le en entier : il n'est affiché qu'une seule fois à sa création.");
+  let rentals;
+  try { rentals = await listRentals(token); } catch (e) { throw new SyncError(shErrorText(e)); }
+  if (rentals.length === 0) throw new SyncError("Le jeton est valide, mais ce compte SuperHote ne contient aucun logement visible avec ses droits.");
+  await db.update(properties).set({ superhote: { apiKeyEnc: encryptSecret(token), keyHint: secretHint(token), connectedAt: new Date().toISOString(), candidates: rentals.map((r) => ({ id: r.id, name: r.name, city: r.city, capacity: r.capacity })), rentalId: null, rentalName: null } }).where(eq(properties.id, p.id));
+  await audit(tenantId, actor, "integration.superhote_connected", p.id, `Jeton API SuperHote enregistré pour ${p.name} (${secretHint(token)}), ${rentals.length} logement${rentals.length > 1 ? "s" : ""} visible${rentals.length > 1 ? "s" : ""}. Rattachement à confirmer.`);
+  return { rentals: rentals.length };
+}
+
+/** Rattachement confirmé par le propriétaire ; un logement SuperHote ne peut alimenter qu'un seul de ses logements. */
+export async function selectRental(tenantId: string, propertyId: string, rentalId: string, actor: string): Promise<void> {
+  const p = await getProp(tenantId, propertyId);
+  const c = (p.superhote?.candidates ?? []).find((x: any) => String(x.id) === rentalId);
+  if (!p.superhote?.apiKeyEnc || !c) throw new SyncError("Logement inconnu pour ce jeton.");
+  const taken = (await rentalLinkedElsewhere(tenantId, p.id)).get(String(c.id));
+  if (taken) throw new SyncError(`Ce logement SuperHote est déjà rattaché à votre logement « ${taken} ». Un logement SuperHote ne peut alimenter qu'un seul logement.`);
+  await db.update(properties).set({ superhote: { ...p.superhote, rentalId: String(c.id), rentalName: c.name } }).where(eq(properties.id, p.id));
+  await audit(tenantId, actor, "integration.superhote_rental_linked", p.id, `Logement SuperHote « ${c.name} » (${c.id}) rattaché à ${p.name}.`);
+  await syncSuperhote(tenantId, p.id);
+}
+
+export async function detachRental(tenantId: string, propertyId: string, actor: string): Promise<void> {
+  const p = await getProp(tenantId, propertyId);
+  if (!p.superhote?.apiKeyEnc) throw new SyncError("Aucun jeton SuperHote sur ce logement.");
+  const { lastSync, ...rest } = p.superhote;
+  await db.update(properties).set({ superhote: { ...rest, rentalId: null, rentalName: null } }).where(eq(properties.id, p.id));
+  await audit(tenantId, actor, "integration.superhote_rental_unlinked", p.id, `Logement SuperHote détaché de ${p.name}.`);
+}
+
+export async function disconnectSuperhote(tenantId: string, propertyId: string, actor: string): Promise<void> {
+  const p = await getProp(tenantId, propertyId);
+  await db.update(properties).set({ superhote: null }).where(eq(properties.id, p.id));
+  await audit(tenantId, actor, "integration.superhote_disconnected", p.id, `Jeton API SuperHote supprimé pour ${p.name}.`);
+}
+
+/**
+ * Relit SuperHote. Si PriceLabs est rattaché, passe par sa lecture (qui applique les canaux relevés et compare les prix) ;
+ * sinon enregistre seulement l'état de la lecture SuperHote.
+ */
+export async function syncSuperhote(tenantId: string, propertyId: string): Promise<{ reservations: number; nights: number }> {
+  const p = await getProp(tenantId, propertyId);
+  if (!p.superhote?.rentalId) throw new SyncError("Aucun logement SuperHote n'est rattaché à ce logement.");
+  if (p.pricelabs?.listingId) { await syncPriceLabs(tenantId, p.id); }
+  else {
+    const snap = await snapshotSuperhote(p.superhote);
+    const lastSync = snap?.ok ? { ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length } : { ok: false, at: snap?.at ?? new Date().toISOString(), error: snap && !snap.ok ? snap.error : "Lecture impossible." };
+    await db.update(properties).set({ superhote: { ...p.superhote, lastSync } }).where(eq(properties.id, p.id));
+    if (!lastSync.ok) throw new SyncError((lastSync as any).error);
+  }
+  const [fresh] = await db.select({ sh: properties.superhote }).from(properties).where(eq(properties.id, p.id));
+  const ls = fresh?.sh?.lastSync;
+  if (ls && ls.ok === false) throw new SyncError(ls.error);
+  return { reservations: ls?.reservations ?? 0, nights: ls?.nights ?? 0 };
+}
