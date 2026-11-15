@@ -1,12 +1,14 @@
 /**
  * Préparation de la vérification SuperHote — NON BRANCHÉE.
  *
- * Objectif futur : comparer le prix publié estimé par NuitSignal au prix réellement publié via SuperHote,
+ * Objectif futur : comparer le prix publié estimé par NuitSignal (price × (1 + majoration), `price` = prix recommandé PriceLabs)
+ * au prix réellement publié via SuperHote,
  * pour signaler une majoration saisie qui serait fausse ou périmée.
  *
  * TODO(SuperHote) : le format de l'API SuperHote n'est PAS supposé ici. À valider sur un cas réel après branchement :
  *   - quel endpoint renvoie le prix publié d'une nuit, et pour quel canal ;
  *   - si ce prix est déjà majoré ou s'il s'agit du prix de base avant majoration ;
+ *   - comment le rapprocher de `user_price` (prix envoyé à SuperHote, conservé pour cette comparaison) ;
  *   - l'unité (euros ou centimes) et la devise.
  * Tant que ces points ne sont pas validés, aucune implémentation de `SuperhotePriceSource` n'existe.
  */

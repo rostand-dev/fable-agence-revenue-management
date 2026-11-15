@@ -58,10 +58,10 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const channel = pickDefaultChannel(markups, sp.canal);            // null tant qu'aucune majoration n'est renseignée
   const unknownChannels = markups.filter((m) => m.pct === null).map((m) => m.label);
   const calHref = (extra: { canal?: string; jour?: string }) => `/logements/${p.id}?tab=calendrier${extra.canal ? "&canal=" + encodeURIComponent(extra.canal) : ""}${extra.jour ? "&jour=" + extra.jour : ""}`;
-  /** Prix affiché pour une nuit libre, en centimes : estimé sur le canal choisi, sinon prix envoyé à SuperHote ; null = inconnu. */
+  /** Prix affiché pour une nuit libre, en centimes : estimé sur le canal choisi (à partir du prix recommandé), sinon prix envoyé à SuperHote ; null = inconnu. */
   const shownCents = (d: (typeof input.days)[number]): number | null => {
     if (!channel) return d.sentPriceCents ?? null;
-    const e = estimatePublishedPrice({ state: d.state, sentPriceCents: d.sentPriceCents }, channel.pct);
+    const e = estimatePublishedPrice({ state: d.state, recommendedPriceCents: d.recommendedPriceCents }, channel.pct);
     return e ? e.displayEuros * 100 : null;
   };
   const stateLabel = (st: string) => (st === "BOOKED" ? "réservé" : st === "BLOCKED" ? "bloqué" : "libre");
@@ -155,14 +155,14 @@ export default async function Logement({ params, searchParams }: { params: Promi
               </Link>
             );
           })}</div>
-          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix envoyé à SuperHote × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu.{!p.isDemo && <> <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</>}</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
+          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix recommandé par PriceLabs × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu.{!p.isDemo && <> <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</>}</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
           {sp.jour && !detailDay && <p className="foot">Date hors du calendrier lu.</p>}
           {detailDay && (
             <div className="date-detail" aria-live="polite">
               <div className="detail-head"><h3>{fmtDate(detailDay.date)} · {stateLabel(detailDay.state)}</h3><Link className="btn btn-ghost btn-sm" href={calHref({ canal: channel?.key })} scroll={false}>Fermer</Link></div>
               {(() => {
                 const gap = sentMinusRecommended(detailDay.sentPriceCents, detailDay.recommendedPriceCents);
-                const rows = estimateAllChannels({ state: detailDay.state, sentPriceCents: detailDay.sentPriceCents }, markups);
+                const rows = estimateAllChannels({ state: detailDay.state, recommendedPriceCents: detailDay.recommendedPriceCents }, markups);
                 return (
                   <dl>
                     <dt>Prix recommandé (PriceLabs)</dt><dd>{euro(detailDay.recommendedPriceCents, true)}</dd>

@@ -1,5 +1,5 @@
 /**
- * Prix publié estimé : ce que le voyageur devrait voir sur un canal, d'après le prix envoyé à SuperHote
+ * Prix publié estimé : ce que le voyageur devrait voir sur un canal, d'après le prix recommandé par PriceLabs (`price`)
  * et la majoration en pourcentage que le propriétaire a saisie pour ce canal.
  * C'est une estimation d'affichage : NuitSignal ne modifie jamais les prix de PriceLabs.
  * Fonctions pures, sans accès base ni réseau.
@@ -11,7 +11,7 @@ export type ChannelMarkup = { key: string; label: string; pct: number | null };
 /** Plafond de saisie : au-delà, il s'agit presque sûrement d'une faute de frappe. */
 export const MAX_MARKUP_PCT = 100;
 
-export type PublishableDay = { state: "FREE" | "BOOKED" | "BLOCKED"; sentPriceCents: number | null | undefined };
+export type PublishableDay = { state: "FREE" | "BOOKED" | "BLOCKED"; recommendedPriceCents: number | null | undefined };
 export type PublishedEstimate = {
   /** Valeur exacte, en centimes décimaux, conservée sans arrondi d'affichage. */
   exactCents: number;
@@ -34,19 +34,22 @@ export function parseMarkupPct(input: string | null | undefined): { ok: true; pc
   return { ok: true, pct };
 }
 
-/** Une nuit est estimable si elle est libre (ni réservée ni bloquée) et si SuperHote a reçu un prix strictement positif. */
+/**
+ * Une nuit est estimable si elle est libre (ni réservée ni bloquée) et si PriceLabs fournit un prix recommandé strictement positif.
+ * `user_price` (prix envoyé à SuperHote) n'intervient pas dans le calcul : il est conservé pour la comparaison avec SuperHote.
+ */
 export function isEstimable(day: PublishableDay): boolean {
-  return day.state === "FREE" && typeof day.sentPriceCents === "number" && Number.isFinite(day.sentPriceCents) && day.sentPriceCents > 0;
+  return day.state === "FREE" && typeof day.recommendedPriceCents === "number" && Number.isFinite(day.recommendedPriceCents) && day.recommendedPriceCents > 0;
 }
 
 /**
- * prix_publié_estimé = user_price × (1 + majoration / 100).
+ * prix_publié_estimé = price × (1 + majoration / 100).
  * Renvoie null si la nuit n'est pas estimable ou si la majoration est inconnue ou invalide.
  */
 export function estimatePublishedPrice(day: PublishableDay, markupPct: number | null | undefined): PublishedEstimate | null {
   if (!isEstimable(day)) return null;
   if (markupPct === null || markupPct === undefined || !Number.isFinite(markupPct) || markupPct < 0) return null;
-  const exactCents = Math.round(day.sentPriceCents! * (1 + markupPct / 100) * 1e6) / 1e6; // neutralise le bruit des flottants
+  const exactCents = Math.round(day.recommendedPriceCents! * (1 + markupPct / 100) * 1e6) / 1e6; // neutralise le bruit des flottants
   return { exactCents, displayEuros: Math.round(exactCents / 100) };
 }
 

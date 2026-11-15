@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { estimateAllChannels, estimatePublishedPrice, isEstimable, markupKey, parseMarkupList, parseMarkupPct, pickDefaultChannel, sentMinusRecommended, type ChannelMarkup } from "./published";
 import { comparePublishedPrice, DEFAULT_TOLERANCE_CENTS } from "../integrations/superhote-check";
 
-const free = (sentPriceCents: number | null) => ({ state: "FREE" as const, sentPriceCents });
+const free = (recommendedPriceCents: number | null) => ({ state: "FREE" as const, recommendedPriceCents });
 
 describe("prix publié estimé", () => {
-  it("applique user_price × (1 + majoration / 100)", () => {
+  it("applique price × (1 + majoration / 100)", () => {
     expect(estimatePublishedPrice(free(10000), 15)?.exactCents).toBe(11500);
     expect(estimatePublishedPrice(free(10000), 15)?.displayEuros).toBe(115);
     expect(estimatePublishedPrice(free(13000), 18)?.displayEuros).toBe(153); // 153,40 €
@@ -34,12 +34,17 @@ describe("prix publié estimé", () => {
     expect(estimatePublishedPrice(free(10000), Number.NaN)).toBeNull();
   });
   it("dates réservées ou bloquées → pas d'estimation, même avec un prix", () => {
-    expect(estimatePublishedPrice({ state: "BOOKED", sentPriceCents: 10000 }, 15)).toBeNull();
-    expect(estimatePublishedPrice({ state: "BLOCKED", sentPriceCents: 10000 }, 15)).toBeNull();
+    expect(estimatePublishedPrice({ state: "BOOKED", recommendedPriceCents: 10000 }, 15)).toBeNull();
+    expect(estimatePublishedPrice({ state: "BLOCKED", recommendedPriceCents: 10000 }, 15)).toBeNull();
   });
-  it("user_price absent, nul ou négatif (−1) → pas d'estimation", () => {
-    for (const p of [null, undefined, 0, -100]) expect(isEstimable({ state: "FREE", sentPriceCents: p })).toBe(false);
+  it("price absent, nul ou négatif → pas d'estimation", () => {
+    for (const p of [null, undefined, 0, -100]) expect(isEstimable({ state: "FREE", recommendedPriceCents: p })).toBe(false);
     expect(estimatePublishedPrice(free(null), 15)).toBeNull();
+  });
+  it("user_price n'entre pas dans le calcul : seul le prix recommandé compte", () => {
+    const day = { state: "FREE" as const, recommendedPriceCents: 10000, sentPriceCents: 13000 };
+    expect(estimatePublishedPrice(day, 15)?.displayEuros).toBe(115);                              // 100 € × 1,15, et non 130 € × 1,15
+    expect(estimatePublishedPrice({ state: "FREE", recommendedPriceCents: null, sentPriceCents: 13000 } as never, 15)).toBeNull(); // pas de repli sur user_price
   });
   it("estime chaque canal, et laisse inconnus ceux sans majoration", () => {
     const m: ChannelMarkup[] = [{ key: "airbnb", label: "Airbnb", pct: 15 }, { key: "booking", label: "Booking", pct: null }];
