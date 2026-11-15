@@ -1,5 +1,5 @@
 "use client";
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Icon } from "./Icon";
 
@@ -14,8 +14,24 @@ export function Submit({ children, className = "btn btn-primary", icon, pendingL
 /** Formulaire relié à une action serveur : l'erreur revient près du formulaire, jamais en alerte de navigateur. */
 export function ActionForm({ action, children, hidden, style, className }: { action: ServerAction; children: React.ReactNode; hidden?: Record<string, string | number>; style?: React.CSSProperties; className?: string }) {
   const [state, formAction] = useActionState(action, null);
+  const ref = useRef<HTMLFormElement>(null), sent = useRef<FormData | null>(null);
+  // React 19 vide les champs non contrôlés une fois l'action terminée, même en cas d'erreur : on remet ce que la personne avait saisi.
+  const keep = (fd: FormData) => { sent.current = fd; return formAction(fd); };
+  useEffect(() => {
+    const fd = sent.current, form = ref.current;
+    if (!state || !fd || !form) return;
+    const seen: Record<string, number> = {};
+    for (const el of Array.from(form.elements)) {
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) || !el.name) continue;
+      const i = (seen[el.name] = (seen[el.name] ?? -1) + 1);
+      const v = fd.getAll(el.name)[i];
+      if (typeof v !== "string") continue;
+      if (el instanceof HTMLInputElement && ["checkbox", "radio", "hidden", "file", "submit", "button"].includes(el.type)) continue;
+      if (el.value !== v) el.value = v;
+    }
+  }, [state]);
   return (
-    <form action={formAction} style={style} className={className}>
+    <form ref={ref} action={keep} style={style} className={className}>
       {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
       {children}
       {state?.error && <div className="banner banner-attention" role="alert" style={{ marginTop: 12 }}><Icon name="alert" /><div><p className="banner-title">Action refusée</p><p className="banner-body">{state.error}</p></div></div>}

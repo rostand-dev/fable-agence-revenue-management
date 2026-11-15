@@ -155,11 +155,11 @@ export default async function Logement({ params, searchParams }: { params: Promi
               </Link>
             );
           })}</div>
-          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix envoyé à SuperHote × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu. <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
+          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix envoyé à SuperHote × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu.{!p.isDemo && <> <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</>}</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
           {sp.jour && !detailDay && <p className="foot">Date hors du calendrier lu.</p>}
           {detailDay && (
             <div className="date-detail" aria-live="polite">
-              <h3>{fmtDate(detailDay.date)} · {stateLabel(detailDay.state)}</h3>
+              <div className="detail-head"><h3>{fmtDate(detailDay.date)} · {stateLabel(detailDay.state)}</h3><Link className="btn btn-ghost btn-sm" href={calHref({ canal: channel?.key })} scroll={false}>Fermer</Link></div>
               {(() => {
                 const gap = sentMinusRecommended(detailDay.sentPriceCents, detailDay.recommendedPriceCents);
                 const rows = estimateAllChannels({ state: detailDay.state, sentPriceCents: detailDay.sentPriceCents }, markups);
