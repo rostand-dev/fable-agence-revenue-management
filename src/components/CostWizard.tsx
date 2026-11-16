@@ -112,7 +112,7 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
             <Field k="bookingPct" label="Commission Booking.com" unit="%" provKey="bookingPct" suggest={commissionSuggest(hints.observedSh.BOOKING, hints.observed.BOOKING)} />
             <Field k="bookingFeePct" label="Frais de paiement Booking.com" unit="%" help="Seulement si Booking.com encaisse pour vous. Sinon, laissez vide." />
           </div>
-          {Object.entries(hints.observedSh).filter(([, v]) => v.excluded > 0).map(([ch, v]) => <p key={ch} className="kpi-note">{CHANNEL_LABEL[ch as Channel] ?? ch} : {v.excluded} réservation{v.excluded > 1 ? "s" : ""} SuperHote écartée{v.excluded > 1 ? "s" : ""} du calcul, car {v.excluded > 1 ? "leurs" : "ses"} montants ne se recoupent pas (total, frais, versement).</p>)}
+          {Object.entries(hints.observedSh).filter(([, v]) => v.excluded > 0).map(([ch, v]) => <p key={ch} className="kpi-note">{CHANNEL_LABEL[ch as Channel] ?? ch} : {v.excluded} réservation{v.excluded > 1 ? "s" : ""} SuperHote écartée{v.excluded > 1 ? "s" : ""} du calcul, car {v.excluded > 1 ? "leur" : "son"} taux serait invraisemblable (plus de 40 %).</p>)}
           {(hints.observedSh.BOOKING || hints.observed.BOOKING) && <p className="kpi-note">Le taux relevé sur Booking.com peut déjà contenir les frais de paiement : dans ce cas, laissez le champ « frais de paiement » vide.</p>}
         </>)}
 

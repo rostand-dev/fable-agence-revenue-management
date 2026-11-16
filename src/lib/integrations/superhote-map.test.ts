@@ -80,17 +80,22 @@ describe("comparaison avec le prix envoyé par PriceLabs", () => {
   });
 });
 
-/** Forme documentée de l'objet Reservation (docs.superhote.com/api-v2, section 7.3) : exemple de la doc, valeurs fictives. */
+/** Réponse réelle SuperHote pour la réservation Airbnb 28653938 (données du voyageur retirées) : host_fees en montants positifs, TVA hôte en ligne séparée. */
 const money = (o: any = {}) => resa({
-  total_price: 439.6, fare_accommodation: 400, host_payout: 416.2,
-  price_details: [{ type: "night", total: 400, vat_rate: 0 }, { type: "cleaning_fee", total: 50, vat_rate: 0 }, { type: "city_tax", total: 9.6, vat_rate: 0 }, { type: "discount_amount", total: -20, vat_rate: 0 }],
-  host_fees: [{ type: "host_platform_commission", label: "Commission Airbnb", total: -15, vat_rate: 20 }, { type: "host_service_fees", label: "Frais de service hôte", total: -8.4, vat_rate: 20 }], ...o,
+  id: "28653938", external_id: "HM294SCWAK", checkin: "2026-11-23", checkout: "2026-11-26", nights: 3,
+  total_price: 398.63, fare_accommodation: 327, host_payout: 312.58, payment_status: "MANAGED_BY_PLATFORM",
+  price_details: [{ type: "daily_price", total: 327, vat_rate: 0 }, { type: "cleaning_fee", total: 57, vat_rate: 0 }, { type: "guest_exclusive_tax_remitted_by_airbnb", label: "Taxe de séjour", total: 14.63, vat_rate: 0 }],
+  host_fees: [{ type: "airbnb_host_fee", label: "Frais Airbnb hôte", total: 59.52, vat_rate: 0 }, { type: "value_added_tax_host", label: "TVA hôte", total: 11.9, vat_rate: 0 }], ...o,
 });
 
 describe("montants d'une réservation", () => {
-  it("lit total, versement, taxe de séjour, ménage et frais hôte en centimes", () => {
-    expect(mapReservation(money())).toMatchObject({ totalCents: 43960, hostPayoutCents: 41620, cityTaxCents: 960, cleaningCents: 5000, hostFeesCents: 2340 });
-    expect(mapReservation(money())!.feeLines[0]).toEqual({ type: "host_platform_commission", label: "Commission Airbnb", cents: -1500, vatRate: 20 });
+  it("lit total, versement, taxe de séjour, ménage et frais hôte (positifs) en centimes", () => {
+    expect(mapReservation(money())).toMatchObject({ totalCents: 39863, hostPayoutCents: 31258, cityTaxCents: 1463, cleaningCents: 5700, hostFeesCents: 7142 });
+    expect(mapReservation(money())!.feeLines[1]).toEqual({ type: "value_added_tax_host", label: "TVA hôte", cents: 1190, vatRate: 0 });
+  });
+  it("reconnaît aussi la taxe de séjour `city_tax` (doc) et des frais négatifs", () => {
+    const r = mapReservation(money({ price_details: [{ type: "city_tax", total: 14.63 }], host_fees: [{ type: "x", total: -59.52 }, { type: "y", total: -11.9 }] }))!;
+    expect(r).toMatchObject({ cityTaxCents: 1463, hostFeesCents: 7142 });
   });
   it("montants absents = inconnus (null), jamais 0", () => {
     expect(mapReservation(resa())).toMatchObject({ totalCents: null, hostPayoutCents: null, cityTaxCents: null, cleaningCents: null, hostFeesCents: null });
@@ -98,18 +103,21 @@ describe("montants d'une réservation", () => {
 });
 
 describe("taux de commission relevé chez SuperHote", () => {
-  it("total des frais hôte ÷ montant payé hors taxe de séjour, avec la période", () => {
-    const r = observedCommission([mapReservation(money())!]);
-    expect(r.AIRBNB).toEqual({ pct: 5.4, n: 1, from: "2026-12-03", to: "2026-12-03", excluded: 0 });
+  it("cas réel 28653938 : (59,52 + 11,90) ÷ (398,63 − 14,63) = 18,6 %, avec la période", () => {
+    expect(observedCommission([mapReservation(money())!]).AIRBNB).toEqual({ pct: 18.6, n: 1, from: "2026-11-23", to: "2026-11-23", excluded: 0 });
   });
-  it("cas Airbnb réel : frais 59,52 + TVA 11,90 sur 398,63 dont 14,63 de taxe de séjour", () => {
-    const r = mapReservation(money({ total_price: 398.63, host_payout: 312.58, price_details: [{ type: "city_tax", total: 14.63 }, { type: "cleaning_fee", total: 57 }], host_fees: [{ type: "host_platform_commission", total: -59.52, vat_rate: 20 }, { type: "host_vat", total: -11.9, vat_rate: 0 }] }))!;
+  it("ne compte pas deux fois la commission : host_platform_commission fait foi seul (cas réel 24586125, 18,6 %)", () => {
+    const r = mapReservation(resa({ id: "24586125", total_price: 368.63, host_payout: 288.16, price_details: [{ type: "guest_exclusive_tax_remitted_by_airbnb", total: 14.63 }], host_fees: [{ type: "host_platform_commission", total: 65.84 }, { type: "airbnb_host_fee", total: 54.87 }, { type: "value_added_tax_host", total: 10.97 }] }))!;
+    expect(r.hostFeesCents).toBe(6584);
     expect(observedCommission([r]).AIRBNB?.pct).toBe(18.6);
   });
-  it("écarte une réservation dont les montants ne se recoupent pas, et la compte", () => {
-    const bad = mapReservation(money({ id: "902", host_payout: 300 }))!;
-    const r = observedCommission([mapReservation(money())!, bad]);
-    expect(r.AIRBNB).toMatchObject({ n: 1, excluded: 1 });
+  it("ne contrôle pas le versement : sur Booking il retire d'autres frais (cas réel 25657302, 17,0 %)", () => {
+    const b = mapReservation(resa({ id: "25657302", platform_name: "Booking.com", total_price: 372.2, host_payout: 267.65, price_details: [{ type: "city_tax", total: 44.2 }], host_fees: [{ type: "host_platform_commission", total: 55.76 }] }))!;
+    expect(observedCommission([b]).BOOKING).toMatchObject({ pct: 17, n: 1, excluded: 0 });
+  });
+  it("écarte un taux invraisemblable (> 40 %) et le compte", () => {
+    const bad = mapReservation(money({ id: "902", host_fees: [{ type: "airbnb_host_fee", total: 250 }] }))!;
+    expect(observedCommission([mapReservation(money())!, bad]).AIRBNB).toMatchObject({ n: 1, excluded: 1 });
   });
   it("ignore annulées, sans frais, sans total et canaux hors Airbnb/Booking", () => {
     const rows = [mapReservation(money({ canceled_at: "2026-11-01T00:00:00Z" }))!, mapReservation(money({ id: "3", host_fees: [] }))!, mapReservation(money({ id: "4", total_price: null }))!, mapReservation(money({ id: "5", platform_name: "Direct" }))!, mapReservation(resa({ id: "6" }))!];
@@ -125,10 +133,10 @@ describe("contrôle croisé réservations SuperHote / PriceLabs", () => {
   const sh = [mapReservation(money({ id: "901" }))!, mapReservation(money({ id: "902", total_price: 300 }))!, mapReservation(money({ id: "903" }))!];
   const pl = (id: string, total: string, status = "booked") => ({ reservation_id: id, booking_status: status, total_cost: total });
   it("concordantes à 1 € près (PriceLabs arrondit à l'euro)", () => {
-    expect(compareReservations([sh[0]], [pl("901", "440.0")])).toMatchObject({ compared: 1, amountDiffs: 0, onlySuperhote: 0, onlyPriceLabs: 0 });
+    expect(compareReservations([sh[0]], [pl("901", "398.0")])).toMatchObject({ compared: 1, amountDiffs: 0, onlySuperhote: 0, onlyPriceLabs: 0 });
   });
   it("signale montant différent, absente de PriceLabs et absente de SuperHote", () => {
-    const r = compareReservations(sh, [pl("901", "440.0"), pl("902", "250.0"), pl("999", "100.0"), pl("888", "50.0", "canceled")]);
+    const r = compareReservations(sh, [pl("901", "398.0"), pl("902", "250.0"), pl("999", "100.0"), pl("888", "50.0", "canceled")]);
     expect(r).toMatchObject({ compared: 2, amountDiffs: 1, onlySuperhote: 1, onlyPriceLabs: 1 });
     expect(r.samples.map((x) => x.kind).sort()).toEqual(["ABSENTE_PRICELABS", "ABSENTE_SUPERHOTE", "MONTANT"]);
   });

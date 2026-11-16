@@ -50,7 +50,7 @@ export type ShReservation = {
   id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean;
   /** Montants (centimes), null = non transmis. `total_price` : payé par le voyageur ; `host_payout` : net versé à l'hôte. */
   totalCents: number | null; hostPayoutCents: number | null; cityTaxCents: number | null; cleaningCents: number | null;
-  /** Somme des lignes retenues à l'hôte (`host_fees`, positif) ; null = lignes absentes de la réponse. */
+  /** Somme des lignes retenues à l'hôte (`host_fees`, en valeur absolue : frais de plateforme + TVA hôte) ; null = lignes absentes de la réponse. */
   hostFeesCents: number | null; feeLines: ShFeeLine[];
 };
 /** Montant SuperHote en unités majeures (439.6) → centimes ; null si absent ou illisible. */
@@ -60,19 +60,31 @@ const cents = (v: unknown): number | null => {
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 };
 const lines = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+/**
+ * Total retenu à l'hôte. `host_platform_commission` est le total TTC de la commission : quand il est présent, il est repris SEUL, car SuperHote
+ * y ajoute parfois ses composantes (`airbnb_host_fee` + `value_added_tax_host`) et les additionner compterait la commission deux fois
+ * (observé sur l'API réelle : 65,84 € = 54,87 € + 10,97 €). Sinon : somme de toutes les lignes.
+ */
+const totalHostFees = (feeLines: ShFeeLine[]): number => {
+  const total = feeLines.filter((l) => l.type === "host_platform_commission");
+  return (total.length ? total : feeLines).reduce((a, l) => a + Math.abs(l.cents), 0);
+};
 export function mapReservation(r: any): ShReservation | null {
   if (r?.id === undefined || r.id === null || !r.checkin || !r.checkout) return null;
   const label = String(r.status_label ?? "").toUpperCase();
   const details = lines(r.price_details), fees = lines(r.host_fees);
-  const sumOf = (type: string) => (details.some((l) => l?.type === type) ? details.filter((l) => l?.type === type).reduce((a, l) => a + (cents(l.total) ?? 0), 0) : null);
+  const sumOf = (match: (l: any) => boolean) => (details.some(match) ? details.filter(match).reduce((a, l) => a + (cents(l.total) ?? 0), 0) : null);
+  // types observés sur l'API réelle : `cleaning_fee` ; taxe de séjour `guest_exclusive_tax_remitted_by_airbnb` (Airbnb) ou `city_tax` (doc)
+  const isCityTax = (l: any) => l?.type === "city_tax" || String(l?.type ?? "").startsWith("guest_exclusive_tax") || /taxe de s[ée]jour/i.test(String(l?.label ?? ""));
   const feeLines: ShFeeLine[] = fees.map((l) => ({ type: String(l?.type ?? ""), label: String(l?.label ?? ""), cents: cents(l?.total) ?? 0, vatRate: Number.isFinite(Number(l?.vat_rate)) && l?.vat_rate !== null && l?.vat_rate !== undefined ? Number(l.vat_rate) : null }));
   return {
     id: String(r.id), externalId: r.external_id !== undefined && r.external_id !== null && r.external_id !== "" ? String(r.external_id) : null, rentalId: String(r.rental_id ?? ""),
     channel: mapPlatform(r.platform_name), platformName: typeof r.platform_name === "string" ? r.platform_name : null,
     checkIn: String(r.checkin).slice(0, 10), checkOut: String(r.checkout).slice(0, 10), nights: Number(r.nights) || 0,
     canceled: !!r.canceled_at || label.startsWith("CANCEL") || label === "NO_SHOW",
-    totalCents: cents(r.total_price), hostPayoutCents: cents(r.host_payout), cityTaxCents: sumOf("city_tax"), cleaningCents: sumOf("cleaning_fee"),
-    hostFeesCents: Array.isArray(r.host_fees) ? feeLines.filter((l) => l.cents < 0).reduce((a, l) => a - l.cents, 0) : null, feeLines,
+    totalCents: cents(r.total_price), hostPayoutCents: cents(r.host_payout), cityTaxCents: sumOf(isCityTax), cleaningCents: sumOf((l) => l?.type === "cleaning_fee"),
+    // SuperHote renvoie les lignes `host_fees` en montants POSITIFS (59.52 = frais retenus) ; la valeur absolue couvre aussi un éventuel signe négatif
+    hostFeesCents: Array.isArray(r.host_fees) ? totalHostFees(feeLines) : null, feeLines,
   };
 }
 
@@ -80,18 +92,14 @@ export type ObservedCommission = { pct: number; n: number; from: ISODate; to: IS
 /**
  * Taux de commission réellement retenus par les plateformes, lus chez SuperHote (source de vérité des réservations).
  * Taux = total des lignes `host_fees` ÷ montant payé hors taxe de séjour (la commission ne porte pas sur la taxe de séjour).
- * Une réservation entre dans le calcul seulement si ses montants se recoupent : total − frais [− taxe de séjour] = versement hôte, à 1 € près.
- * Sinon elle est écartée et comptée (`excluded`) : on ne devine pas une commission incohérente.
+ * Les lignes `host_fees` sont explicites (frais de plateforme, TVA hôte) : le versement n'est PAS utilisé comme contrôle, car il retire aussi d'autres montants
+ * (sur Booking, environ 1 % de plus que total − taxe − commission). Seul un taux supérieur à `maxPct` (40 %) est jugé invraisemblable : la réservation est écartée et comptée (`excluded`).
  */
-export function observedCommission(rows: ShReservation[], toleranceCents = 100): Partial<Record<"AIRBNB" | "BOOKING", ObservedCommission>> {
+export function observedCommission(rows: ShReservation[], maxPct = 40): Partial<Record<"AIRBNB" | "BOOKING", ObservedCommission>> {
   const out: Partial<Record<"AIRBNB" | "BOOKING", ObservedCommission>> = {};
   for (const ch of ["AIRBNB", "BOOKING"] as const) {
     const live = rows.filter((r) => !r.canceled && r.channel === ch && (r.hostFeesCents ?? 0) > 0 && (r.totalCents ?? 0) > 0);
-    const ok = live.filter((r) => {
-      if (r.hostPayoutCents === null) return true;
-      const gap = (expected: number) => Math.abs(r.hostPayoutCents! - expected) <= toleranceCents;
-      return gap(r.totalCents! - r.hostFeesCents!) || gap(r.totalCents! - (r.cityTaxCents ?? 0) - r.hostFeesCents!);
-    });
+    const ok = live.filter((r) => r.hostFeesCents! / (r.totalCents! - (r.cityTaxCents ?? 0)) <= maxPct / 100 && r.totalCents! - (r.cityTaxCents ?? 0) > 0);
     const base = ok.reduce((a, r) => a + r.totalCents! - (r.cityTaxCents ?? 0), 0);
     if (ok.length === 0 || base <= 0) continue;
     const days = ok.map((r) => r.checkIn).sort();
