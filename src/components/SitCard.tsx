@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/Term";
 import { approveAction, deferAction } from "@/app/actions/decisions";
 import { fmtPeriod } from "@/lib/dates";
 import type { Candidate } from "@/lib/engine/types";
@@ -41,7 +42,7 @@ export function SitCard({ o, rank, propertyName, names, provisional }: { o: OppW
           <div className="chain-step chain-step-option"><span className="chain-key"><Icon name="arrow" />Option</span><p className="chain-val">{c.label}</p></div>
         </div>
         <div className="gauges">
-          <div className="gauge"><span className="gauge-label">Confiance du diagnostic</span>
+          <div className="gauge"><span className="gauge-label"><Term id="confiance">Confiance du diagnostic</Term></span>
             <span className="gauge-read gauge-conf"><strong>{conf.label}</strong><span className="gauge-num">{conf.level}/4</span></span>
             <Steps level={conf.level} cls="gauge-conf" /><span className="gauge-note">{o.diagnosis.confidenceNote}</span></div>
           <div className="gauge"><span className="gauge-label">Risque de l'option</span>

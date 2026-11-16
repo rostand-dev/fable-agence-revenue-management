@@ -14,6 +14,7 @@ const GROUPS: { label: string; items: Item[] }[] = [
   { label: "Agence IA", items: [
     { href: "/equipe", icon: "team", label: "Équipe", primary: true },
     { href: "/methode", icon: "book", label: "Méthode de travail" },
+    { href: "/glossaire", icon: "glossary", label: "Glossaire" },
   ] },
   { label: "Analyse", items: [{ href: "/bilan", icon: "chart", label: "Bilan mensuel" }] },
   { label: "Configuration", items: [

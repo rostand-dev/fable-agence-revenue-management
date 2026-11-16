@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
+import { Term } from "@/components/Term";
 import { Page } from "@/components/Page";
 import { State } from "@/components/ui";
 import { agentName, WORKFLOWS } from "@/lib/agents/registry";
@@ -25,7 +27,8 @@ export default async function Methode() {
     <Page title="Méthode de travail" sub="Workflows, garde-fous et partage des rôles" crumbs={[{ label: "Agence IA" }, { label: "Méthode de travail" }]}>
       <div className="page-head">
         <h1>Comment travaille l'agence</h1>
-        <p>La règle centrale : une occupation faible n'entraîne jamais automatiquement une baisse de prix. L'équipe établit d'abord un diagnostic causal — demande, fenêtre de réservation, prix, restriction, promotion, annonce — puis compare les options, dont celle de ne rien faire.</p>
+        <p>La règle centrale : une occupation faible n'entraîne jamais automatiquement une baisse de prix. L'équipe établit d'abord un <Term id="diagnostic-causal">diagnostic causal</Term> — demande, fenêtre de réservation, prix, restriction, promotion, annonce — puis compare les options, dont celle de ne rien faire.</p>
+        <p style={{ marginTop: 10 }}>Un mot vous échappe ? <Link href="/glossaire">Consultez le glossaire</Link> : chaque terme y est expliqué avec un exemple.</p>
       </div>
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Le cycle d'une décision</h2>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/Term";
 import { resetDemoAction, reviewAction } from "@/app/actions/decisions";
 import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
@@ -64,7 +65,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           <Metric label="Situations ouvertes" value={open.length} source={`${all.filter((o) => o.status === "DEFERRED").length} différée(s) · revue quotidienne`} />
           <Metric label="Impact net simulé" value={chiffrables.length ? signedEuro(impact) : <Vq kind="nonchiffrable">Non chiffrable</Vq>} unit={chiffrables.length ? "net" : undefined} source={`Somme des ${chiffrables.length} options chiffrables · simulation, pas un revenu acquis`} />
           <Metric label="Décisions enregistrées" value={all.filter((o) => o.status === "DECIDED").length} source="Approbations, rejets et inactions retenues" />
-          <Metric label="Garde-fous & vetos" value={guard.length} tone={guard.some((o) => o.veto) ? "veto" : undefined} source={`${open.filter((o) => o.veto).length} veto · ${guard.length - open.filter((o) => o.veto).length} option(s) rejetée(s) par l'auditeur`} />
+          <Metric label={<>Garde-fous & <Term id="veto">vetos</Term></>} value={guard.length} tone={guard.some((o) => o.veto) ? "veto" : undefined} source={`${open.filter((o) => o.veto).length} veto · ${guard.length - open.filter((o) => o.veto).length} option(s) rejetée(s) par l'auditeur`} />
         </div>
       </section>
 
