@@ -11,12 +11,23 @@ import { Icon } from "./Icon";
 
 export type CostHints = {
   ines: string;
+  /** Taux relevés via PriceLabs (repli : la commission y est souvent absente) */
   observed: Record<string, { pct: number; n: number }>;
+  /** Taux relevés chez SuperHote, source de vérité, avec la période des séjours utilisés */
+  observedSh: Record<string, { pct: number; n: number; from: string; to: string; excluded: number }>;
   nightsSold: number | null; monthsCovered: number | null; avgStay: number | null;
   minPriceCents: number | null;
 };
 const STEPS = ["Commissions", "Taxe de séjour", "Ménage et linge", "Coût d'une nuit", "Dérangement", "Charges fixes", "Objectif", "Résultat"];
 const LAST = STEPS.length - 1;
+const frDate = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
+/** Suggestion de commission : SuperHote d'abord (avec sa période), sinon PriceLabs signalé comme plus approximatif. */
+function commissionSuggest(sh: CostHints["observedSh"][string] | undefined, pl: CostHints["observed"][string] | undefined): { label: string; value: string } | undefined {
+  const plural = (n: number) => `réservation${n > 1 ? "s" : ""}`;
+  if (sh) return { label: `Reprendre ${fr(sh.pct, 1)} % — relevé sur ${sh.n} ${plural(sh.n)} SuperHote, séjours du ${frDate(sh.from)} au ${frDate(sh.to)}`, value: fr(sh.pct, 1) };
+  if (pl) return { label: `Reprendre ${fr(pl.pct, 1)} % — relevé sur ${pl.n} ${plural(pl.n)} via PriceLabs (moins fiable que SuperHote)`, value: fr(pl.pct, 1) };
+  return undefined;
+}
 const fr = (x: number, d = 2) => (Math.round(x * 10 ** d) / 10 ** d).toString().replace(".", ",");
 
 /* Champs définis hors du composant : redéfinis à chaque rendu, ils feraient perdre le curseur à chaque frappe. */
@@ -95,13 +106,14 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
         </nav>
 
         {step === 0 && (<>
-          <Say>Commençons par ce que les plateformes prélèvent sur chaque réservation. {Object.keys(hints.observed).length ? "J'ai relevé les taux réellement appliqués sur vos réservations : reprenez-les s'ils vous semblent justes." : "Vous les trouvez sur vos relevés de versement."}</Say>
+          <Say>Commençons par ce que les plateformes prélèvent sur chaque réservation. {Object.keys(hints.observedSh).length + Object.keys(hints.observed).length ? "J'ai relevé les taux réellement appliqués sur vos réservations : reprenez-les s'ils vous semblent justes." : "Vous les trouvez sur vos relevés de versement."}</Say>
           <div className="form-grid">
-            <Field k="airbnbPct" label="Commission Airbnb" unit="%" provKey="airbnbPct" help="Frais de service prélevés sur l'hôte." suggest={hints.observed.AIRBNB ? { label: `Reprendre ${fr(hints.observed.AIRBNB.pct, 1)} % — relevé sur ${hints.observed.AIRBNB.n} réservation${hints.observed.AIRBNB.n > 1 ? "s" : ""}`, value: fr(hints.observed.AIRBNB.pct, 1) } : undefined} />
-            <Field k="bookingPct" label="Commission Booking.com" unit="%" provKey="bookingPct" suggest={hints.observed.BOOKING ? { label: `Reprendre ${fr(hints.observed.BOOKING.pct, 1)} % — relevé sur ${hints.observed.BOOKING.n} réservation${hints.observed.BOOKING.n > 1 ? "s" : ""}`, value: fr(hints.observed.BOOKING.pct, 1) } : undefined} />
+            <Field k="airbnbPct" label="Commission Airbnb" unit="%" provKey="airbnbPct" help="Frais de service prélevés sur l'hôte." suggest={commissionSuggest(hints.observedSh.AIRBNB, hints.observed.AIRBNB)} />
+            <Field k="bookingPct" label="Commission Booking.com" unit="%" provKey="bookingPct" suggest={commissionSuggest(hints.observedSh.BOOKING, hints.observed.BOOKING)} />
             <Field k="bookingFeePct" label="Frais de paiement Booking.com" unit="%" help="Seulement si Booking.com encaisse pour vous. Sinon, laissez vide." />
           </div>
-          {hints.observed.BOOKING && <p className="kpi-note">Le taux relevé sur Booking.com peut déjà contenir les frais de paiement : dans ce cas, laissez le champ « frais de paiement » vide.</p>}
+          {Object.entries(hints.observedSh).filter(([, v]) => v.excluded > 0).map(([ch, v]) => <p key={ch} className="kpi-note">{CHANNEL_LABEL[ch as Channel] ?? ch} : {v.excluded} réservation{v.excluded > 1 ? "s" : ""} SuperHote écartée{v.excluded > 1 ? "s" : ""} du calcul, car {v.excluded > 1 ? "leurs" : "ses"} montants ne se recoupent pas (total, frais, versement).</p>)}
+          {(hints.observedSh.BOOKING || hints.observed.BOOKING) && <p className="kpi-note">Le taux relevé sur Booking.com peut déjà contenir les frais de paiement : dans ce cas, laissez le champ « frais de paiement » vide.</p>}
         </>)}
 
         {step === 1 && (<>

@@ -31,7 +31,7 @@ export default async function Couts({ params, searchParams }: { params: Promise<
         <p>Huit écrans courts, une question concrète à la fois. {ines} en déduit vos planchers : le prix en dessous duquel l'équipe ne proposera jamais rien. Si vous ne savez pas, laissez vide ou donnez une estimation provisoire ; vos réponses sont enregistrées à chaque étape.</p>
       </div>
       <CostWizard propertyId={p.id} propertyName={p.name} startAt={step} initial={answersFromModel(p.economics as EconomicModel)}
-        hints={{ ines, observed: p.pricelabs?.lastSync?.observedCommission ?? {}, nightsSold, monthsCovered: k.length || null, avgStay: medianLos(resas), minPriceCents: (p.strategy as Strategy)?.minPriceCents ?? null }} />
+        hints={{ ines, observed: p.pricelabs?.lastSync?.observedCommission ?? {}, observedSh: p.superhote?.lastSync?.observedCommission ?? {}, nightsSold, monthsCovered: k.length || null, avgStay: medianLos(resas), minPriceCents: (p.strategy as Strategy)?.minPriceCents ?? null }} />
     </Page>
   );
 }

@@ -45,16 +45,80 @@ export function mapPlatform(name: unknown): ShChannel {
   return null;
 }
 
-export type ShReservation = { id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean };
+export type ShFeeLine = { type: string; label: string; cents: number; vatRate: number | null };
+export type ShReservation = {
+  id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean;
+  /** Montants (centimes), null = non transmis. `total_price` : payé par le voyageur ; `host_payout` : net versé à l'hôte. */
+  totalCents: number | null; hostPayoutCents: number | null; cityTaxCents: number | null; cleaningCents: number | null;
+  /** Somme des lignes retenues à l'hôte (`host_fees`, positif) ; null = lignes absentes de la réponse. */
+  hostFeesCents: number | null; feeLines: ShFeeLine[];
+};
+/** Montant SuperHote en unités majeures (439.6) → centimes ; null si absent ou illisible. */
+const cents = (v: unknown): number | null => {
+  if (v === null || v === undefined || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n * 100) : null;
+};
+const lines = (v: unknown): any[] => (Array.isArray(v) ? v : []);
 export function mapReservation(r: any): ShReservation | null {
   if (r?.id === undefined || r.id === null || !r.checkin || !r.checkout) return null;
   const label = String(r.status_label ?? "").toUpperCase();
+  const details = lines(r.price_details), fees = lines(r.host_fees);
+  const sumOf = (type: string) => (details.some((l) => l?.type === type) ? details.filter((l) => l?.type === type).reduce((a, l) => a + (cents(l.total) ?? 0), 0) : null);
+  const feeLines: ShFeeLine[] = fees.map((l) => ({ type: String(l?.type ?? ""), label: String(l?.label ?? ""), cents: cents(l?.total) ?? 0, vatRate: Number.isFinite(Number(l?.vat_rate)) && l?.vat_rate !== null && l?.vat_rate !== undefined ? Number(l.vat_rate) : null }));
   return {
     id: String(r.id), externalId: r.external_id !== undefined && r.external_id !== null && r.external_id !== "" ? String(r.external_id) : null, rentalId: String(r.rental_id ?? ""),
     channel: mapPlatform(r.platform_name), platformName: typeof r.platform_name === "string" ? r.platform_name : null,
     checkIn: String(r.checkin).slice(0, 10), checkOut: String(r.checkout).slice(0, 10), nights: Number(r.nights) || 0,
     canceled: !!r.canceled_at || label.startsWith("CANCEL") || label === "NO_SHOW",
+    totalCents: cents(r.total_price), hostPayoutCents: cents(r.host_payout), cityTaxCents: sumOf("city_tax"), cleaningCents: sumOf("cleaning_fee"),
+    hostFeesCents: Array.isArray(r.host_fees) ? feeLines.filter((l) => l.cents < 0).reduce((a, l) => a - l.cents, 0) : null, feeLines,
   };
+}
+
+export type ObservedCommission = { pct: number; n: number; from: ISODate; to: ISODate; excluded: number };
+/**
+ * Taux de commission réellement retenus par les plateformes, lus chez SuperHote (source de vérité des réservations).
+ * Taux = total des lignes `host_fees` ÷ montant payé hors taxe de séjour (la commission ne porte pas sur la taxe de séjour).
+ * Une réservation entre dans le calcul seulement si ses montants se recoupent : total − frais [− taxe de séjour] = versement hôte, à 1 € près.
+ * Sinon elle est écartée et comptée (`excluded`) : on ne devine pas une commission incohérente.
+ */
+export function observedCommission(rows: ShReservation[], toleranceCents = 100): Partial<Record<"AIRBNB" | "BOOKING", ObservedCommission>> {
+  const out: Partial<Record<"AIRBNB" | "BOOKING", ObservedCommission>> = {};
+  for (const ch of ["AIRBNB", "BOOKING"] as const) {
+    const live = rows.filter((r) => !r.canceled && r.channel === ch && (r.hostFeesCents ?? 0) > 0 && (r.totalCents ?? 0) > 0);
+    const ok = live.filter((r) => {
+      if (r.hostPayoutCents === null) return true;
+      const gap = (expected: number) => Math.abs(r.hostPayoutCents! - expected) <= toleranceCents;
+      return gap(r.totalCents! - r.hostFeesCents!) || gap(r.totalCents! - (r.cityTaxCents ?? 0) - r.hostFeesCents!);
+    });
+    const base = ok.reduce((a, r) => a + r.totalCents! - (r.cityTaxCents ?? 0), 0);
+    if (ok.length === 0 || base <= 0) continue;
+    const days = ok.map((r) => r.checkIn).sort();
+    out[ch] = { pct: Math.round((ok.reduce((a, r) => a + r.hostFeesCents!, 0) / base) * 1000) / 10, n: ok.length, from: days[0], to: days[days.length - 1], excluded: live.length - ok.length };
+  }
+  return out;
+}
+
+export type ReservationCheck = { compared: number; onlySuperhote: number; onlyPriceLabs: number; amountDiffs: number; samples: { id: string; shCents: number | null; plCents: number | null; kind: "ABSENTE_PRICELABS" | "ABSENTE_SUPERHOTE" | "MONTANT" }[] };
+/**
+ * Contrôle croisé SuperHote / PriceLabs sur les réservations non annulées (rapprochées par identifiant).
+ * SuperHote fait foi : l'écart est signalé, jamais corrigé. PriceLabs arrondit les montants à l'euro (tolérance 1 €).
+ */
+export function compareReservations(sh: ShReservation[], plRows: { reservation_id: unknown; booking_status?: unknown; total_cost?: unknown }[], toleranceCents = 100): ReservationCheck {
+  const shLive = sh.filter((r) => !r.canceled && (r.totalCents ?? 0) > 0);
+  const plLive = plRows.filter((r) => r.reservation_id !== undefined && r.reservation_id !== null && !String(r.booking_status ?? "").toLowerCase().startsWith("cancel") && Number(r.total_cost) > 0);
+  const plById = new Map(plLive.map((r) => [String(r.reservation_id), r]));
+  const shIds = new Set<string>();
+  const out: ReservationCheck = { compared: 0, onlySuperhote: 0, onlyPriceLabs: 0, amountDiffs: 0, samples: [] };
+  const sample = (x: ReservationCheck["samples"][number]) => { if (out.samples.length < 5) out.samples.push(x); };
+  for (const r of shLive) {
+    const m = plById.get(r.id) ?? (r.externalId ? plById.get(r.externalId) : undefined);
+    if (m) { shIds.add(String(m.reservation_id)); out.compared++; const pl = Math.round(Number(m.total_cost) * 100); if (Math.abs(pl - r.totalCents!) > toleranceCents) { out.amountDiffs++; sample({ id: r.id, shCents: r.totalCents, plCents: pl, kind: "MONTANT" }); } }
+    else { out.onlySuperhote++; sample({ id: r.id, shCents: r.totalCents, plCents: null, kind: "ABSENTE_PRICELABS" }); }
+  }
+  for (const r of plLive) if (!shIds.has(String(r.reservation_id))) { out.onlyPriceLabs++; sample({ id: String(r.reservation_id), shCents: null, plCents: Math.round(Number(r.total_cost) * 100), kind: "ABSENTE_SUPERHOTE" }); }
+  return out;
 }
 
 export type ShNight = { date: ISODate; available: boolean; priceCents: number | null; reservationId: string | null };
