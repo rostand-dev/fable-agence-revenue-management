@@ -47,7 +47,7 @@ export function mapPlatform(name: unknown): ShChannel {
 
 export type ShFeeLine = { type: string; label: string; cents: number; vatRate: number | null };
 export type ShReservation = {
-  id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean;
+  id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean; bookedAt: ISODate | null;
   /** Montants (centimes), null = non transmis. `total_price` : payé par le voyageur ; `host_payout` : net versé à l'hôte. */
   totalCents: number | null; hostPayoutCents: number | null; cityTaxCents: number | null; cleaningCents: number | null;
   /** Somme des lignes retenues à l'hôte (`host_fees`, en valeur absolue : frais de plateforme + TVA hôte) ; null = lignes absentes de la réponse. */
@@ -81,7 +81,7 @@ export function mapReservation(r: any): ShReservation | null {
     id: String(r.id), externalId: r.external_id !== undefined && r.external_id !== null && r.external_id !== "" ? String(r.external_id) : null, rentalId: String(r.rental_id ?? ""),
     channel: mapPlatform(r.platform_name), platformName: typeof r.platform_name === "string" ? r.platform_name : null,
     checkIn: String(r.checkin).slice(0, 10), checkOut: String(r.checkout).slice(0, 10), nights: Number(r.nights) || 0,
-    canceled: !!r.canceled_at || label.startsWith("CANCEL") || label === "NO_SHOW",
+    canceled: !!r.canceled_at || label.startsWith("CANCEL") || label === "NO_SHOW", bookedAt: typeof (r.booked_at ?? r.created_at) === "string" ? String(r.booked_at ?? r.created_at).slice(0, 10) : null,
     totalCents: cents(r.total_price), hostPayoutCents: cents(r.host_payout), cityTaxCents: sumOf(isCityTax), cleaningCents: sumOf((l) => l?.type === "cleaning_fee"),
     // SuperHote renvoie les lignes `host_fees` en montants POSITIFS (59.52 = frais retenus) ; la valeur absolue couvre aussi un éventuel signe négatif
     hostFeesCents: Array.isArray(r.host_fees) ? totalHostFees(feeLines) : null, feeLines,
@@ -126,26 +126,29 @@ export function observedPaymentFee(rows: ShReservation[], maxPct = 5): ObservedP
   return { pct: Math.round(median * 1000) / 10, n: ok.length, from: days[0], to: days[days.length - 1] };
 }
 
-export type ReservationCheck = { compared: number; onlySuperhote: number; onlyPriceLabs: number; amountDiffs: number; samples: { id: string; shCents: number | null; plCents: number | null; kind: "ABSENTE_PRICELABS" | "ABSENTE_SUPERHOTE" | "MONTANT" }[] };
+export type ReservationGap = { id: string; kind: "ABSENTE_PRICELABS" | "ABSENTE_SUPERHOTE" | "MONTANT"; checkIn: ISODate | null; checkOut: ISODate | null; channel: string | null; shCents: number | null; plCents: number | null };
+/** `items` : liste complète des écarts (plafonnée à 300) pour l'écran dédié ; `samples` : les 5 premiers, pour le résumé. */
+export type ReservationCheck = { compared: number; onlySuperhote: number; onlyPriceLabs: number; amountDiffs: number; samples: ReservationGap[]; items: ReservationGap[] };
 /**
  * Contrôle croisé SuperHote / PriceLabs sur les réservations non annulées (rapprochées par identifiant).
  * SuperHote fait foi : l'écart est signalé, jamais corrigé. PriceLabs arrondit les montants à l'euro (tolérance 1 €).
  * `window` : fenêtre de séjours lue chez PriceLabs ; sans elle, l'historique SuperHote hors fenêtre serait compté comme « absent de PriceLabs ».
  */
-export function compareReservations(sh: ShReservation[], plRows: { reservation_id: unknown; booking_status?: unknown; total_cost?: unknown }[], window?: { from: ISODate; to: ISODate }, toleranceCents = 100): ReservationCheck {
+export function compareReservations(sh: ShReservation[], plRows: { reservation_id: unknown; booking_status?: unknown; total_cost?: unknown; check_in?: unknown; check_out?: unknown; booking_channel?: unknown }[], window?: { from: ISODate; to: ISODate }, toleranceCents = 100): ReservationCheck {
   // SuperHote remonte tout l'historique du compte ; PriceLabs n'est lu que sur une fenêtre : on ne compare que les séjours de cette fenêtre
   const shLive = sh.filter((r) => !r.canceled && (r.totalCents ?? 0) > 0 && (!window || (r.checkOut >= window.from && r.checkIn <= window.to)));
   const plLive = plRows.filter((r) => r.reservation_id !== undefined && r.reservation_id !== null && !String(r.booking_status ?? "").toLowerCase().startsWith("cancel") && Number(r.total_cost) > 0);
   const plById = new Map(plLive.map((r) => [String(r.reservation_id), r]));
   const shIds = new Set<string>();
-  const out: ReservationCheck = { compared: 0, onlySuperhote: 0, onlyPriceLabs: 0, amountDiffs: 0, samples: [] };
-  const sample = (x: ReservationCheck["samples"][number]) => { if (out.samples.length < 5) out.samples.push(x); };
+  const out: ReservationCheck = { compared: 0, onlySuperhote: 0, onlyPriceLabs: 0, amountDiffs: 0, samples: [], items: [] };
+  const add = (g: ReservationGap) => { if (out.items.length < 300) out.items.push(g); if (out.samples.length < 5) out.samples.push(g); };
+  const d = (v: unknown) => (typeof v === "string" && v ? v.slice(0, 10) : null);
   for (const r of shLive) {
     const m = plById.get(r.id) ?? (r.externalId ? plById.get(r.externalId) : undefined);
-    if (m) { shIds.add(String(m.reservation_id)); out.compared++; const pl = Math.round(Number(m.total_cost) * 100); if (Math.abs(pl - r.totalCents!) > toleranceCents) { out.amountDiffs++; sample({ id: r.id, shCents: r.totalCents, plCents: pl, kind: "MONTANT" }); } }
-    else { out.onlySuperhote++; sample({ id: r.id, shCents: r.totalCents, plCents: null, kind: "ABSENTE_PRICELABS" }); }
+    if (m) { shIds.add(String(m.reservation_id)); out.compared++; const pl = Math.round(Number(m.total_cost) * 100); if (Math.abs(pl - r.totalCents!) > toleranceCents) { out.amountDiffs++; add({ id: r.id, kind: "MONTANT", checkIn: r.checkIn, checkOut: r.checkOut, channel: r.platformName, shCents: r.totalCents, plCents: pl }); } }
+    else { out.onlySuperhote++; add({ id: r.id, kind: "ABSENTE_PRICELABS", checkIn: r.checkIn, checkOut: r.checkOut, channel: r.platformName, shCents: r.totalCents, plCents: null }); }
   }
-  for (const r of plLive) if (!shIds.has(String(r.reservation_id))) { out.onlyPriceLabs++; sample({ id: String(r.reservation_id), shCents: null, plCents: Math.round(Number(r.total_cost) * 100), kind: "ABSENTE_SUPERHOTE" }); }
+  for (const r of plLive) if (!shIds.has(String(r.reservation_id))) { out.onlyPriceLabs++; add({ id: String(r.reservation_id), kind: "ABSENTE_SUPERHOTE", checkIn: d(r.check_in), checkOut: d(r.check_out), channel: typeof r.booking_channel === "string" && r.booking_channel ? r.booking_channel : null, shCents: null, plCents: Math.round(Number(r.total_cost) * 100) }); }
   return out;
 }
 

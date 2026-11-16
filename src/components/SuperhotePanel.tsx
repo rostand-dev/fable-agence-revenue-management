@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { connectSuperhoteAction, detachRentalAction, disconnectSuperhoteAction, selectRentalAction, syncSuperhoteAction } from "@/app/actions/superhote";
 import { fmtDate, fmtDateTime } from "@/lib/dates";
 import { euro } from "@/lib/format";
@@ -38,7 +39,7 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
                 : <span key="c">{Object.entries(oc).map(([ch, v]: [string, any]) => `${ch === "AIRBNB" ? "Airbnb" : "Booking.com"} ${String(v.pct).replace(".", ",")} % sur ${v.n} réservation${v.n > 1 ? "s" : ""} (séjours du ${fmtDate(v.from)} au ${fmtDate(v.to)})${v.excluded ? `, ${v.excluded} écartée${v.excluded > 1 ? "s" : ""} car taux invraisemblable` : ""}`).join(" · ")}{pf ? ` · frais de paiement Booking.com ${String(pf.pct).replace(".", ",")} % sur ${pf.n} réservation${pf.n > 1 ? "s" : ""}` : ""}</span>],
               ...(plLinked ? [["Réservations vs PriceLabs", !rc ? <Vq key="r">pas encore comparées</Vq>
                 : rc.onlySuperhote + rc.onlyPriceLabs + rc.amountDiffs === 0 ? <span key="r"><State role="sain">concordantes</State> {rc.compared} réservations comparées.</span>
-                : <span key="r"><State role="attention">écarts</State> {rc.compared} comparées : {rc.amountDiffs} montant{rc.amountDiffs > 1 ? "s" : ""} différent{rc.amountDiffs > 1 ? "s" : ""}, {rc.onlySuperhote} absente{rc.onlySuperhote > 1 ? "s" : ""} de PriceLabs, {rc.onlyPriceLabs} absente{rc.onlyPriceLabs > 1 ? "s" : ""} de SuperHote. SuperHote fait foi.</span>]] as [string, React.ReactNode][] : []),
+                : <span key="r"><State role="attention">écarts</State> {rc.compared} comparées : {rc.amountDiffs} montant{rc.amountDiffs > 1 ? "s" : ""} différent{rc.amountDiffs > 1 ? "s" : ""}, {rc.onlySuperhote} absente{rc.onlySuperhote > 1 ? "s" : ""} de PriceLabs, {rc.onlyPriceLabs} absente{rc.onlyPriceLabs > 1 ? "s" : ""} de SuperHote. SuperHote fait foi. <Link href={`/logements/${propertyId}/ecarts-reservations`}>Voir le détail</Link></span>]] as [string, React.ReactNode][] : []),
               ["Prix du calendrier", !plLinked ? <Vq key="p">comparaison possible une fois PriceLabs rattaché</Vq>
                 : !pc || pc.verdict === "INCONNU" ? <Vq key="p">aucune nuit libre à comparer</Vq>
                 : pc.verdict === "IDENTIQUE" ? <span key="p"><State role="sain">identique</State> {pc.compared} nuits libres comparées : le prix du calendrier SuperHote est celui envoyé par PriceLabs, donc <strong>avant majoration par canal</strong>.</span>

@@ -1,7 +1,10 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { listRentals } from "../integrations/superhote";
+import type { EconomicModel } from "../engine/types";
 import { observedCommission, observedPaymentFee } from "../integrations/superhote-map";
+import { shReservations } from "../integrations/superhote-reservations";
+import { replaceReservations } from "./reservations-store";
 import { encryptSecret, secretHint } from "../secret";
 import { shErrorText, snapshotSuperhote } from "./superhote-read";
 import { SyncError, syncPriceLabs } from "./pricelabs-sync";
@@ -62,8 +65,8 @@ export async function disconnectSuperhote(tenantId: string, propertyId: string, 
 }
 
 /**
- * Relit SuperHote. Si PriceLabs est rattaché, passe par sa lecture (qui applique les canaux relevés et compare les prix) ;
- * sinon enregistre seulement l'état de la lecture SuperHote.
+ * Relit SuperHote. Si PriceLabs est rattaché, passe par sa lecture (qui compare les prix et contrôle les réservations) ;
+ * sinon enregistre les réservations SuperHote et l'état de la lecture.
  */
 export async function syncSuperhote(tenantId: string, propertyId: string): Promise<{ reservations: number; nights: number }> {
   const p = await getProp(tenantId, propertyId);
@@ -71,7 +74,9 @@ export async function syncSuperhote(tenantId: string, propertyId: string): Promi
   if (p.pricelabs?.listingId) { await syncPriceLabs(tenantId, p.id); }
   else {
     const snap = await snapshotSuperhote(p.superhote);
-    const lastSync = snap?.ok ? { ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, observedCommission: observedCommission(snap.reservations), observedPaymentFee: observedPaymentFee(snap.reservations) } : { ok: false, at: snap?.at ?? new Date().toISOString(), error: snap && !snap.ok ? snap.error : "Lecture impossible." };
+    // SuperHote fait foi pour les réservations, même sans PriceLabs
+    if (snap?.ok) await db.transaction((tx) => replaceReservations(tx, tenantId, p.id, shReservations(snap.reservations, p.economics as EconomicModel), "SUPERHOTE"));
+    const lastSync = snap?.ok ? { ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, reservationsSource: "SUPERHOTE", observedCommission: observedCommission(snap.reservations), observedPaymentFee: observedPaymentFee(snap.reservations) } : { ok: false, at: snap?.at ?? new Date().toISOString(), error: snap && !snap.ok ? snap.error : "Lecture impossible." };
     await db.update(properties).set({ superhote: { ...p.superhote, lastSync } }).where(eq(properties.id, p.id));
     if (!lastSync.ok) throw new SyncError((lastSync as any).error);
   }

@@ -24,7 +24,7 @@ import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 
 async function noChannelRows(propertyId: string, overrides: Record<string, string>) {
-  const rows = await db.select().from(schema.reservations).where(and(eq(schema.reservations.propertyId, propertyId), eq(schema.reservations.source, "PRICELABS")));
+  const rows = await db.select().from(schema.reservations).where(eq(schema.reservations.propertyId, propertyId));
   return rows.filter((r) => overrides[r.externalId] || (r.channel === "INCONNU" && r.status === "CONFIRMED")).sort((a, b) => a.checkIn.localeCompare(b.checkIn))
     .map((r) => ({ externalId: r.externalId, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, choice: overrides[r.externalId] ?? "" }));
 }
