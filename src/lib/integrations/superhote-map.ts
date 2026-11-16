@@ -108,6 +108,24 @@ export function observedCommission(rows: ShReservation[], maxPct = 40): Partial<
   return out;
 }
 
+export type ObservedPaymentFee = { pct: number; n: number; from: ISODate; to: ISODate };
+/**
+ * Frais de paiement Booking.com, déduits de l'écart de versement : total − taxe de séjour − commission − versement hôte, ramené à (total − taxe de séjour).
+ * Validé sur l'API réelle (16/11/2026) : 1,40 % sur 12 réservations sur 14, même base que la commission (les 2 autres, 1,57 % et 1,60 %, sont des séjours de février).
+ * Un taux fixe de plateforme : on retient la MÉDIANE des taux par réservation, pas une moyenne pondérée qu'un gros séjour atypique tirerait vers le haut. Seuls les écarts positifs entrent dans le calcul.
+ */
+export function observedPaymentFee(rows: ShReservation[], maxPct = 5): ObservedPaymentFee | null {
+  const ok = rows.filter((r) => !r.canceled && r.channel === "BOOKING" && (r.hostFeesCents ?? 0) > 0 && (r.totalCents ?? 0) > 0 && r.hostPayoutCents !== null).map((r) => {
+    const base = r.totalCents! - (r.cityTaxCents ?? 0);
+    return { r, base, gap: base - r.hostFeesCents! - r.hostPayoutCents! };
+  }).filter((x) => x.base > 0 && x.gap > 0 && x.gap / x.base <= maxPct / 100);
+  if (ok.length === 0) return null;
+  const rates = ok.map((x) => x.gap / x.base).sort((a, b) => a - b), mid = Math.floor(rates.length / 2);
+  const median = rates.length % 2 ? rates[mid] : (rates[mid - 1] + rates[mid]) / 2;
+  const days = ok.map((x) => x.r.checkIn).sort();
+  return { pct: Math.round(median * 1000) / 10, n: ok.length, from: days[0], to: days[days.length - 1] };
+}
+
 export type ReservationCheck = { compared: number; onlySuperhote: number; onlyPriceLabs: number; amountDiffs: number; samples: { id: string; shCents: number | null; plCents: number | null; kind: "ABSENTE_PRICELABS" | "ABSENTE_SUPERHOTE" | "MONTANT" }[] };
 /**
  * Contrôle croisé SuperHote / PriceLabs sur les réservations non annulées (rapprochées par identifiant).

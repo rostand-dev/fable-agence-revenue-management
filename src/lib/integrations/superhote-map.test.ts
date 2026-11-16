@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { channelHints, compareReservations, comparePriceSeries, lastPage, listOf, mapCalendar, mapPlatform, mapRental, mapReservation, observedCommission, ShapeError, unwrap } from "./superhote-map";
+import { channelHints, compareReservations, comparePriceSeries, lastPage, listOf, mapCalendar, mapPlatform, mapRental, mapReservation, observedCommission, observedPaymentFee, ShapeError, unwrap } from "./superhote-map";
 
 const resa = (o: any = {}) => ({ id: "901", external_id: "HM123", rental_id: "12345", platform_name: "Airbnb.com", status_label: "CONFIRMED", canceled_at: null, checkin: "2026-12-03", checkout: "2026-12-06", nights: 3, ...o });
 
@@ -139,5 +139,21 @@ describe("contrôle croisé réservations SuperHote / PriceLabs", () => {
     const r = compareReservations(sh, [pl("901", "398.0"), pl("902", "250.0"), pl("999", "100.0"), pl("888", "50.0", "canceled")]);
     expect(r).toMatchObject({ compared: 2, amountDiffs: 1, onlySuperhote: 1, onlyPriceLabs: 1 });
     expect(r.samples.map((x) => x.kind).sort()).toEqual(["ABSENTE_PRICELABS", "ABSENTE_SUPERHOTE", "MONTANT"]);
+  });
+});
+
+describe("frais de paiement Booking.com déduits du versement", () => {
+  const bk = (id: string, total: number, tax: number, comm: number, payout: number, o: any = {}) => mapReservation(resa({ id, platform_name: "Booking.com", total_price: total, host_payout: payout, price_details: [{ type: "city_tax", total: tax }], host_fees: [{ type: "host_platform_commission", total: comm }], ...o }))!;
+  it("cas réels 25842339 et 25657302 : 1,4 % de (total − taxe de séjour)", () => {
+    const r = observedPaymentFee([bk("25842339", 1881.13, 255.13, 276.42, 1326.82), bk("25657302", 372.2, 44.2, 55.76, 267.65)]);
+    expect(r).toMatchObject({ pct: 1.4, n: 2 });
+  });
+  it("médiane : un séjour atypique (1,6 %) ne tire pas le taux (cas réel : 12 réservations à 1,4 %, 2 en février plus hautes)", () => {
+    const rows = [bk("a", 400, 40, 61.2, 400 - 40 - 61.2 - 5.04), bk("b", 500, 50, 76.5, 500 - 50 - 76.5 - 6.3), bk("c", 3600, 25.6, 607.65, 3600 - 25.6 - 607.65 - 57.33)];
+    expect(observedPaymentFee(rows)).toMatchObject({ pct: 1.4, n: 3 });
+  });
+  it("inconnu sans versement, sans commission, annulée, ou autre canal ; écart nul ou négatif ignoré", () => {
+    const rows = [bk("1", 400, 40, 61.2, 0, { host_payout: null }), bk("2", 400, 40, 61.2, 300, { canceled_at: "2026-11-01T00:00:00Z" }), bk("3", 400, 40, 61.2, 400), bk("4", 400, 40, 61.2, 298.8), mapReservation(money())!];
+    expect(observedPaymentFee(rows)).toBeNull();
   });
 });

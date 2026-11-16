@@ -1,7 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { listRentals } from "../integrations/superhote";
-import { observedCommission } from "../integrations/superhote-map";
+import { observedCommission, observedPaymentFee } from "../integrations/superhote-map";
 import { encryptSecret, secretHint } from "../secret";
 import { shErrorText, snapshotSuperhote } from "./superhote-read";
 import { SyncError, syncPriceLabs } from "./pricelabs-sync";
@@ -71,7 +71,7 @@ export async function syncSuperhote(tenantId: string, propertyId: string): Promi
   if (p.pricelabs?.listingId) { await syncPriceLabs(tenantId, p.id); }
   else {
     const snap = await snapshotSuperhote(p.superhote);
-    const lastSync = snap?.ok ? { ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, observedCommission: observedCommission(snap.reservations) } : { ok: false, at: snap?.at ?? new Date().toISOString(), error: snap && !snap.ok ? snap.error : "Lecture impossible." };
+    const lastSync = snap?.ok ? { ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, observedCommission: observedCommission(snap.reservations), observedPaymentFee: observedPaymentFee(snap.reservations) } : { ok: false, at: snap?.at ?? new Date().toISOString(), error: snap && !snap.ok ? snap.error : "Lecture impossible." };
     await db.update(properties).set({ superhote: { ...p.superhote, lastSync } }).where(eq(properties.id, p.id));
     if (!lastSync.ok) throw new SyncError((lastSync as any).error);
   }

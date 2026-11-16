@@ -13,6 +13,8 @@ export type CostHints = {
   ines: string;
   /** Taux relevés via PriceLabs (repli : la commission y est souvent absente) */
   observed: Record<string, { pct: number; n: number }>;
+  /** Frais de paiement Booking.com relevés chez SuperHote (écart de versement), null = inconnus */
+  observedFeeSh: { pct: number; n: number; from: string; to: string } | null;
   /** Taux relevés chez SuperHote, source de vérité, avec la période des séjours utilisés */
   observedSh: Record<string, { pct: number; n: number; from: string; to: string; excluded: number }>;
   nightsSold: number | null; monthsCovered: number | null; avgStay: number | null;
@@ -110,10 +112,10 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
           <div className="form-grid">
             <Field k="airbnbPct" label="Commission Airbnb" unit="%" provKey="airbnbPct" help="Frais de service prélevés sur l'hôte." suggest={commissionSuggest(hints.observedSh.AIRBNB, hints.observed.AIRBNB)} />
             <Field k="bookingPct" label="Commission Booking.com" unit="%" provKey="bookingPct" suggest={commissionSuggest(hints.observedSh.BOOKING, hints.observed.BOOKING)} />
-            <Field k="bookingFeePct" label="Frais de paiement Booking.com" unit="%" help="Seulement si Booking.com encaisse pour vous. Sinon, laissez vide." />
+            <Field k="bookingFeePct" label="Frais de paiement Booking.com" unit="%" help="Seulement si Booking.com encaisse pour vous. Sinon, laissez vide." suggest={hints.observedFeeSh ? { label: `Reprendre ${fr(hints.observedFeeSh.pct, 1)} % — écart de versement relevé sur ${hints.observedFeeSh.n} réservation${hints.observedFeeSh.n > 1 ? "s" : ""} Booking.com SuperHote, séjours du ${frDate(hints.observedFeeSh.from)} au ${frDate(hints.observedFeeSh.to)}`, value: fr(hints.observedFeeSh.pct, 1) } : undefined} />
           </div>
           {Object.entries(hints.observedSh).filter(([, v]) => v.excluded > 0).map(([ch, v]) => <p key={ch} className="kpi-note">{CHANNEL_LABEL[ch as Channel] ?? ch} : {v.excluded} réservation{v.excluded > 1 ? "s" : ""} SuperHote écartée{v.excluded > 1 ? "s" : ""} du calcul, car {v.excluded > 1 ? "leur" : "son"} taux serait invraisemblable (plus de 40 %).</p>)}
-          {(hints.observedSh.BOOKING || hints.observed.BOOKING) && <p className="kpi-note">Le taux relevé sur Booking.com peut déjà contenir les frais de paiement : dans ce cas, laissez le champ « frais de paiement » vide.</p>}
+          {hints.observedSh.BOOKING ? <p className="kpi-note">Le taux SuperHote de Booking.com est la commission seule : les frais de paiement sont relevés à part, dans leur champ.</p> : hints.observed.BOOKING && <p className="kpi-note">Le taux relevé via PriceLabs sur Booking.com peut déjà contenir les frais de paiement : dans ce cas, laissez le champ « frais de paiement » vide.</p>}
         </>)}
 
         {step === 1 && (<>
