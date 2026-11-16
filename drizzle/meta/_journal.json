@@ -36,6 +36,13 @@
       "when": 1794777717156,
       "tag": "0004_signup_confirmations",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794787135890,
+      "tag": "0005_superhote",
+      "breakpoints": true
     }
   ]
 }
