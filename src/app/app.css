@@ -186,3 +186,10 @@ a.cal-day:focus-visible, a.cal-day[aria-current="date"] { outline: 2px solid var
 /* accès rapide au glossaire dans la barre de titre */
 .glossary-link { display: inline-flex; align-items: center; gap: 6px; }
 @media (max-width: 767px) { .glossary-link .glossary-link-label { display: none; } .glossary-link { min-width: 36px; justify-content: center; } }
+
+/* un texte masqué (position absolue) ne doit pas s'échapper d'un tableau défilant et élargir la page */
+.table-wrap, .cascade-wrap { position: relative; }
+
+/* décision : le montant et son texte (risque, retour arrière) passent à la ligne au lieu d'élargir la page */
+.decision-primary .amount { flex: 1 1 220px; min-width: 0; max-width: 100%; }
+.amount-source { overflow-wrap: anywhere; }
