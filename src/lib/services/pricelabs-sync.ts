@@ -111,7 +111,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   for (const r of resas) if (r.status === "BLOCKED") for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) blocked.add(d);
   days = days.map((d) => (blocked.has(d.date) ? { ...d, state: "BLOCKED" as const, priceCents: null, sentPriceCents: null } : d));
   const shLastSync = !sh ? null : sh.ok
-    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[]) }
+    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[], { from: h.histFrom, to: h.histTo }) }
     : { ok: false, at: sh.at, error: sh.error };
   const bedrooms = p.bedrooms ?? listing.bedrooms;
   const mk = mapMarket(market, bedrooms, days);

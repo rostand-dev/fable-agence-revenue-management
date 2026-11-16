@@ -130,9 +130,11 @@ export type ReservationCheck = { compared: number; onlySuperhote: number; onlyPr
 /**
  * Contrôle croisé SuperHote / PriceLabs sur les réservations non annulées (rapprochées par identifiant).
  * SuperHote fait foi : l'écart est signalé, jamais corrigé. PriceLabs arrondit les montants à l'euro (tolérance 1 €).
+ * `window` : fenêtre de séjours lue chez PriceLabs ; sans elle, l'historique SuperHote hors fenêtre serait compté comme « absent de PriceLabs ».
  */
-export function compareReservations(sh: ShReservation[], plRows: { reservation_id: unknown; booking_status?: unknown; total_cost?: unknown }[], toleranceCents = 100): ReservationCheck {
-  const shLive = sh.filter((r) => !r.canceled && (r.totalCents ?? 0) > 0);
+export function compareReservations(sh: ShReservation[], plRows: { reservation_id: unknown; booking_status?: unknown; total_cost?: unknown }[], window?: { from: ISODate; to: ISODate }, toleranceCents = 100): ReservationCheck {
+  // SuperHote remonte tout l'historique du compte ; PriceLabs n'est lu que sur une fenêtre : on ne compare que les séjours de cette fenêtre
+  const shLive = sh.filter((r) => !r.canceled && (r.totalCents ?? 0) > 0 && (!window || (r.checkOut >= window.from && r.checkIn <= window.to)));
   const plLive = plRows.filter((r) => r.reservation_id !== undefined && r.reservation_id !== null && !String(r.booking_status ?? "").toLowerCase().startsWith("cancel") && Number(r.total_cost) > 0);
   const plById = new Map(plLive.map((r) => [String(r.reservation_id), r]));
   const shIds = new Set<string>();

@@ -135,6 +135,11 @@ describe("contrôle croisé réservations SuperHote / PriceLabs", () => {
   it("concordantes à 1 € près (PriceLabs arrondit à l'euro)", () => {
     expect(compareReservations([sh[0]], [pl("901", "398.0")])).toMatchObject({ compared: 1, amountDiffs: 0, onlySuperhote: 0, onlyPriceLabs: 0 });
   });
+  it("ignore l'historique SuperHote hors de la fenêtre lue chez PriceLabs", () => {
+    const old = mapReservation(money({ id: "25415206", checkin: "2024-06-10", checkout: "2024-06-14" }))!;
+    expect(compareReservations([old, sh[0]], [pl("901", "398.0")], { from: "2025-11-16", to: "2027-11-17" })).toMatchObject({ compared: 1, onlySuperhote: 0 });
+    expect(compareReservations([old, sh[0]], [pl("901", "398.0")])).toMatchObject({ onlySuperhote: 1 });
+  });
   it("signale montant différent, absente de PriceLabs et absente de SuperHote", () => {
     const r = compareReservations(sh, [pl("901", "398.0"), pl("902", "250.0"), pl("999", "100.0"), pl("888", "50.0", "canceled")]);
     expect(r).toMatchObject({ compared: 2, amountDiffs: 1, onlySuperhote: 1, onlyPriceLabs: 1 });
