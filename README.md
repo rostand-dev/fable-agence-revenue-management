@@ -18,7 +18,7 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 
 | Sujet | État |
 |---|---|
-| Données | Deux logements de **démonstration** (données synthétiques). Un logement réel lit **PriceLabs** dès que sa clé API est renseignée : grille J+0 à J+90, marché, réglages de prix et réservations relayées par le PMS. L'adaptateur SuperHote direct n'est pas encore branché. |
+| Données | Deux logements de **démonstration** (données synthétiques). Un logement réel lit **PriceLabs** dès que sa clé API est renseignée : grille J+0 à J+90, marché, réglages de prix et réservations relayées par le PMS. SuperHote se branche en lecture seule par jeton API (voir plus bas) ; les réservations et les prix restent lus via PriceLabs. |
 | Écriture PriceLabs | **Simulée** sur les logements de démonstration ; **lecture seule** sur les logements réels (procédure manuelle guidée pour appliquer une décision). |
 | Promotions et événements | Non fournis par PriceLabs : le registre des promotions reste manuel, les événements ne sont pas détectés sur les logements réels. |
 | Promotions Airbnb / Booking.com | Procédure manuelle guidée avec preuve. Aucune automatisation de navigateur. |
@@ -95,7 +95,18 @@ Le prix qui fait foi auprès des voyageurs est celui de SuperHote, après une ma
 
 - `price` (recommandé par PriceLabs) et `user_price` (envoyé à SuperHote) sont conservés séparément ; le moteur de prix n'y touche pas.
 - Prix publié estimé = `price × (1 + majoration / 100)` (prix recommandé par PriceLabs), arrondi à l’euro à l’affichage, valeur exacte conservée ; `user_price` n’entre pas dans le calcul, il est affiché et conservé pour la comparaison avec SuperHote (`src/lib/pricing/published.ts`).
+- **Commissions et montants** : SuperHote fait foi pour les réservations. `superhote-map.ts` lit `total_price`, `host_payout`, `price_details` (ménage, taxe de séjour) et `host_fees`. Le taux de commission suggéré dans « Coûts et seuils » = frais hôte ÷ montant payé hors taxe de séjour, avec la période des séjours ; une réservation au taux invraisemblable (> 40 %) est écartée et comptée ; le versement n'est pas un contrôle (sur Booking il retire d'autres frais). Les **frais de paiement Booking.com** sont déduits de l'écart de versement (total − taxe de séjour − commission − versement), en médiane des taux par réservation : 1,4 % sur l'API réelle (16/11/2026). PriceLabs ne sert plus que de repli (sa commission Airbnb est souvent à 0) et de contrôle croisé : les écarts de réservations sont signalés dans l'onglet SuperHote, jamais corrigés. Validé sur l'API réelle (16/11/2026) : `host_fees` en montants positifs, TVA hôte en ligne séparée (`value_added_tax_host`), taxe de séjour de type `guest_exclusive_tax_remitted_by_airbnb`.
 - `src/lib/integrations/superhote-check.ts` prépare la comparaison avec le prix réel SuperHote (tolérance 1 €). Non branchée : le format de l'API SuperHote reste à valider sur un cas réel.
+
+## Connexion SuperHote (lecture seule)
+
+Le jeton API se saisit par logement, à l'onboarding (comme la clé PriceLabs, facultatif, vérifié à l'enregistrement sans jamais bloquer la création du dossier) ou plus tard dans l'onglet *SuperHote*, avec les seuls droits `rentals.read`, `calendar.read` et `reservations.read`. Il est vérifié, chiffré comme la clé PriceLabs, et le rattachement au logement SuperHote est toujours confirmé par le propriétaire (un logement SuperHote ne peut alimenter qu'un seul logement NuitSignal).
+
+- **Canal des réservations** : celles que PriceLabs transmet sans canal reçoivent celui de SuperHote (rapprochement par identifiant, sinon par dates exactes d'arrivée et de départ si une seule réservation correspond). Une ambiguïté n'est jamais tranchée ; un choix manuel du propriétaire prime.
+- **Comparaison des prix** : le prix de calendrier SuperHote est comparé au `user_price` PriceLabs sur les nuits libres (tolérance 1 €). Identiques : le prix du calendrier SuperHote est avant majoration par canal. La documentation SuperHote ne le précise pas, d'où cette vérification sur données réelles.
+- SuperHote est relu avec PriceLabs avant chaque revue ; un échec SuperHote n'interrompt jamais la lecture PriceLabs.
+- Code : `src/lib/integrations/superhote.ts` (client), `superhote-map.ts` (traduction, testée), `src/lib/services/superhote-read.ts` et `superhote-sync.ts`. Variable facultative `SUPERHOTE_API_BASE`.
+- Point à valider sur un compte réel : la documentation ne précise pas la clé du tableau dans `result`, ni de filtre par logement sur `/reservations` ; le client est tolérant sur la forme et filtre côté serveur.
 
 ## Développement
 

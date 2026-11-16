@@ -570,7 +570,7 @@ a { color: var(--blue); }
 
 /* ===================== tableau économique ===================== */
 
-.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
+.table-wrap { position: relative; overflow-x: auto; border: 1px solid var(--line); border-radius: var(--r-md); }
 table.econ { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 580px; }
 table.econ caption {
   caption-side: top;
@@ -876,6 +876,7 @@ dialog.confirm::backdrop { background: rgb(2 3 8 / 72%); backdrop-filter: blur(3
 .vq-nonchiffrable::before { border-radius: 2px; border-style: dashed; }
 .vq-inconnu::before { border-radius: 50%; border-style: dotted; }
 .vq-obsolete { color: var(--amber-ink); }
+.recap .vq { white-space: normal; align-items: baseline; }
 .vq-obsolete::before { border-radius: 1px; transform: rotate(45deg); border-style: solid; }
 td .vq, th .vq { font-size: 12.5px; }
 

@@ -4,7 +4,11 @@ import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
 import { getNeighborhood, getPrices, getReservations, horizon, listListings, PriceLabsError } from "../integrations/pricelabs";
 import { mapChannel, mapMarket, mapPrices, mapReservations, type ChannelOverride } from "../integrations/pricelabs-map";
+import { channelHints, compareReservations, comparePriceSeries, observedCommission as shObservedCommission, observedPaymentFee } from "../integrations/superhote-map";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
+import { shReservations } from "../integrations/superhote-reservations";
+import { replaceReservations } from "./reservations-store";
+import { snapshotSuperhote } from "./superhote-read";
 
 const { properties, calendarDays, marketDays, reservations, agentRuns, auditEvents } = schema;
 export class SyncError extends Error {}
@@ -97,14 +101,27 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   // le marché est utile mais pas bloquant : sans lui, les signaux de rythme restent « inconnus »
   try { market = await getNeighborhood(apiKey, pl.listingId, pl.pms); } catch (e) { marketError = wrap(e); }
 
+  // SuperHote (facultatif, lecture seule, jamais bloquant) : canal des réservations transmises sans canal + comparaison des prix
+  const sh = await snapshotSuperhote(p.superhote, now);
+  const hints = sh?.ok ? channelHints(resaRows as any[], sh.reservations, (c) => mapChannel(c) !== "INCONNU") : {};
   const model = p.economics as EconomicModel;
-  const resas = mapReservations(resaRows, model, pl.overrides ?? {});
+  const plResas = mapReservations(resaRows, model, { ...hints, ...(pl.overrides ?? {}) });
+  // SuperHote fait foi pour les réservations dès qu'il est rattaché (PriceLabs les relaie avec des montants arrondis, des doublons et des manques).
+  // Rattaché mais illisible : on garde les réservations déjà enregistrées, PriceLabs ne les remplace pas.
+  const shLinked = !!p.superhote?.rentalId;
+  const fromSh = sh?.ok ? shReservations(sh.reservations, model) : null;
+  const toWrite = shLinked ? fromSh : plResas;
+  const source = shLinked ? ("SUPERHOTE" as const) : ("PRICELABS" as const);
+  const resas = toWrite ?? plResas;
   let days = mapPrices(priceItem).filter((d) => d.date >= h.from && d.date <= h.to);
   if (days.length === 0) throw await fail("PriceLabs n'a renvoyé aucun prix sur les 90 prochains jours.");
   // une réservation confirmée à 0 € est un blocage propriétaire : ces nuits sortent du disponible
   const blocked = new Set<string>();
   for (const r of resas) if (r.status === "BLOCKED") for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) blocked.add(d);
   days = days.map((d) => (blocked.has(d.date) ? { ...d, state: "BLOCKED" as const, priceCents: null, sentPriceCents: null } : d));
+  const shLastSync = !sh ? null : sh.ok
+    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[], { from: h.histFrom, to: h.histTo }) }
+    : { ok: false, at: sh.at, error: sh.error };
   const bedrooms = p.bedrooms ?? listing.bedrooms;
   const mk = mapMarket(market, bedrooms, days);
 
@@ -119,7 +136,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
     if (rows.length) observedCommission[ch] = { pct: Math.round((rows.reduce((a, x) => a + x.c, 0) / rows.reduce((a, x) => a + x.g, 0)) * 1000) / 10, n: rows.length };
   }
   const lastSync = {
-    ok: true, at: now.toISOString(), observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
+    ok: true, at: now.toISOString(), reservationsSource: toWrite ? source : "CONSERVEES", observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
     reservations: confirmed.length, cancelled: resas.filter((r) => r.status === "CANCELLED").length, ownerBlocks: resas.filter((r) => r.status === "BLOCKED").length, duplicates: resas.filter((r) => r.status === "DUPLICATE").length,
     historyFrom: confirmed.map((r) => r.checkIn).sort()[0] ?? null,
     touristTaxPct: model?.touristTaxPct ?? null,
@@ -132,19 +149,25 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   await db.transaction(async (tx) => {
     await tx.delete(calendarDays).where(eq(calendarDays.propertyId, p.id));
     await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
-    await tx.delete(reservations).where(and(eq(reservations.propertyId, p.id), eq(reservations.source, "PRICELABS")));
     await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now })));
     await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
-    for (let i = 0; i < resas.length; i += 200) await tx.insert(reservations).values(resas.slice(i, i + 200).map(({ commissionEstimated, ...r }) => ({ id: newId("res"), tenantId, propertyId: p.id, ...r, source: "PRICELABS" }))).onConflictDoNothing();
-    await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync } }).where(eq(properties.id, p.id));
+    if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
+    await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync } } : {}) }).where(eq(properties.id, p.id));
   });
-  await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}.` });
+  await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}${shLastSync?.ok ? `, SuperHote lu (${(shLastSync as any).autoChannels} canaux relevés)` : shLastSync ? ` ; SuperHote non lu : ${(shLastSync as any).error}` : ""}.` });
   return { days: days.length, reservations: confirmed.length };
 }
 
 /** Avant la revue quotidienne : relit PriceLabs si la dernière lecture a plus de trois heures. */
 export async function syncIfStale(tenantId: string, p: typeof properties.$inferSelect): Promise<void> {
-  if (p.isDemo || !p.pricelabs?.listingId) return;
+  if (p.isDemo) return;
+  if (!p.pricelabs?.listingId) {
+    // SuperHote seul : les réservations sont relues sur le même rythme
+    const sh = p.superhote;
+    if (!sh?.rentalId || (sh.lastSync?.ok && Date.now() - +new Date(sh.lastSync.at ?? 0) < 3 * 3600000)) return;
+    try { await (await import("./superhote-sync")).syncSuperhote(tenantId, p.id); } catch { /* consigné dans la dernière lecture */ }
+    return;
+  }
   const at = p.pricelabs.lastSync?.at ? +new Date(p.pricelabs.lastSync.at) : 0;
   if (Date.now() - at < 3 * 3600000 && p.pricelabs.lastSync?.ok) return;
   try { await syncPriceLabs(tenantId, p.id); } catch { /* consigné par syncPriceLabs ; la revue continue sur les données précédentes */ }

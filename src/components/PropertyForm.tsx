@@ -4,6 +4,7 @@ void (null as unknown as EconomicModel);
 import { ActionForm, Submit } from "./forms";
 import { MarkupsEditor } from "./MarkupsEditor";
 import { PriceLabsGuide } from "./PriceLabsGuide";
+import { SuperhoteGuide } from "./SuperhoteGuide";
 import type { ChannelMarkup } from "@/lib/pricing/published";
 import { Banner } from "./ui";
 
@@ -20,7 +21,7 @@ const SECTIONS: { title: string; note: string; fields: F[] }[] = [
   ] },
 ];
 
-type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean; channelMarkups: ChannelMarkup[] };
+type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean; hasShKey: boolean; channelMarkups: ChannelMarkup[] };
 const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
 
 /** Une valeur inconnue repart vide ; rien n'est prérempli à la place du propriétaire. */
@@ -71,6 +72,22 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
               <span className="help" id="pricelabsKey-h">Vérifiée auprès de PriceLabs à l'enregistrement, puis chiffrée. Jamais réaffichée en entier.</span>
             </div>
             <PriceLabsGuide />
+          </>
+        )}
+      </section>
+      <section className="section" style={{ marginTop: 28 }}>
+        <h2>5 · Connexion SuperHote</h2>
+        {existing?.hasShKey ? (
+          <p className="section-note">Un jeton SuperHote est déjà enregistré pour ce logement. Il se gère dans sa fiche, onglet SuperHote.</p>
+        ) : (
+          <>
+            <p className="section-note">Le jeton est rattaché à ce logement. Il permet de lire ses réservations (avec leur canal) et son calendrier, en lecture seule. Vous pouvez aussi l'ajouter plus tard depuis la fiche du logement.</p>
+            <div className="field" style={{ marginBottom: 12 }}>
+              <label htmlFor="superhoteKey">Jeton API SuperHote</label>
+              <input id="superhoteKey" name="superhoteKey" type="password" autoComplete="off" spellCheck={false} placeholder="collez le jeton ici" aria-describedby="superhoteKey-h" />
+              <span className="help" id="superhoteKey-h">Vérifié auprès de SuperHote à l'enregistrement, puis chiffré. Jamais réaffiché en entier.</span>
+            </div>
+            <SuperhoteGuide />
           </>
         )}
       </section>

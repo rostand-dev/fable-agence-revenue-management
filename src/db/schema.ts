@@ -48,6 +48,8 @@ export const properties = pgTable("properties", {
   strategyVersion: integer("strategy_version").notNull().default(1),
   /** Connexion PriceLabs propre au logement : clé chiffrée, annonce rattachée, état de la dernière lecture */
   pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
+  /** Connexion SuperHote (lecture seule) propre au logement : jeton chiffré, logement rattaché, canaux relevés, comparaison de prix */
+  superhote: jsonb("superhote").$type<Record<string, any>>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
   channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),
   createdAt: created(),
