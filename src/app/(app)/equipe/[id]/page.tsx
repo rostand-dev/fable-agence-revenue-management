@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import { chatAction } from "@/app/actions/decisions";
+import { AgentChat } from "@/components/AgentChat";
 import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { Recap, State } from "@/components/ui";
 import { db, schema } from "@/db";
-import { llmEnabled, llmModel } from "@/lib/agents/llm";
+import { saveAgentModelAction } from "@/app/actions/llm";
+import { AgentModelSelect } from "@/components/AgentModelSelect";
+import { serverDefaultModel } from "@/lib/agents/llm";
+import { effectiveModel, getLlmStatus } from "@/lib/agents/llm-config";
 import { AGENT_BY_ID, agentName, WORKFLOWS, type AgentId } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
@@ -22,6 +25,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   if (!a) notFound();
   const tab = (await searchParams).tab ?? "poste";
   const names = user.settings.agentNames ?? null, name = agentName(a.id, names);
+  const llm = await getLlmStatus(user.tenantId);
+  const chosen: string | undefined = (user.settings.agentModels ?? {})[a.id];
+  const effective = effectiveModel(llm.source, chosen, serverDefaultModel());
   const [runs, talk] = await Promise.all([
     db.select().from(schema.agentRuns).where(and(eq(schema.agentRuns.tenantId, user.tenantId), eq(schema.agentRuns.agentId, a.id))).orderBy(desc(schema.agentRuns.createdAt)).limit(40),
     db.select().from(schema.chatMessages).where(and(eq(schema.chatMessages.tenantId, user.tenantId), eq(schema.chatMessages.agentId, a.id), isNull(schema.chatMessages.opportunityId))).orderBy(asc(schema.chatMessages.createdAt)).limit(60),
@@ -53,8 +59,26 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           <Recap rows={[
             ["Poste", a.title], ["Rend compte à", a.reportsTo ? agentName(a.reportsTo, names) + " · direction" : a.id === "audit" ? "Vous — indépendant de la direction" : "Vous"],
             ["Cadence", a.cadence], ["Droits d'écriture", a.rights],
-            ["Mode de raisonnement", a.reasoning], ["Modèle de langage", usesLlm ? (llmEnabled() ? llmModel() : "non configuré — repli déterministe") : "aucun : ce poste n'utilise pas de modèle de langage"],
+            ["Mode de raisonnement", a.reasoning], ["Modèle de langage", effective ? effective + (chosen && llm.source === "utilisateur" ? " (choisi pour ce poste)" : " (par défaut)") : "non configuré — repli déterministe", true],
           ]} />
+          <section className="stratum">
+            <header><h3>Modèle de langage de {name}</h3></header>
+            <div className="stratum-body">
+              <p className="muted" style={{ margin: "0 0 12px" }}>{usesLlm ? "Ce modèle rédige les synthèses et répond dans la conversation de ce poste." : "Les calculs de ce poste restent déterministes : aucun modèle n'y intervient. Le modèle choisi sert uniquement à sa conversation."}</p>
+              {llm.source === "utilisateur" ? (
+                <ActionForm action={saveAgentModelAction} hidden={{ agentId: a.id }}>
+                  <div className="field" style={{ maxWidth: 560 }}>
+                    <label htmlFor="agent-model">Modèle</label>
+                    <AgentModelSelect id="agent-model" name="model" models={llm.models} current={chosen} defaultLabel={`Modèle par défaut (${serverDefaultModel()})`} />
+                    <span className="help">Liste des modèles disponibles avec votre clé API.</span>
+                  </div>
+                  <div style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer le modèle</Submit></div>
+                </ActionForm>
+              ) : (
+                <p className="muted" style={{ margin: 0 }}>Pour choisir un modèle, <Link href="/integrations">saisissez d'abord votre clé API Anthropic</Link> : la liste dépend d'elle.</p>
+              )}
+            </div>
+          </section>
           <div className="blocks" style={{ ["--cols" as any]: 2 }}>
             <div className="block block-faits"><h3>Responsabilités</h3><ul className="muted" style={{ margin: "8px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{a.responsibilities.map((r) => <li key={r}>{r}</li>)}</ul></div>
             <div className="block block-interpretations"><h3>Limites du poste</h3><ul className="muted" style={{ margin: "8px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{a.limits.map((r) => <li key={r}>{r}</li>)}</ul></div>
@@ -89,17 +113,10 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
       )}
       {tab === "conversation" && (
         <div className="agent-talk">
-          <header><h3><Icon name="chat" />Échanger avec {name}</h3><p>{llmEnabled() ? "Les réponses sont des interprétations fondées sur son poste et son activité récente." : "Aucune clé API renseignée : " + name + " répond par règles, sur son rôle, ses limites et sa cadence."}</p></header>
-          <div className="talk-log" role="log" aria-live="polite">
-            {talk.length === 0 && <p className="muted" style={{ margin: 0 }}>Aucun échange pour l'instant.</p>}
-            {talk.map((m) => <div key={m.id} className={`talk-turn${m.role === "user" ? " is-me" : ""}`}><span className="talk-who">{m.role === "user" ? "Vous" : name}</span><div className="talk-bubble">{m.content}{m.role !== "user" && <span className="talk-mark">{m.mode === "LLM" ? "modèle de langage" : "composée par règles"} · {fmtDateTime(m.createdAt)}</span>}</div></div>)}
-          </div>
-          <div className="talk-form">
-            <div className="talk-shortcuts">{["Quel est ton rôle ?", "Quelles sont tes limites ?", "À quelle cadence travailles-tu ?"].map((q) => <ActionForm key={q} action={chatAction} hidden={{ agentId: a.id, opportunityId: "", question: q }} className="inline"><Submit className="btn btn-ghost btn-sm" pendingLabel="…">{q}</Submit></ActionForm>)}</div>
-            <ActionForm action={chatAction} hidden={{ agentId: a.id, opportunityId: "" }}>
-              <div className="talk-row"><label className="visually-hidden" htmlFor="q">Votre question</label><textarea id="q" name="question" rows={1} placeholder={`Écrire à ${name}…`} required /><Submit icon="send" pendingLabel="Envoi…">Envoyer</Submit></div>
-            </ActionForm>
-          </div>
+          <header><h3><Icon name="chat" />Échanger avec {name}</h3><p>{llm.source !== "aucune" ? "Les réponses sont des interprétations fondées sur son poste et son activité récente." : "Aucune clé API renseignée : " + name + " répond par règles, sur son rôle, ses limites et sa cadence."}</p></header>
+          <AgentChat agentId={a.id} opportunityId={null} agentLabel={name} inputId="q" placeholder={`Écrire à ${name}…`} emptyText="Aucun échange pour l'instant."
+            shortcuts={["Quel est ton rôle ?", "Quelles sont tes limites ?", "À quelle cadence travailles-tu ?"]}
+            initial={talk.map((m) => ({ id: m.id, role: m.role === "user" ? "user" as const : "agent" as const, content: m.content, mode: m.mode ?? null, createdAt: m.createdAt.toISOString() }))} />
         </div>
       )}
       {tab !== "conversation" && <p style={{ marginTop: 20 }}><State role="neutre">{a.reasoning}</State></p>}

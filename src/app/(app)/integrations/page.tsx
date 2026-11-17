@@ -4,7 +4,8 @@ import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Banner, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
-import { llmEnabled, llmModel } from "@/lib/agents/llm";
+import { LlmKeyPanel } from "@/components/LlmKeyPanel";
+import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 
@@ -18,8 +19,10 @@ const INFO: Record<string, { name: string; role: string; next: string }> = {
 const ST: Record<string, [string, "sain" | "tech" | "attention" | "neutre"]> = { DEMO: ["Source simulée", "tech"], CONNECTED: ["Connectée", "sain"], NOT_CONNECTED: ["Non connectée", "neutre"], DEGRADED: ["Dégradée", "attention"] };
 const CAP: Record<string, string> = { "pricelabs.read": "Lecture de la grille et du marché", "pricelabs.write": "Écriture après approbation", "superhote.webhooks": "Réception des réservations", "superhote.reconcile": "Rapprochement planifié", "booking.promotions.read": "Lecture des promotions", "booking.promotions.write": "Écriture des promotions", "airbnb.promotions.read": "Lecture des promotions", "airbnb.promotions.write": "Écriture des promotions" };
 
-export default async function Integrations() {
+export default async function Integrations({ searchParams }: { searchParams: Promise<{ llm?: string }> }) {
+  const { llm } = await searchParams;
   const user = await requireUser();
+  const llmStatus = await getLlmStatus(user.tenantId);
   const ints = await db.select().from(schema.integrations).where(eq(schema.integrations.tenantId, user.tenantId));
   return (
     <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Configuration" }, { label: "Intégrations" }]}>
@@ -27,6 +30,7 @@ export default async function Integrations() {
         <h1>Ce que l'agence peut lire et écrire</h1>
         <p>Chaque capacité est affichée telle qu'elle est : une capacité absente est une dépendance visible, pas un prérequis caché. Une action n'est proposable en exécution que si la capacité, la permission et les garde-fous sont réunis.</p>
       </div>
+      {llm === "supprimee" && <Banner role="sain" title="Clé supprimée" style={{ marginBottom: 18 }}>Les agents reviennent au modèle du serveur, ou au mode déterministe s'il n'y en a pas. Les modèles choisis par agent ont été réinitialisés.</Banner>}
       <Banner role="tech" title="Démonstration simulée, logements réels par clé PriceLabs" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques. Vos propres logements lisent PriceLabs dès que leur clé API est renseignée dans leur fiche (onglet PriceLabs) : grille, marché et réservations relayées par votre PMS.</Banner>
       <div className="stack">
         {["superhote", "pricelabs", "booking", "airbnb"].map((k) => {
@@ -49,10 +53,7 @@ export default async function Integrations() {
             </article>
           );
         })}
-        <article className="stratum">
-          <header><h3>Modèle de langage</h3><span className="metric-source">Synthèses et conversations</span><span style={{ marginLeft: "auto" }}><State role={llmEnabled() ? "sain" : "neutre"}>{llmEnabled() ? "Configuré" : "Non configuré"}</State></span></header>
-          <div className="stratum-body"><Recap rows={[["Fournisseur", "Anthropic"], ["Modèle", llmEnabled() ? llmModel() : <Vq>aucun</Vq>, true], ["Sans clé", "Repli déterministe : la revue, les calculs et les garde-fous fonctionnent à l'identique."], ["Activation", "Variable d'environnement ANTHROPIC_API_KEY sur le serveur ; jamais exposée au navigateur."]]} /></div>
-        </article>
+        <LlmKeyPanel status={llmStatus} />
       </div>
     </Page>
   );

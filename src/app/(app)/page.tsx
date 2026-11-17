@@ -7,7 +7,7 @@ import { Page } from "@/components/Page";
 import { SitCard } from "@/components/SitCard";
 import { Banner, Metric, State, Vq } from "@/components/ui";
 import { AGENTS } from "@/lib/agents/registry";
-import { llmEnabled } from "@/lib/agents/llm";
+import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
 import { diffDays, fmtDate, fmtDateTime, todayISO } from "@/lib/dates";
 import type { Candidate } from "@/lib/engine/types";
@@ -20,6 +20,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const user = await requireUser();
   const f = (await searchParams).f ?? "a-traiter";
   const [props, all, review] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN", "DEFERRED", "DECIDED"]), lastReview(user.tenantId)]);
+  const llmOn = (await getLlmStatus(user.tenantId)).source !== "aucune";
   const names = user.settings.agentNames ?? null;
   const pname = new Map(props.map((p) => [p.id, p.name]));
   const prov = new Set(props.filter((p) => ((p.economics as any)?.provisional?.length ?? 0) > 0).map((p) => p.id));
@@ -52,7 +53,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       <div className="card card-quiet row-wrap" style={{ marginBottom: 14 }}>
         <div className="crew">{AGENTS.map((a) => <Avatar key={a.id} agent={a.id} size={34} title={`${names?.[a.id] ?? a.name}, ${a.title}`} />)}</div>
         <p className="muted od-fill" style={{ margin: 0, minWidth: 220 }}>
-          {review ? <>Dernière revue de l'équipe : <strong style={{ color: "var(--ink)" }}>{fmtDateTime(review.startedAt)}</strong>. {llmEnabled() ? "Synthèses rédigées avec le modèle de langage." : "Synthèses en mode déterministe (aucune clé API renseignée)."}</> : "L'équipe n'a pas encore passé vos logements en revue."}
+          {review ? <>Dernière revue de l'équipe : <strong style={{ color: "var(--ink)" }}>{fmtDateTime(review.startedAt)}</strong>. {llmOn ? "Synthèses rédigées avec le modèle de langage." : "Synthèses en mode déterministe (aucune clé API renseignée)."}</> : "L'équipe n'a pas encore passé vos logements en revue."}
           {" "}<Link href="/equipe">Voir l'équipe</Link>
         </p>
         <ActionForm action={reviewAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="spin" pendingLabel="Revue en cours…">Relancer la revue</Submit></ActionForm>

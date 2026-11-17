@@ -1,1 +1,1 @@
-ALTER TABLE "properties" ADD COLUMN "pricelabs" jsonb;
+ALTER TABLE "properties" ADD COLUMN IF NOT EXISTS "pricelabs" jsonb;

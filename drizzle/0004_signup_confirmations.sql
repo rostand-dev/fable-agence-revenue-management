@@ -1,4 +1,4 @@
-CREATE TABLE "signup_confirmations" (
+CREATE TABLE IF NOT EXISTS "signup_confirmations" (
 	"id" text PRIMARY KEY NOT NULL,
 	"email" text NOT NULL,
 	"name" text NOT NULL,
@@ -9,5 +9,5 @@ CREATE TABLE "signup_confirmations" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX "signup_confirmations_token" ON "signup_confirmations" USING btree ("token_hash");--> statement-breakpoint
-CREATE INDEX "signup_confirmations_email" ON "signup_confirmations" USING btree ("email");
+CREATE UNIQUE INDEX IF NOT EXISTS "signup_confirmations_token" ON "signup_confirmations" USING btree ("token_hash");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "signup_confirmations_email" ON "signup_confirmations" USING btree ("email");

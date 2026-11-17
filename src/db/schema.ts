@@ -221,6 +221,18 @@ export const integrations = pgTable("integrations", {
   note: text("note"),
 }, (t) => [uniqueIndex("integrations_provider").on(t.tenantId, t.provider)]);
 
+/** Clé API LLM propre à chaque propriétaire (chiffrée) + cache de la liste des modèles que cette clé peut utiliser */
+export const llmCredentials = pgTable("llm_credentials", {
+  tenantId: text("tenant_id").primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull().default("anthropic"),
+  apiKeyEnc: text("api_key_enc").notNull(),
+  keyHint: text("key_hint").notNull(),
+  models: jsonb("models").$type<{ id: string; name: string; createdAt: string | null }[]>().notNull().default([]),
+  modelsFetchedAt: ts("models_fetched_at"),
+  verifiedAt: ts("verified_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
 export const reviewRuns = pgTable("review_runs", {
   id: id(),
   tenantId: text("tenant_id").notNull(),
