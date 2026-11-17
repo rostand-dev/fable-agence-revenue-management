@@ -1133,7 +1133,7 @@ td .vq, th .vq { font-size: 12.5px; }
 .agent-talk > header h3 { margin: 0; font-size: 14.5px; font-weight: 640; display: flex; align-items: center; gap: 8px; }
 .agent-talk > header h3 .od-icon { --od-icon-size: 16px; color: var(--violet); }
 .agent-talk > header p { margin: 4px 0 0; font-size: 12.5px; color: var(--quiet); }
-.talk-log { padding: 14px 16px; display: grid; gap: 12px; max-height: 320px; overflow-y: auto; }
+.talk-log { padding: 14px 16px; display: grid; gap: 12px; align-content: start; max-height: min(420px, 60dvh); min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
 .talk-turn { display: grid; gap: 6px; }
 .talk-who { font-size: 11.5px; letter-spacing: .07em; text-transform: uppercase; color: var(--faint); }
 .talk-bubble {
@@ -1142,7 +1142,10 @@ td .vq, th .vq { font-size: 12.5px; }
   background: rgb(4 5 10 / 45%);
   padding: 10px 12px;
   font-size: 13.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
+.talk-bubble .talk-mark { display: flex; white-space: normal; }
 .talk-turn.is-me .talk-bubble { background: rgb(255 255 255 / 6%); }
 .talk-mark {
   display: inline-flex;
@@ -1154,11 +1157,14 @@ td .vq, th .vq { font-size: 12.5px; }
   color: var(--violet);
 }
 .talk-mark::before { content: ""; width: 8px; height: 8px; border: 1.5px dashed currentColor; border-radius: 50%; flex: none; }
-.talk-form { padding: 0 16px 16px; display: grid; gap: 10px; }
+.talk-form { padding: 0 16px 16px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .talk-shortcuts { display: flex; gap: 8px; flex-wrap: wrap; }
-.talk-row { display: flex; gap: 8px; align-items: flex-end; }
+.talk-row { min-width: 0; display: flex; gap: 8px; align-items: flex-end; }
 .talk-row textarea {
   flex: 1 1 0;
+  min-width: 0;
+  max-height: 160px;
+  resize: none;
   min-height: 44px;
   padding: 11px 12px;
   border-radius: var(--r-sm);
@@ -1167,7 +1173,28 @@ td .vq, th .vq { font-size: 12.5px; }
   color: var(--ink);
   font-family: inherit;
   font-size: 14px;
-  resize: vertical;
+}
+.talk-row .btn { min-height: 44px; flex: none; }
+.talk-shortcuts .btn { min-height: 36px; white-space: normal; text-align: left; }
+.talk-typing { display: inline-flex; align-items: center; gap: 10px; color: var(--quiet); font-style: italic; white-space: normal; }
+.talk-dots { display: inline-flex; gap: 4px; }
+.talk-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--violet); animation: talk-bounce 1.2s infinite ease-in-out both; }
+.talk-dots i:nth-child(2) { animation-delay: .16s; }
+.talk-dots i:nth-child(3) { animation-delay: .32s; }
+@keyframes talk-bounce { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+.talk-caret { display: inline-block; width: 7px; height: 1em; margin-left: 2px; vertical-align: text-bottom; background: var(--violet); animation: talk-blink 1s steps(2, start) infinite; }
+@keyframes talk-blink { to { visibility: hidden; } }
+.talk-error { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-color: rgb(248 113 113 / 45%); white-space: normal; }
+.talk-error .od-icon { --od-icon-size: 16px; flex: none; }
+.talk-error span { flex: 1 1 200px; }
+@media (max-width: 767px) {
+  .talk-log { padding: 12px; max-height: 55dvh; }
+  .talk-form { padding: 0 12px 12px; }
+  .talk-row textarea { font-size: 16px; } /* évite le zoom automatique d'iOS */
+}
+@media (prefers-reduced-motion: reduce) {
+  .talk-dots i { animation: none; opacity: .7; }
+  .talk-caret { animation: none; }
 }
 
 /* cascade économique */

@@ -43,8 +43,9 @@ export async function writeNarrative(llm: LlmConfig | null, o: DetectedOpportuni
   try {
     const r = await callLlm(llm, {
       system: `Tu es la directrice du revenue management d'une agence. Tu rédiges la synthèse d'un dossier de décision pour le propriétaire.\n${HOUSE_RULES}\nRéponds uniquement par un objet JSON : {"summary": "2 à 3 phrases : ce qui est observé, sur quelle période, et la cause la plus probable", "recommendation": "1 à 2 phrases : l'option retenue et pourquoi elle l'emporte sur les autres, ou pourquoi ne rien faire", "caveats": ["0 à 3 réserves utiles à la décision"]}`,
-      messages: [{ role: "user", content: "Faits certifiés du dossier :\n" + JSON.stringify(facts, null, 1) }], maxTokens: 600,
+      messages: [{ role: "user", content: "Faits certifiés du dossier :\n" + JSON.stringify(facts, null, 1) }], maxTokens: 900,
     });
+    if (r.truncated) throw new Error("Réponse du modèle coupée par la limite de longueur : synthèse par règles.");
     const parsed = Out.parse(extractJson(r.text));
     return { narrative: { ...parsed, mode: "LLM", model: r.model, promptVersion: PROMPT_VERSION }, usage: { inputTokens: r.inputTokens, outputTokens: r.outputTokens, durationMs: r.durationMs } };
   } catch (e: any) {

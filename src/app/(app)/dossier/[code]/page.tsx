@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
-import { approveAction, chatAction, deferAction, executeAction, rejectAction, reopenAction, rollbackAction, verifyAction } from "@/app/actions/decisions";
+import { AgentChat } from "@/components/AgentChat";
+import { approveAction, deferAction, executeAction, rejectAction, reopenAction, rollbackAction, verifyAction } from "@/app/actions/decisions";
 import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
@@ -372,29 +373,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <h3 id="talk-h"><Icon name="chat" />Conversation avec {agentName("direction", names)}</h3>
             <p>Section distincte des preuves : une réponse d'agent est une interprétation, jamais une pièce.</p>
           </header>
-          <div className="talk-log" role="log" aria-live="polite">
-            {talk.length === 0 && <p className="muted" style={{ margin: 0 }}>Aucun échange sur ce dossier.</p>}
-            {talk.map((m) => (
-              <div key={m.id} className={`talk-turn${m.role === "user" ? " is-me" : ""}`}>
-                <span className="talk-who">{m.role === "user" ? "Vous" : agentName("direction", names)}</span>
-                <div className="talk-bubble">{m.content}{m.role !== "user" && <span className="talk-mark">Réponse interprétative · {m.mode === "LLM" ? "modèle de langage" : "composée par règles"} · {fmtDateTime(m.createdAt)}</span>}</div>
-              </div>
-            ))}
-          </div>
-          <div className="talk-form">
-            <div className="talk-shortcuts">
-              {["Pourquoi cette recommandation ?", "Et si je ne fais rien ?", "Quelles sont les preuves ?"].map((qq) => (
-                <ActionForm key={qq} action={chatAction} hidden={{ agentId: "direction", opportunityId: o.id, question: qq }} className="inline"><Submit className="btn btn-ghost btn-sm" pendingLabel="…">{qq}</Submit></ActionForm>
-              ))}
-            </div>
-            <ActionForm action={chatAction} hidden={{ agentId: "direction", opportunityId: o.id }}>
-              <div className="talk-row">
-                <label className="visually-hidden" htmlFor="talk-input">Votre question</label>
-                <textarea id="talk-input" name="question" rows={1} placeholder="Poser une question sur ce dossier…" required />
-                <Submit icon="send" pendingLabel="Envoi…">Envoyer</Submit>
-              </div>
-            </ActionForm>
-          </div>
+          <AgentChat agentId="direction" opportunityId={o.id} agentLabel={agentName("direction", names)} inputId="talk-input" markPrefix="Réponse interprétative · " placeholder="Poser une question sur ce dossier…" emptyText="Aucun échange sur ce dossier."
+            shortcuts={["Pourquoi cette recommandation ?", "Et si je ne fais rien ?", "Quelles sont les preuves ?"]}
+            initial={talk.map((m) => ({ id: m.id, role: m.role === "user" ? "user" as const : "agent" as const, content: m.content, mode: m.mode ?? null, createdAt: m.createdAt.toISOString() }))} />
         </div>
       </section>
 

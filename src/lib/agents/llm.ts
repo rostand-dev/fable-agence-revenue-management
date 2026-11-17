@@ -57,13 +57,64 @@ export async function listAnthropicModels(apiKey: string): Promise<LlmModelInfo[
   return out;
 }
 
-export type LlmResult = { text: string; inputTokens: number | null; outputTokens: number | null; durationMs: number; model: string };
+export type LlmResult = { text: string; inputTokens: number | null; outputTokens: number | null; durationMs: number; model: string; stopReason: string | null; truncated: boolean };
+type LlmOpts = { system: string; messages: { role: "user" | "assistant"; content: string }[]; maxTokens?: number; timeoutMs?: number };
 
-export async function callLlm(config: LlmConfig, opts: { system: string; messages: { role: "user" | "assistant"; content: string }[]; maxTokens?: number; timeoutMs?: number }): Promise<LlmResult> {
+export async function callLlm(config: LlmConfig, opts: LlmOpts): Promise<LlmResult> {
   const started = Date.now();
   const data: any = await request(config.apiKey, "/v1/messages", { method: "POST", timeoutMs: opts.timeoutMs ?? 25000, body: { model: config.model, max_tokens: opts.maxTokens ?? 700, system: opts.system, messages: opts.messages } }, "d'utiliser ce modèle");
   const text = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
-  return { text, inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, durationMs: Date.now() - started, model: config.model };
+  const stopReason = typeof data.stop_reason === "string" ? data.stop_reason : null;
+  return { text, inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, durationMs: Date.now() - started, model: config.model, stopReason, truncated: stopReason === "max_tokens" };
+}
+
+/**
+ * Appel en flux (SSE) : `onText` reçoit chaque morceau de texte dès qu'il arrive.
+ * Le résultat final porte la raison d'arrêt, pour ne jamais présenter une réponse coupée comme complète.
+ */
+export async function streamLlm(config: LlmConfig, opts: LlmOpts, onText: (chunk: string) => void): Promise<LlmResult> {
+  const started = Date.now();
+  const ctrl = new AbortController(), timeoutMs = opts.timeoutMs ?? 60000;
+  let timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(apiBase() + "/v1/messages", {
+      method: "POST", signal: ctrl.signal, cache: "no-store",
+      headers: { "x-api-key": config.apiKey, "anthropic-version": "2023-06-01", accept: "text/event-stream", "content-type": "application/json" },
+      body: JSON.stringify({ model: config.model, max_tokens: opts.maxTokens ?? 700, system: opts.system, messages: opts.messages, stream: true }),
+    });
+  } catch (e: any) {
+    clearTimeout(timer);
+    throw new LlmError(e?.name === "AbortError" ? "Anthropic n'a pas répondu à temps." : "Anthropic est injoignable depuis le serveur.");
+  }
+  if (!res.ok || !res.body) { clearTimeout(timer); throw httpError(res.status, "d'utiliser ce modèle"); }
+  let text = "", inputTokens: number | null = null, outputTokens: number | null = null, stopReason: string | null = null, buf = "";
+  const handle = (block: string) => {
+    const dataLine = block.split("\n").find((l) => l.startsWith("data:"));
+    if (!dataLine) return;
+    let ev: any;
+    try { ev = JSON.parse(dataLine.slice(5).trim()); } catch { return; }
+    if (ev.type === "message_start") inputTokens = ev.message?.usage?.input_tokens ?? inputTokens;
+    else if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta" && typeof ev.delta.text === "string") { text += ev.delta.text; onText(ev.delta.text); }
+    else if (ev.type === "message_delta") { stopReason = ev.delta?.stop_reason ?? stopReason; outputTokens = ev.usage?.output_tokens ?? outputTokens; }
+    else if (ev.type === "error") throw new LlmError("Anthropic a interrompu la réponse : " + String(ev.error?.message ?? "erreur").slice(0, 120));
+  };
+  try {
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), timeoutMs); // délai d'inactivité, pas durée totale
+      buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let i: number;
+      while ((i = buf.indexOf("\n\n")) >= 0) { handle(buf.slice(0, i)); buf = buf.slice(i + 2); }
+    }
+    if (buf.trim()) handle(buf);
+  } catch (e: any) {
+    if (e instanceof LlmError) throw e;
+    throw new LlmError(e?.name === "AbortError" ? "Anthropic n'a pas répondu à temps." : "La réponse d'Anthropic a été interrompue.");
+  } finally { clearTimeout(timer); }
+  return { text: text.trim(), inputTokens, outputTokens, durationMs: Date.now() - started, model: config.model, stopReason, truncated: stopReason === "max_tokens" };
 }
 
 export function extractJson(text: string): unknown {

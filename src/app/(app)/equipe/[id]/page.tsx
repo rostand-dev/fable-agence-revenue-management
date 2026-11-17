@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
-import { chatAction } from "@/app/actions/decisions";
+import { AgentChat } from "@/components/AgentChat";
 import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
@@ -114,16 +114,9 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
       {tab === "conversation" && (
         <div className="agent-talk">
           <header><h3><Icon name="chat" />Échanger avec {name}</h3><p>{llm.source !== "aucune" ? "Les réponses sont des interprétations fondées sur son poste et son activité récente." : "Aucune clé API renseignée : " + name + " répond par règles, sur son rôle, ses limites et sa cadence."}</p></header>
-          <div className="talk-log" role="log" aria-live="polite">
-            {talk.length === 0 && <p className="muted" style={{ margin: 0 }}>Aucun échange pour l'instant.</p>}
-            {talk.map((m) => <div key={m.id} className={`talk-turn${m.role === "user" ? " is-me" : ""}`}><span className="talk-who">{m.role === "user" ? "Vous" : name}</span><div className="talk-bubble">{m.content}{m.role !== "user" && <span className="talk-mark">{m.mode === "LLM" ? "modèle de langage" : "composée par règles"} · {fmtDateTime(m.createdAt)}</span>}</div></div>)}
-          </div>
-          <div className="talk-form">
-            <div className="talk-shortcuts">{["Quel est ton rôle ?", "Quelles sont tes limites ?", "À quelle cadence travailles-tu ?"].map((q) => <ActionForm key={q} action={chatAction} hidden={{ agentId: a.id, opportunityId: "", question: q }} className="inline"><Submit className="btn btn-ghost btn-sm" pendingLabel="…">{q}</Submit></ActionForm>)}</div>
-            <ActionForm action={chatAction} hidden={{ agentId: a.id, opportunityId: "" }}>
-              <div className="talk-row"><label className="visually-hidden" htmlFor="q">Votre question</label><textarea id="q" name="question" rows={1} placeholder={`Écrire à ${name}…`} required /><Submit icon="send" pendingLabel="Envoi…">Envoyer</Submit></div>
-            </ActionForm>
-          </div>
+          <AgentChat agentId={a.id} opportunityId={null} agentLabel={name} inputId="q" placeholder={`Écrire à ${name}…`} emptyText="Aucun échange pour l'instant."
+            shortcuts={["Quel est ton rôle ?", "Quelles sont tes limites ?", "À quelle cadence travailles-tu ?"]}
+            initial={talk.map((m) => ({ id: m.id, role: m.role === "user" ? "user" as const : "agent" as const, content: m.content, mode: m.mode ?? null, createdAt: m.createdAt.toISOString() }))} />
         </div>
       )}
       {tab !== "conversation" && <p style={{ marginTop: 20 }}><State role="neutre">{a.reasoning}</State></p>}

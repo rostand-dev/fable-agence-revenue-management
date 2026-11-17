@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { callLlm, listAnthropicModels, LlmError } from "./llm";
+import { callLlm, listAnthropicModels, LlmError, streamLlm } from "./llm";
 import { effectiveModel, pickLlmConfig } from "./llm-config";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
 
@@ -80,5 +80,53 @@ describe("secret", () => {
     expect(enc).not.toContain(key);
     expect(decryptSecret(enc)).toBe(key);
     expect(secretHint(key)).toBe("••••mnop");
+  });
+});
+
+const sse = (events: unknown[], status = 200) => {
+  const body = events.map((e: any) => `event: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`).join("");
+  // morceaux volontairement coupés au milieu d'un événement
+  const enc = new TextEncoder(), bytes = enc.encode(body), mid = Math.floor(bytes.length / 2);
+  return new Response(new ReadableStream({ start(c) { c.enqueue(bytes.slice(0, mid)); c.enqueue(bytes.slice(mid)); c.close(); } }), { status, headers: { "content-type": "text/event-stream" } });
+};
+const cfg = { apiKey: "k".repeat(20), model: "claude-sonnet-5-5", source: "utilisateur" as const };
+const msg = [{ role: "user" as const, content: "Bonjour" }];
+
+describe("streamLlm", () => {
+  it("transmet le texte au fil de l'eau et lit la raison d'arrêt", async () => {
+    fetchMock.mockResolvedValueOnce(sse([
+      { type: "message_start", message: { usage: { input_tokens: 21 } } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "Bon" } },
+      { type: "content_block_delta", delta: { type: "text_delta", text: "jour." } },
+      { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 4 } },
+    ]));
+    const chunks: string[] = [];
+    const r = await streamLlm(cfg, { system: "s", messages: msg }, (c) => chunks.push(c));
+    expect(chunks).toEqual(["Bon", "jour."]);
+    expect(r).toMatchObject({ text: "Bonjour.", inputTokens: 21, outputTokens: 4, stopReason: "end_turn", truncated: false });
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).stream).toBe(true);
+  });
+  it("signale une réponse coupée par la limite de longueur", async () => {
+    fetchMock.mockResolvedValueOnce(sse([
+      { type: "content_block_delta", delta: { type: "text_delta", text: "Je travaille en lecture seule et je" } },
+      { type: "message_delta", delta: { stop_reason: "max_tokens" }, usage: { output_tokens: 500 } },
+    ]));
+    const r = await streamLlm(cfg, { system: "s", messages: msg }, () => {});
+    expect(r.truncated).toBe(true);
+    expect(r.stopReason).toBe("max_tokens");
+  });
+  it("traduit une erreur envoyée dans le flux et un refus HTTP", async () => {
+    fetchMock.mockResolvedValueOnce(sse([{ type: "error", error: { type: "overloaded_error", message: "Surchargé" } }]));
+    await expect(streamLlm(cfg, { system: "s", messages: msg }, () => {})).rejects.toThrow(/interrompu.*Surchargé/);
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 401 }));
+    await expect(streamLlm(cfg, { system: "s", messages: msg }, () => {})).rejects.toMatchObject({ status: 401 });
+  });
+});
+
+describe("callLlm", () => {
+  it("expose stop_reason et truncated", async () => {
+    fetchMock.mockResolvedValueOnce(json({ content: [{ type: "text", text: "Coupé et" }], stop_reason: "max_tokens", usage: { input_tokens: 1, output_tokens: 2 } }));
+    const r = await callLlm(cfg, { system: "s", messages: msg });
+    expect(r.truncated).toBe(true);
   });
 });
