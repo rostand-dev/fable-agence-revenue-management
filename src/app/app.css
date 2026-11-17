@@ -186,7 +186,8 @@ a.cal-day:focus-visible, a.cal-day[aria-current="date"] { outline: 2px solid var
 
 /* accès rapide au glossaire dans la barre de titre */
 .glossary-link { display: inline-flex; align-items: center; gap: 6px; }
-@media (max-width: 767px) { .glossary-link .glossary-link-label { display: none; } .glossary-link { min-width: 36px; justify-content: center; } }
+/* mobile : le glossaire et la déconnexion sont dans la feuille « Plus » (gain de place) */
+@media (max-width: 767px) { .glossary-link, .topbar .logout-form { display: none; } }
 
 /* un texte masqué (position absolue) ne doit pas s'échapper d'un tableau défilant et élargir la page */
 .table-wrap, .cascade-wrap { position: relative; }

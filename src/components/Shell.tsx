@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useRef } from "react";
 import { Icon, Logo } from "./Icon";
+import { logoutAction } from "@/app/actions/auth";
 
 type Item = { href: string; icon: string; label: string; primary?: boolean; count?: boolean };
 const GROUPS: { label: string; items: Item[] }[] = [
@@ -103,6 +104,11 @@ export function Shell({ open, children }: { open: number; children: React.ReactN
               })}
             </section>
           ))}
+          <form action={logoutAction} className="nav-sheet-logout">
+            <button type="submit" className="nav-sheet-link nav-sheet-logout-btn">
+              <span data-icon><Icon name="logout" /></span><span>Se déconnecter</span>
+            </button>
+          </form>
         </div>
       </dialog>
     </NavCtx.Provider>
