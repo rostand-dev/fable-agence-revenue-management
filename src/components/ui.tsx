@@ -20,7 +20,7 @@ export function Banner({ role, icon, title, children, style }: { role: "tech" | 
     </div>
   );
 }
-export function Metric({ label, value, unit, source, tone }: { label: string; value: React.ReactNode; unit?: string; source: React.ReactNode; tone?: "sain" | "attention" | "veto" }) {
+export function Metric({ label, value, unit, source, tone }: { label: React.ReactNode; value: React.ReactNode; unit?: string; source: React.ReactNode; tone?: "sain" | "attention" | "veto" }) {
   return (
     <div className="metric od-stat">
       <span className="metric-label">{label}</span>
@@ -36,7 +36,7 @@ export function Vq({ kind = "inconnu", children }: { kind?: "inconnu" | "nonchif
 export function Money({ cents, precise }: { cents: number | null | undefined; precise?: boolean }) {
   return cents === null || cents === undefined ? <Vq>inconnu</Vq> : <>{euro(cents, precise)}</>;
 }
-export function Recap({ rows }: { rows: [string, React.ReactNode, boolean?][] }) {
+export function Recap({ rows }: { rows: [React.ReactNode, React.ReactNode, boolean?][] }) {
   return <div className="recap">{rows.map(([k, v, mono], i) => <div key={i}><span className="k">{k}</span><p className={`v${mono ? " mono" : ""}`}>{v}</p></div>)}</div>;
 }
 export function Steps({ level, cls }: { level: number; cls: string }) {

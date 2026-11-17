@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/Term";
 import { notFound } from "next/navigation";
 import { and, asc, eq } from "drizzle-orm";
 import { approveAction, chatAction, deferAction, executeAction, rejectAction, reopenAction, rollbackAction, verifyAction } from "@/app/actions/decisions";
@@ -114,7 +115,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <article>
               <span className="reg-key"><Icon name="bulb" />Diagnostic</span>
               <p><strong>{d.primaryLabel}.</strong> {o.signals.hypothesisText}</p>
-              <div className="reg-foot"><span className={`gauge-read gauge-conf`}><strong>Confiance {conf.label.toLowerCase()}</strong><span className="gauge-num">{conf.level}/4</span></span><span className="metric-source">{d.confidenceNote}</span></div>
+              <div className="reg-foot"><span className={`gauge-read gauge-conf`}><strong><Term id="confiance">Confiance</Term> {conf.label.toLowerCase()}</strong><span className="gauge-num">{conf.level}/4</span></span><span className="metric-source">{d.confidenceNote}</span></div>
             </article>
             <article>
               <span className="reg-key"><Icon name="search" />Arbre de diagnostic</span>
@@ -204,12 +205,12 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <Cascade current={c.current} proposed={c.proposed} />
             <div className="bounds">
               <div className="bound bound-cible"><span className="bound-k">Contribution visée par nuit</span><span className="bound-v"><Money cents={model.targetContributionPerNightCents} /></span></div>
-              <div className="bound bound-plancher"><span className="bound-k">Plancher stratégique · prix vendu</span><span className="bound-v">{euro(strategyFloorCents(model, ref.channel, ref.nights))}</span></div>
-              <div className="bound bound-plancher"><span className="bound-k">Plancher absolu · prix vendu</span><span className="bound-v">{euro(hardFloorCents(model, ref.channel, ref.nights))}</span></div>
+              <div className="bound bound-plancher"><span className="bound-k"><Term id="plancher-strategique">Plancher stratégique</Term> · <Term id="prix-vendu">prix vendu</Term></span><span className="bound-v">{euro(strategyFloorCents(model, ref.channel, ref.nights))}</span></div>
+              <div className="bound bound-plancher"><span className="bound-k"><Term id="plancher-absolu">Plancher absolu</Term> · <Term id="prix-vendu">prix vendu</Term></span><span className="bound-v">{euro(hardFloorCents(model, ref.channel, ref.nights))}</span></div>
               <div className="bound"><span className="bound-k">Origine des bornes</span><span className="bound-v" style={{ fontFamily: "var(--font)", fontSize: 13, color: "var(--quiet)" }}>{model.origin === "DEMO" ? "Valeurs de démonstration" : (model.provisional?.length ?? 0) > 0 ? `Planchers provisoires — à confirmer : ${model.provisional!.join(", ")}` : "Modèle économique déclaré"} · stratégie v{p.strategyVersion}</span></div>
             </div>
             {o.veto && o.signals.vetoText && (
-              <div className="veto-strip"><Icon name="ban" /><div><h4>Veto économique sur la situation actuelle</h4><p>{o.signals.vetoText}</p></div></div>
+              <div className="veto-strip"><Icon name="ban" /><div><h4><Term id="veto">Veto</Term> économique sur la situation actuelle</h4><p>{o.signals.vetoText}</p></div></div>
             )}
           </div>
         </section>
@@ -345,7 +346,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   <div className="result3">
                     <div className="r-obs"><h4>Observation</h4><p>{meas.observed}</p></div>
                     <div className="r-int"><h4>Interprétation</h4><p>{meas.interpretation} <span className="talk-mark">Lecture de {agentName("reporting", names)} · confiance {meas.confidence}</span></p></div>
-                    <div className="r-eff"><h4>Effet incrémental</h4><p><span className="r-val">{meas.incrementalCents === null || meas.incrementalCents === undefined ? <Vq>Inconnu</Vq> : signedEuro(meas.incrementalCents)}</span> Aucune période témoin comparable : aucun gain n'est attribué à l'action.</p></div>
+                    <div className="r-eff"><h4><Term id="effet-incremental">Effet incrémental</Term></h4><p><span className="r-val">{meas.incrementalCents === null || meas.incrementalCents === undefined ? <Vq>Inconnu</Vq> : signedEuro(meas.incrementalCents)}</span> Aucune période témoin comparable : aucun gain n'est attribué à l'action.</p></div>
                   </div>
                 ) : <p className="muted" style={{ margin: 0 }}>{action.status === "MEASURING" ? `Fenêtre d'observation en cours ; mesure le ${action.measureDueAt ? fmtDate(action.measureDueAt) : "—"}.` : action.status === "ROLLED_BACK" ? "Action annulée : aucune mesure." : "La mesure commence après la vérification."}</p>}
               </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/Term";
 import { and, eq, gte } from "drizzle-orm";
 import { Page } from "@/components/Page";
 import { Banner, Byline, Metric, Vq } from "@/components/ui";
@@ -33,23 +34,23 @@ export default async function Bilan({ searchParams }: { searchParams: Promise<{ 
       <div className="filters" role="group" aria-label="Choisir le logement">{props.map((x) => <Link key={x.id} className="chip" href={`/bilan?logement=${x.id}`} aria-current={x.id === p.id ? "true" : undefined}>{x.name}</Link>)}</div>
       <div className="page-head">
         <h1>{p.name} — {fmtMonth(m1)}</h1>
-        <p>Dernier mois complet. Les faits marquants d'abord, la tendance nommée ensuite ; le détail reste accessible dans la fiche du logement.</p>
+        <p>Dernier mois complet. Les faits marquants d'abord, la <Term id="tendance">tendance</Term> nommée ensuite ; le détail reste accessible dans la fiche du logement.</p>
         <p style={{ marginTop: 10 }}><Byline agent="reporting" names={names} what="a assemblé ce bilan à partir des métriques certifiées, sans modèle de langage" /></p>
       </div>
       {!has ? <Banner role="tech" title="Aucune réservation sur ce mois">Le bilan ne peut pas être établi : l'historique de ce logement est vide ou non connecté. Aucun chiffre n'est estimé à la place.</Banner> : (
         <>
           <div className="synth">
-            <Metric label="Revenu net" value={euro(cur.netCents)} source={`Tendance ${trend(cur.netCents, prev.netCents)} · ${euro(prev.netCents)} le mois précédent`} />
-            <Metric label="Occupation" value={pct(cur.occupancy)} source={`Tendance ${trend(cur.occupancy, prev.occupancy)} · ${pct(prev.occupancy)} le mois précédent`} />
-            <Metric label="Prix moyen net" value={euro(cur.netAdrCents)} source={`Tendance ${trend(cur.netAdrCents ?? 0, prev.netAdrCents ?? 0)} · par nuit occupée`} />
-            <Metric label="Revenu net par nuit disponible" value={euro(cur.netRevpanCents)} source={`Tendance ${trend(cur.netRevpanCents, prev.netRevpanCents)}`} />
+            <Metric label={<Term id="revenu-net">Revenu net</Term>} value={euro(cur.netCents)} source={`Tendance ${trend(cur.netCents, prev.netCents)} · ${euro(prev.netCents)} le mois précédent`} />
+            <Metric label={<Term id="occupation">Occupation</Term>} value={pct(cur.occupancy)} source={`Tendance ${trend(cur.occupancy, prev.occupancy)} · ${pct(prev.occupancy)} le mois précédent`} />
+            <Metric label={<Term id="adr">Prix moyen net</Term>} value={euro(cur.netAdrCents)} source={`Tendance ${trend(cur.netAdrCents ?? 0, prev.netAdrCents ?? 0)} · par nuit occupée`} />
+            <Metric label={<Term id="revpar">Revenu net par nuit disponible</Term>} value={euro(cur.netRevpanCents)} source={`Tendance ${trend(cur.netRevpanCents, prev.netRevpanCents)}`} />
           </div>
           <section className="section">
             <h2>Faits marquants</h2>
             <div className="blocks" style={{ ["--cols" as any]: 3 }}>
               <div className="block block-faits"><h3>Performance</h3><p className="muted" style={{ margin: "6px 0 0" }}>{cur.nights} nuits vendues sur {cur.available}. Le revenu net par nuit disponible est en tendance <strong>{trend(cur.netRevpanCents, prev.netRevpanCents)}</strong> par rapport à {fmtMonth(m0)}.</p></div>
-              <div className="block block-comparaisons"><h3>Canaux</h3><p className="muted" style={{ margin: "6px 0 0" }}>{mix.map(([c, v]) => `${CHANNEL_LABEL[c] ?? c} ${pct(v / cur.netCents)}`).join(" · ")} du revenu net.</p></div>
-              <div className="block block-interpretations"><h3>Décisions</h3><p className="muted" style={{ margin: "6px 0 0" }}>{month.length} décision{month.length > 1 ? "s" : ""} enregistrée{month.length > 1 ? "s" : ""} depuis le début du mois, dont {month.filter((o) => o.decision === "NO_ACTION").length} inaction{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""} retenue{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""}. Effet incrémental : <Vq>inconnu</Vq></p></div>
+              <div className="block block-comparaisons"><h3><Term id="canal">Canaux</Term></h3><p className="muted" style={{ margin: "6px 0 0" }}>{mix.map(([c, v]) => `${CHANNEL_LABEL[c] ?? c} ${pct(v / cur.netCents)}`).join(" · ")} du revenu net.</p></div>
+              <div className="block block-interpretations"><h3>Décisions</h3><p className="muted" style={{ margin: "6px 0 0" }}>{month.length} décision{month.length > 1 ? "s" : ""} enregistrée{month.length > 1 ? "s" : ""} depuis le début du mois, dont {month.filter((o) => o.decision === "NO_ACTION").length} inaction{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""} retenue{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""}. <Term id="effet-incremental">Effet incrémental</Term> : <Vq>inconnu</Vq></p></div>
             </div>
           </section>
         </>

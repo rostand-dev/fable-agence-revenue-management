@@ -36,6 +36,8 @@ const PATHS: Record<string, string> = {
   euro: "M16.5 7.4A6 6 0 1 0 16.5 16.6M4.5 10.5h8M4.5 13.5h8",
   plus: "M12 5v14M5 12h14",
   logout: "M14 4.5h4.5A1.5 1.5 0 0 1 20 6v12a1.5 1.5 0 0 1-1.5 1.5H14M10 8l-4 4 4 4M6 12h9",
+  glossary: "M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18M9 8h5.5M9 11.5h3.5",
+  help: "M9.2 9.3a2.9 2.9 0 1 1 4.3 2.5c-.9.5-1.5 1.1-1.5 2.1M12 17.4v.1M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z",
   plug: "M9 3v5M15 3v5M6.5 8h11v3.5a5.5 5.5 0 0 1-11 0zM12 17v4",
 };
 export type IconName = keyof typeof PATHS | string;

@@ -20,6 +20,7 @@ export async function Page({ title, sub, crumbs, right, children, after }: { tit
         </div>
         <div className="user-menu">
           {right}
+          <Link href="/glossaire" className="btn btn-ghost btn-sm glossary-link" aria-label="Glossaire : comprendre les termes" title="Glossaire"><Icon name="glossary" /><span className="glossary-link-label">Glossaire</span></Link>
           {user && <span className="who" title={user.email}>{user.name}</span>}
           <form action={logoutAction} className="inline">
             <button type="submit" className="btn btn-ghost btn-sm" aria-label="Se déconnecter"><Icon name="logout" /></button>

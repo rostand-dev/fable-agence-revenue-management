@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/Term";
 import { desc, eq } from "drizzle-orm";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
@@ -33,7 +34,7 @@ export default async function Historique() {
         <Metric label="Actions approuvées" value={acts.length} source="Toutes périodes" />
         <Metric label="Mesurées" value={measured.length} source={`${count("POSITIVE")} positive(s) · ${count("NEUTRAL")} neutre(s) · ${count("INCONCLUSIVE")} non concluante(s)`} />
         <Metric label="Inactions retenues" value={opps.filter((o) => o.decision === "NO_ACTION").length} source="Ne rien faire est une décision" />
-        <Metric label="Effet incrémental attribué" value={<Vq>Inconnu</Vq>} source="Aucune période témoin : aucun gain n'est attribué" />
+        <Metric label={<><Term id="effet-incremental">Effet incrémental</Term> attribué</>} value={<Vq>Inconnu</Vq>} source="Aucune période témoin : aucun gain n'est attribué" />
       </div>
       <section className="section">
         <h2>Actions et expériences</h2>

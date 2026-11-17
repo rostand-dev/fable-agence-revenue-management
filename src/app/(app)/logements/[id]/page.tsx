@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Term } from "@/components/Term";
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -91,10 +92,10 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "apercu" && (
         <>
           <div className="synth">
-            <Metric label="Revenu net · 12 mois" value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source={`${period} · montant des réservations${model.touristTaxPct ? " hors taxe de séjour" : ""} − commissions − frais de paiement`} />
-            <Metric label="Occupation · 12 mois" value={hasHistory ? pct(sum((k) => k.nights) / sum((k) => k.available)) : <Vq>inconnue</Vq>} source={`${sum((k) => k.nights)} nuits vendues · ${period}`} />
-            <Metric label="Prix moyen net" value={hasHistory && sum((k) => k.nights) ? euro(sum((k) => k.netCents) / sum((k) => k.nights)) : <Vq>inconnu</Vq>} source="Par nuit occupée" />
-            <Metric label="Revenu net par nuit disponible" value={hasHistory ? euro(sum((k) => k.netCents) / sum((k) => k.available)) : <Vq>inconnu</Vq>} source={trend ? `Tendance ${trend} sur 12 mois` : "Tendance inconnue"} />
+            <Metric label={<><Term id="revenu-net">Revenu net</Term> · 12 mois</>} value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source={`${period} · montant des réservations${model.touristTaxPct ? " hors taxe de séjour" : ""} − commissions − frais de paiement`} />
+            <Metric label={<><Term id="occupation">Occupation</Term> · 12 mois</>} value={hasHistory ? pct(sum((k) => k.nights) / sum((k) => k.available)) : <Vq>inconnue</Vq>} source={`${sum((k) => k.nights)} nuits vendues · ${period}`} />
+            <Metric label={<Term id="adr">Prix moyen net</Term>} value={hasHistory && sum((k) => k.nights) ? euro(sum((k) => k.netCents) / sum((k) => k.nights)) : <Vq>inconnu</Vq>} source="Par nuit occupée" />
+            <Metric label={<Term id="revpar">Revenu net par nuit disponible</Term>} value={hasHistory ? euro(sum((k) => k.netCents) / sum((k) => k.available)) : <Vq>inconnu</Vq>} source={trend ? `Tendance ${trend} sur 12 mois` : "Tendance inconnue"} />
           </div>
           {hasHistory && (
             <p className="kpi-note">Période : <strong>{period}</strong>, soit les douze derniers mois complets ; le mois en cours et les séjours à venir n'y figurent pas. Chaque nuit est comptée dans son mois de séjour.{partial && ` L'historique lu ne commence que le ${fmtDate(firstStay!)} : les mois antérieurs sont vides, pas nuls.`}{!p.isDemo && (model.touristTaxPct === null || model.touristTaxPct === undefined ? " Le montant transmis par PriceLabs est ce que paie le voyageur, ménage et taxe de séjour compris : tant que la part de taxe n'est pas déclarée (Coûts et seuils), ce revenu net est surestimé d'autant." : " Le montant des réservations comprend les frais de ménage ; la taxe de séjour déclarée en est retirée.")}</p>
@@ -111,7 +112,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
               <h2>Rythme de réservation face au marché</h2>
               <p className="section-note">Relevé par l'analyste marché sur les cinq fenêtres canoniques. Un écart négatif n'est pas un ordre de baisser : il ouvre un diagnostic.</p>
               <div className="table-wrap"><table className="econ">
-                <thead><tr><th scope="col">Fenêtre</th><th scope="col" className="num">Logement</th><th scope="col" className="num">Marché</th><th scope="col" className="num">Écart</th><th scope="col" className="num">Nuits libres</th><th scope="col" className="num">Position de prix</th></tr></thead>
+                <thead><tr><th scope="col"><Term id="fenetre-reservation">Fenêtre</Term></th><th scope="col" className="num">Logement</th><th scope="col" className="num"><Term id="occupation-marche">Marché</Term></th><th scope="col" className="num"><Term id="ecart-marche">Écart</Term></th><th scope="col" className="num">Nuits libres</th><th scope="col" className="num"><Term id="position-de-prix">Position de prix</Term></th></tr></thead>
                 <tbody>{stats.map((s) => (
                   <tr key={s.key}><th scope="row">{s.label}<span className="src">{fmtDay(s.from)} → {fmtDay(addDays(s.to, -1))}</span></th>
                     <td className="num">{pct(s.occupancy)}</td><td className="num">{s.marketOccupancy === null ? <Vq>inconnu</Vq> : pct(s.marketOccupancy)}</td>
@@ -204,9 +205,9 @@ export default async function Logement({ params, searchParams }: { params: Promi
           {(model.provisional?.length ?? 0) > 0 && <Banner role="tech" title={`Planchers provisoires : ${model.provisional!.length} valeur${model.provisional!.length > 1 ? "s" : ""} à confirmer`}>{model.provisional!.join(", ")}. Les planchers ci-dessous en dépendent ; les dossiers ouverts portent la même mention.</Banner>}
           <Recap rows={[
             ...(["AIRBNB", "BOOKING"] as Channel[]).map((c) => [`Commission ${CHANNEL_LABEL[c]}`, model.channels?.[c] ? `${String(model.channels[c]!.commissionPct).replace(".", ",")} % + ${String(model.channels[c]!.paymentFeePct).replace(".", ",")} % de frais de paiement` : <Vq>inconnue</Vq>, true] as [string, React.ReactNode, boolean]),
-            ["Frais de ménage facturés", <Money key="1" cents={model.cleaningFeeChargedCents} />, true], ["Coût du ménage", <Money key="2" cents={model.cleaningCostCents} />, true], ["Coût du linge", <Money key="3" cents={model.linenCostCents} />, true],
-            ["Coûts variables par nuit", <Money key="4" cents={model.nightlyVariableCostCents} />, true],
-            ["Seuil de dérangement · par nuit (plancher absolu)", <Money key="5" cents={model.hardContributionPerNightCents} />, true], ["Charges fixes à couvrir · par nuit vendue (plancher stratégique)", <Money key="6" cents={model.strategyContributionPerNightCents} />, true], ["Objectif · par nuit vendue", <Money key="7" cents={model.targetContributionPerNightCents} />, true],
+            [<Term key="m1" id="menage">Frais de ménage facturés</Term>, <Money key="1" cents={model.cleaningFeeChargedCents} />, true], ["Coût du ménage", <Money key="2" cents={model.cleaningCostCents} />, true], ["Coût du linge", <Money key="3" cents={model.linenCostCents} />, true],
+            [<Term key="m2" id="couts-variables">Coûts variables par nuit</Term>, <Money key="4" cents={model.nightlyVariableCostCents} />, true],
+            [<><Term id="plancher-absolu">Seuil de dérangement</Term> · par nuit (plancher absolu)</>, <Money key="5" cents={model.hardContributionPerNightCents} />, true], [<><Term id="charges-fixes">Charges fixes</Term> à couvrir · par nuit vendue (<Term id="plancher-strategique">plancher stratégique</Term>)</>, <Money key="6" cents={model.strategyContributionPerNightCents} />, true], [<><Term id="objectif-nuit">Objectif</Term> · par nuit vendue</>, <Money key="7" cents={model.targetContributionPerNightCents} />, true],
             ["Taxe de séjour dans les montants", model.touristTaxPct === null || model.touristTaxPct === undefined ? <Vq key="t">inconnue : le revenu net affiché l'inclut</Vq> : `${String(model.touristTaxPct).replace(".", ",")} % retirés de chaque réservation`],
             ["Origine", model.origin === "DEMO" ? "Valeurs de démonstration, à remplacer" : "Déclarées par vous, pas à pas"],
           ]} />
@@ -215,7 +216,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
               <h2 style={{ fontSize: 18, margin: "14px 0 0" }}>Planchers par canal et durée de séjour</h2>
               <p className="section-note" style={{ margin: 0 }}>Prix vendu minimal par nuit, après remises. Sous le plancher absolu, l'auditeur oppose son veto ; entre les deux, il demande une validation commentée.</p>
               <div className="table-wrap"><table className="econ">
-                <thead><tr><th scope="col">Canal</th><th scope="col" className="num">Durée</th><th scope="col" className="num">Plancher absolu</th><th scope="col" className="num">Plancher stratégique</th></tr></thead>
+                <thead><tr><th scope="col">Canal</th><th scope="col" className="num"><Term id="los">Durée</Term></th><th scope="col" className="num"><Term id="plancher-absolu">Plancher absolu</Term></th><th scope="col" className="num"><Term id="plancher-strategique">Plancher stratégique</Term></th></tr></thead>
                 <tbody>{floorGrid(model).map((f) => <tr key={f.channel + f.nights}><th scope="row">{CHANNEL_LABEL[f.channel]}</th><td className="num">{f.nights} nuits</td><td className="num">{euro(f.hardCents)}</td><td className="num">{euro(f.strategyCents)}</td></tr>)}</tbody></table></div>
               {strat.basePriceCents && model.channels.BOOKING && (
                 <div className="cascade-wrap"><header><h3>Ce que laisse une nuit au prix de base · Booking.com · séjour de {los ?? 2} nuits</h3><p>Calcul déterministe du simulateur, remises du canal actives aujourd'hui comprises.</p></header>
