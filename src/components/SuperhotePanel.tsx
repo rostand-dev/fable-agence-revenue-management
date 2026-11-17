@@ -81,7 +81,7 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
             {sh.rentalId && <ActionForm action={detachRentalAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de logement</Submit></ActionForm>}
             <ActionForm action={disconnectSuperhoteAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer le jeton</Submit></ActionForm>
           </div>
-          <p className="muted" style={{ margin: 0 }}>Lecture seule. SuperHote est relu en même temps que PriceLabs, avant chaque revue quotidienne.{!plLinked && " Rattachez aussi PriceLabs pour que les canaux relevés et la comparaison de prix soient appliqués."}</p>
+          <p className="muted" style={{ margin: 0 }}>Lecture seule. Les réservations et disponibilités SuperHote sont relues de toutes les heures à toutes les 6 h, selon le rythme de suivi de ce logement.{!plLinked && " Rattachez aussi PriceLabs pour que les canaux relevés et la comparaison de prix soient appliqués."}</p>
         </>
       )}
     </section>

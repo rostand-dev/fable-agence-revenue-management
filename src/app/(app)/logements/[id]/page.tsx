@@ -4,6 +4,7 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { BarChart } from "@/components/BarChart";
+import { CadencePanel } from "@/components/CadencePanel";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
@@ -82,7 +83,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
       {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Il manque : {miss.join(", ")}. Aucun plancher n'est calculé et aucune situation n'est ouverte tant que ces valeurs manquent ; une estimation provisoire suffit pour démarrer.{!p.isDemo && <> <Link href={`/logements/${p.id}/couts`}>Les renseigner pas à pas avec {agentName("onboarding", names)}</Link></>}</Banner>}
-      {!hasCal && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue quotidienne démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
+      {!hasCal && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
 
       {!p.isDemo && <p style={{ margin: "0 0 16px" }}><Link className={p.status === "ONBOARDING" ? "btn btn-primary" : "btn btn-ghost btn-sm"} href={`/logements/${p.id}/modifier`}><Icon name={p.status === "ONBOARDING" ? "arrow" : "sliders"} />{p.status === "ONBOARDING" ? "Reprendre la saisie du dossier" : "Modifier le dossier"}</Link></p>}
       <div className="subnav" role="tablist" aria-label="Sections du logement" style={{ marginBottom: 22 }}>
@@ -107,6 +108,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
               <BarChart title="Revenu net d'hébergement par mois" unit={`Euros · ${period}${p.isDemo ? " · hors ménage et taxes de séjour" : " · montant total des réservations, net de commissions"}`} data={kpis.map((k) => ({ label: fmtMonthShort(k.month), full: fmtMonth(k.month), cents: k.netCents, note: `occupation ${pct(k.occupancy)}` }))} />
             </section>
           )}
+          <CadencePanel cadence={p.cadence} isDemo={p.isDemo} hasPriceLabs={!!p.pricelabs?.listingId} hasSuperhote={!!p.superhote?.rentalId} nextReservationsAt={p.nextReservationsAt} nextPricesAt={p.nextPricesAt} nextReviewAt={p.nextReviewAt} now={now} />
           {hasCal && (
             <section className="section">
               <h2>Rythme de réservation face au marché</h2>

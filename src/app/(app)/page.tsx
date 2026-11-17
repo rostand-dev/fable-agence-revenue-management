@@ -34,7 +34,8 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const anchor: string | undefined = user.settings.demoAnchor;
   const hasDemo = props.some((p) => p.isDemo), stale = anchor ? diffDays(today, anchor) : 0;
   const nights = props.length * 91;
-  const blocked = Number(review?.stats?.blocked ?? 0);
+  // chaque logement est revu à son rythme : le blocage se lit sur le logement, plus sur la dernière revue du compte
+  const blocked = props.filter((p) => p.cadence?.blocked).length;
 
   return (
     <Page title="Opportunités" sub={review ? `Revue du ${fmtDateTime(review.startedAt)} · ${props.length} logement${props.length > 1 ? "s" : ""}` : "Aucune revue encore lancée"} crumbs={[{ label: "Opportunités" }]}>
@@ -63,7 +64,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       <section className="section" aria-labelledby="synth-h" style={{ marginTop: 8 }}>
         <h2 id="synth-h" className="visually-hidden">Synthèse quotidienne</h2>
         <div className="synth">
-          <Metric label="Situations ouvertes" value={open.length} source={`${all.filter((o) => o.status === "DEFERRED").length} différée(s) · revue quotidienne`} />
+          <Metric label="Situations ouvertes" value={open.length} source={`${all.filter((o) => o.status === "DEFERRED").length} différée(s) · revue au rythme de chaque logement`} />
           <Metric label="Impact net simulé" value={chiffrables.length ? signedEuro(impact) : <Vq kind="nonchiffrable">Non chiffrable</Vq>} unit={chiffrables.length ? "net" : undefined} source={`Somme des ${chiffrables.length} options chiffrables · simulation, pas un revenu acquis`} />
           <Metric label="Décisions enregistrées" value={all.filter((o) => o.status === "DECIDED").length} source="Approbations, rejets et inactions retenues" />
           <Metric label={<>Garde-fous & <Term id="veto">vetos</Term></>} value={guard.length} tone={guard.some((o) => o.veto) ? "veto" : undefined} source={`${open.filter((o) => o.veto).length} veto · ${guard.length - open.filter((o) => o.veto).length} option(s) rejetée(s) par l'auditeur`} />

@@ -7,7 +7,7 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 ## Ce que fait cette version
 
 - **Comptes multi-propriétaires** : inscription par e-mail, espace isolé par propriétaire.
-- **Revue quotidienne** (J+0 à J+90) : signaux → diagnostic causal → options → simulation en revenu net → audit → file priorisée.
+- **Revue de chaque logement à son rythme** (J+0 à J+90 ; lectures et revues plus ou moins fréquentes selon la dynamique du logement et de son marché) : signaux → diagnostic causal → options → simulation en revenu net → audit → file priorisée.
 - **Playbooks** : PB-01 rythme faible, PB-02 rythme en avance, PB-03 trou de calendrier, PB-05 cumul de remises, PB-06 passage sous le plancher (veto), PB-07 événement, PB-10 donnée périmée.
 - **Dossier de décision** : preuves sourcées, arbre de diagnostic, hypothèses alternatives, options comparées (dont l'inaction), cascade du prix publié à la contribution, verdict d'audit règle par règle.
 - **Cycle d'action tracé** : approuver → exécuter → vérifier → mesurer, avec machine à états, retour arrière et journal d'audit en ajout seul.
@@ -47,7 +47,7 @@ Monolithe modulaire TypeScript : Next.js (App Router) + PostgreSQL + Drizzle ORM
 ```
 src/lib/engine/     moteur déterministe, sans E/S : économie, métriques, détection, audit, machine à états
 src/lib/agents/     registre des postes, passerelle LLM
-src/lib/services/   revue quotidienne, décisions, rédaction, conversation, démonstration
+src/lib/services/   revue, rythme de suivi et planificateur, décisions, rédaction, conversation, démonstration
 src/db/             schéma et accès PostgreSQL ; migrations SQL dans drizzle/
 src/app/            écrans et actions serveur
 ```

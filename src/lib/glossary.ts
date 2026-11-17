@@ -415,6 +415,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     related: ["mesure", "risque"],
   },
   {
+    id: "rythme-de-suivi", term: "Rythme de suivi", aka: ["Fréquence de mise à jour", "Suivi soutenu", "Suivi actif", "Suivi régulier", "Suivi allégé"], category: "agence",
+    plain: "La fréquence à laquelle l'équipe relit les données d'un logement et le repasse en revue. Elle s'adapte à chaque logement : plus il bouge (nuits libres proches, réservations récentes, marché agité, action en cours), plus les passages sont rapprochés. Une réservation ou une annulation relance la revue sans attendre.",
+    example: "Châtillon a 5 nuits libres cette semaine et vient de recevoir 2 réservations : ses réservations sont relues toutes les 2 h et l'équipe le revoit toutes les 12 h. Évry est plein pour le mois : une lecture toutes les 6 h et une revue tous les 2 jours suffisent.",
+    seeIn: { label: "Logements", href: "/logements" },
+    related: ["pickup", "delai-reservation", "synchronisation"],
+  },
+  {
     id: "dossier", term: "Dossier", aka: ["Opportunité", "Situation à arbitrer"], category: "agence",
     plain: "Une situation que l'équipe vous présente pour décision : le signal observé, la période, l'hypothèse, puis les options. Vous n'en voyez que quand une décision humaine est utile.",
     example: "« Trou de 2 nuits du 14 au 16 mars » est un dossier : trois options chiffrées vous sont proposées, dont ne rien faire.",

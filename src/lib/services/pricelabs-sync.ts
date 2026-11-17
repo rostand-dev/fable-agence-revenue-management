@@ -158,7 +158,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   return { days: days.length, reservations: confirmed.length };
 }
 
-/** Avant la revue quotidienne : relit PriceLabs si la dernière lecture a plus de trois heures. */
+/** Avant une revue lancée à la main : relit PriceLabs si la dernière lecture a plus de trois heures. */
 export async function syncIfStale(tenantId: string, p: typeof properties.$inferSelect): Promise<void> {
   if (p.isDemo) return;
   if (!p.pricelabs?.listingId) {
