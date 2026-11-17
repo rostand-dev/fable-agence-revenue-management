@@ -60,11 +60,20 @@ async function nextCode(tenantId: string, today: ISODate): Promise<(i: number) =
 
 type Step = { agent: string; label: string; detail: string; ok: boolean };
 
+export type ReviewTrigger = "SCHEDULED" | "MANUAL" | "SIGNUP" | "EVENT";
+export type ReviewOptions = {
+  /** Limite la revue à ces logements (planificateur : chaque logement suit son propre rythme). Absent = tous les logements du compte. */
+  propertyIds?: string[];
+  /** Les données viennent d'être relues par le planificateur : ne pas relire avant la revue. */
+  skipSync?: boolean;
+};
+
 /**
- * Revue quotidienne (blueprint §6.3). L'ordre des étapes est fixé ici : aucun agent n'en appelle un autre.
+ * Revue (blueprint §6.3), de tous les logements du compte ou de ceux demandés. L'ordre des étapes est fixé ici : aucun agent n'en appelle un autre.
  * Chaque étape laisse une trace (AgentRun) ; la revue est idempotente grâce aux clés de dédoublonnage.
+ * À la fin, le rythme de suivi de chaque logement revu est recalculé et sa prochaine revue planifiée.
  */
-export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "MANUAL" | "SIGNUP" = "SCHEDULED"): Promise<{ opened: number; refreshed: number; expired: number; blocked: number }> {
+export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = "SCHEDULED", opts: ReviewOptions = {}): Promise<{ opened: number; refreshed: number; expired: number; blocked: number; reviewed: string[] }> {
   const now = new Date(), today = todayISO(now);
   const runId = newId("rev");
   await db.insert(reviewRuns).values({ id: runId, tenantId, kind: "DAILY", startedAt: now, stats: { trigger } });
@@ -73,7 +82,9 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
   const log = (agentId: string, operation: string, summary: string, extra: Partial<typeof agentRuns.$inferInsert> = {}) =>
     runs.push({ id: newId("run"), tenantId, agentId, operation, mode: "DETERMINISTIC", summary, createdAt: new Date(), ...extra });
 
-  const props = await db.select().from(properties).where(eq(properties.tenantId, tenantId));
+  const all = await db.select().from(properties).where(eq(properties.tenantId, tenantId));
+  const props = opts.propertyIds ? all.filter((p) => opts.propertyIds!.includes(p.id)) : all;
+  const blockedIds = new Set<string>();
   const code = await nextCode(tenantId, today);
   let opened = 0, refreshed = 0, expired = 0, blocked = 0, seq = 0, llmBudget = 10;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
@@ -83,18 +94,18 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
 
   for (const p of props) {
     if (p.isDemo) await db.update(calendarDays).set({ observedAt: now }).where(eq(calendarDays.propertyId, p.id));
-    await syncIfStale(tenantId, p);
+    if (!opts.skipSync) await syncIfStale(tenantId, p);
     const input = await loadEngineInput(tenantId, p.id, today, now);
     if (!input) continue;
     if (input.days.length === 0) {
-      blocked++; log("onboarding", "reconcile", `${p.name} : aucun calendrier à lire. PriceLabs n'est pas encore connecté à ce logement ; aucune revue possible.`);
+      blocked++; blockedIds.add(p.id); log("onboarding", "reconcile", `${p.name} : aucun calendrier à lire. PriceLabs n'est pas encore connecté à ce logement ; aucune revue possible.`);
       continue;
     }
     const unknownPrice = input.days.filter((d) => d.priceCents === null).length;
     log("onboarding", "reconcile", `${p.name} : ${input.days.length} jours de calendrier et ${input.resas.length} réservations rapprochés${unknownPrice ? ` · ${unknownPrice} prix inconnus` : ""}${p.isDemo ? " · données de démonstration" : ""}.`);
     const res = reviewProperty(input);
     if (res.blocked.length) {
-      blocked++; log("onboarding", "quality", `${p.name} : modèle économique incomplet (${res.blocked.join(", ")}). Aucune opportunité financière n'est ouverte tant que ces valeurs sont inconnues.`);
+      blocked++; blockedIds.add(p.id); log("onboarding", "quality", `${p.name} : modèle économique incomplet (${res.blocked.join(", ")}). Aucune opportunité financière n'est ouverte tant que ces valeurs sont inconnues.`);
       continue;
     }
     const gaps = res.stats.filter((s) => s.gap !== null).map((s) => `${s.label} ${s.gap! >= 0 ? "+" : "−"}${Math.abs(Math.round(s.gap! * 100))} pts`).join(" · ");
@@ -140,22 +151,17 @@ export async function runDailyReview(tenantId: string, trigger: "SCHEDULED" | "M
   log("reporting", "measure", measured ? `${measured} action${measured > 1 ? "s" : ""} mesurée${measured > 1 ? "s" : ""} à l'échéance de sa fenêtre d'observation.` : "Aucune mesure à échéance aujourd'hui.");
   if (runs.length) await db.insert(agentRuns).values(runs);
   steps.push(...runs.map((r) => ({ agent: r.agentId, label: r.operation, detail: r.summary, ok: !r.error })));
-  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, properties: props.length, llm: llmEnabled() } }).where(eq(reviewRuns.id, runId));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue quotidienne (${trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : "planifiée"}) : ${opened} ouverts, ${expired} expirés.` });
-  return { opened, refreshed, expired, blocked };
-}
-
-/** Planification interne : une revue par propriétaire et par jour, déclenchée au premier passage après 06:00 (Paris). */
-export async function runDueReviews(): Promise<number> {
-  const now = new Date(), today = todayISO(now);
-  const hour = Number(new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", hour12: false, timeZone: "Europe/Paris" }).format(now).slice(0, 2));
-  if (hour < 6) return 0;
-  const ts = await db.select({ id: schema.tenants.id }).from(schema.tenants);
-  let n = 0;
-  for (const t of ts) {
-    const [last] = await db.select({ at: reviewRuns.startedAt }).from(reviewRuns).where(eq(reviewRuns.tenantId, t.id)).orderBy(sql`${reviewRuns.startedAt} desc`).limit(1);
-    if (last && todayISO(last.at) === today) continue;
-    try { await runDailyReview(t.id, "SCHEDULED"); n++; } catch (e) { console.error("[revue]", t.id, e); }
+  const scope = opts.propertyIds ? props.map((p) => p.name).join(", ") : null;
+  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm: llmEnabled() } }).where(eq(reviewRuns.id, runId));
+  // les revues planifiées sont fréquentes (jusqu'à quatre par jour et par logement) : seules celles qui changent quelque chose entrent au journal
+  if (!(trigger === "SCHEDULED" && opened === 0 && expired === 0)) {
+    const how = trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : trigger === "EVENT" ? "après un changement de réservation" : "planifiée";
+    await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue ${scope ? "de " + scope : "de tous les logements"} (${how}) : ${opened} ouverts, ${expired} expirés.` });
   }
-  return n;
+  // rythme de suivi : recalculé après chaque revue, qui fixe aussi l'échéance de la suivante
+  const { refreshCadence } = await import("./cadence");
+  for (const p of props) {
+    try { await refreshCadence(tenantId, p.id, { reviewed: { blocked: blockedIds.has(p.id) } }, now); } catch (e) { console.error("[rythme]", p.id, e); }
+  }
+  return { opened, refreshed, expired, blocked, reviewed: props.map((p) => p.id) };
 }

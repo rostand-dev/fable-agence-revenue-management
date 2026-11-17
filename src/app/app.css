@@ -194,3 +194,7 @@ a.cal-day:focus-visible, a.cal-day[aria-current="date"] { outline: 2px solid var
 /* décision : le montant et son texte (risque, retour arrière) passent à la ligne au lieu d'élargir la page */
 .decision-primary .amount { flex: 1 1 220px; min-width: 0; max-width: 100%; }
 .amount-source { overflow-wrap: anywhere; }
+
+/* Rythme de suivi d'un logement */
+.cadence-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin: 0 0 12px; }
+.cadence-why { margin: 0; flex: 1 1 260px; min-width: 0; font-size: 13.5px; color: var(--muted, var(--faint)); overflow-wrap: anywhere; }

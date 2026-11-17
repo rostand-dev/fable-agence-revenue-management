@@ -9,6 +9,8 @@ import { lastMonths, monthlyKpis } from "@/lib/engine/metrics";
 import type { EconomicModel } from "@/lib/engine/types";
 import { pct } from "@/lib/format";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
+import { CADENCE_LABEL, everyLabel, type CadenceLevel } from "@/lib/engine/cadence";
+import { CADENCE_ROLE } from "@/components/CadencePanel";
 import { listOpportunities, listProperties } from "@/lib/queries";
 import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
@@ -48,6 +50,7 @@ export default async function Logements() {
               <div className="idsync">
                 <Badge family={fam} icon={ico}>{p.status === "ONBOARDING" && !p.isDemo ? "Saisie à reprendre" : label}</Badge>
                 {miss.length > 0 ? <State role="attention">{miss.length} donnée{miss.length > 1 ? "s" : ""} manquante{miss.length > 1 ? "s" : ""}</State> : <State role="sain">Planchers calculés</State>}
+                {p.cadence?.level && <State role={CADENCE_ROLE[p.cadence.level as CadenceLevel]}>{CADENCE_LABEL[p.cadence.level as CadenceLevel]} · revue {everyLabel(p.cadence.reviewEveryH)}</State>}
               </div>
             </Link>
           );

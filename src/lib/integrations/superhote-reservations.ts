@@ -41,3 +41,32 @@ export function shReservations(rows: ShReservation[], model: EconomicModel | nul
   }
   return dedupeConfirmed(out);
 }
+
+export type CalendarPatch = { date: string; state: "FREE" | "BOOKED" | "BLOCKED"; priceCents: number | null; sentPriceCents: number | null };
+
+/**
+ * Entre deux lectures PriceLabs, répercute sur le calendrier déjà lu les réservations et annulations vues chez SuperHote.
+ * Prudent : une nuit n'est libérée que si SuperHote la déclare disponible ; les prix restent ceux de la dernière lecture PriceLabs.
+ */
+export function calendarPatches(
+  days: { date: string; state: string; priceCents: number | null; sentPriceCents: number | null; recommendedPriceCents: number | null }[],
+  rows: Pick<PlReservation, "checkIn" | "checkOut" | "status">[],
+  shCalendar: { date: string; available: boolean }[],
+  today: string,
+): CalendarPatch[] {
+  const booked = new Set<string>(), blocked = new Set<string>();
+  for (const r of rows) {
+    const set = r.status === "CONFIRMED" ? booked : r.status === "BLOCKED" ? blocked : null;
+    if (!set) continue;
+    for (let i = 0, n = diffDays(r.checkOut, r.checkIn); i < n; i++) set.add(new Date(Date.parse(r.checkIn + "T00:00:00Z") + i * 86400000).toISOString().slice(0, 10));
+  }
+  const avail = new Map(shCalendar.map((n) => [n.date, n.available]));
+  const out: CalendarPatch[] = [];
+  for (const d of days) {
+    if (d.date < today) continue;
+    if (blocked.has(d.date)) { if (d.state !== "BLOCKED") out.push({ date: d.date, state: "BLOCKED", priceCents: null, sentPriceCents: null }); }
+    else if (booked.has(d.date)) { if (d.state !== "BOOKED") out.push({ date: d.date, state: "BOOKED", priceCents: d.priceCents, sentPriceCents: d.sentPriceCents }); }
+    else if (d.state === "BOOKED" && avail.get(d.date) === true) out.push({ date: d.date, state: "FREE", priceCents: d.priceCents ?? d.sentPriceCents ?? d.recommendedPriceCents, sentPriceCents: d.sentPriceCents });
+  }
+  return out;
+}

@@ -3,13 +3,14 @@ import { db, newId, schema } from "@/db";
 import { listRentals } from "../integrations/superhote";
 import type { EconomicModel } from "../engine/types";
 import { observedCommission, observedPaymentFee } from "../integrations/superhote-map";
-import { shReservations } from "../integrations/superhote-reservations";
+import { calendarPatches, shReservations } from "../integrations/superhote-reservations";
+import { todayISO } from "../dates";
 import { replaceReservations } from "./reservations-store";
 import { encryptSecret, secretHint } from "../secret";
 import { shErrorText, snapshotSuperhote } from "./superhote-read";
 import { SyncError, syncPriceLabs } from "./pricelabs-sync";
 
-const { properties, auditEvents } = schema;
+const { properties, auditEvents, calendarDays } = schema;
 
 async function getProp(tenantId: string, id: string) {
   const [p] = await db.select().from(properties).where(and(eq(properties.id, id), eq(properties.tenantId, tenantId)));
@@ -84,4 +85,33 @@ export async function syncSuperhote(tenantId: string, propertyId: string): Promi
   const ls = fresh?.sh?.lastSync;
   if (ls && ls.ok === false) throw new SyncError(ls.error);
   return { reservations: ls?.reservations ?? 0, nights: ls?.nights ?? 0 };
+}
+
+/**
+ * Lecture légère de SuperHote, entre deux lectures PriceLabs : réservations et disponibilités seulement.
+ * Les réservations sont remplacées, le calendrier déjà lu est ajusté (nuits vendues ou libérées), les prix et le marché ne bougent pas.
+ * Jamais bloquante : un échec est consigné dans la dernière lecture et renvoyé, les données précédentes sont conservées.
+ */
+export async function refreshSuperhoteReservations(tenantId: string, propertyId: string): Promise<{ ok: true; reservations: number; patched: number } | { ok: false; error: string }> {
+  const p = await getProp(tenantId, propertyId);
+  if (!p.superhote?.rentalId) return { ok: false, error: "Aucun logement SuperHote n'est rattaché à ce logement." };
+  const now = new Date();
+  const snap = await snapshotSuperhote(p.superhote, now);
+  const prev = p.superhote.lastSync ?? {};
+  if (!snap?.ok) {
+    const error = snap && !snap.ok ? snap.error : "Lecture impossible.";
+    await db.update(properties).set({ superhote: { ...p.superhote, lastSync: { ...prev, ok: false, at: now.toISOString(), error } } }).where(eq(properties.id, p.id));
+    return { ok: false, error };
+  }
+  const rows = shReservations(snap.reservations, p.economics as EconomicModel);
+  const days = await db.select().from(calendarDays).where(eq(calendarDays.propertyId, p.id));
+  const patches = calendarPatches(days, rows, snap.calendar, todayISO(now));
+  const { error: _e, ...kept } = prev;
+  const lastSync = { ...kept, ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, reservationsSource: "SUPERHOTE", observedCommission: observedCommission(snap.reservations), observedPaymentFee: observedPaymentFee(snap.reservations) };
+  await db.transaction(async (tx) => {
+    await replaceReservations(tx, tenantId, p.id, rows, "SUPERHOTE");
+    for (const c of patches) await tx.update(calendarDays).set({ state: c.state, priceCents: c.priceCents, sentPriceCents: c.sentPriceCents }).where(and(eq(calendarDays.propertyId, p.id), eq(calendarDays.date, c.date)));
+    await tx.update(properties).set({ superhote: { ...p.superhote, lastSync } }).where(eq(properties.id, p.id));
+  });
+  return { ok: true, reservations: lastSync.reservations, patched: patches.length };
 }

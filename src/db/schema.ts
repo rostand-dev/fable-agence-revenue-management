@@ -52,6 +52,12 @@ export const properties = pgTable("properties", {
   superhote: jsonb("superhote").$type<Record<string, any>>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
   channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),
+  /** Rythme de suivi adaptatif : palier, raisons, intervalles, dernier passage, relevé de marché de référence, échecs de lecture */
+  cadence: jsonb("cadence").$type<Record<string, any>>(),
+  /** Prochaines échéances du planificateur ; null = à faire dès que la source est connectée */
+  nextReservationsAt: ts("next_reservations_at"),
+  nextPricesAt: ts("next_prices_at"),
+  nextReviewAt: ts("next_review_at"),
   createdAt: created(),
 }, (t) => [index("properties_tenant").on(t.tenantId)]);
 

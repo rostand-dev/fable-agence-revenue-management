@@ -18,9 +18,9 @@ export type AgentDef = {
 export const AGENTS: AgentDef[] = [
   {
     id: "direction", name: "Lina", title: "Directrice du revenue management", short: "Direction", pole: "Direction", reportsTo: null,
-    mission: "Piloter la revue quotidienne, décider quelles situations méritent votre attention et arbitrer entre les options instruites par l'équipe.",
+    mission: "Piloter la revue de chaque logement, décider quelles situations méritent votre attention et arbitrer entre les options instruites par l'équipe.",
     responsibilities: [
-      "Lancer la revue quotidienne et coordonner les spécialistes dans un ordre fixe, sans boucle entre agents",
+      "Lancer la revue de chaque logement à son rythme et coordonner les spécialistes dans un ordre fixe, sans boucle entre agents",
       "Ouvrir une opportunité seulement si le signal dépasse un seuil, que la donnée est fraîche et qu'aucune action en cours ne traite déjà ces dates",
       "Classer la file par valeur attendue, urgence, confiance et risque — un veto passe toujours en tête",
       "Recommander de ne rien faire quand aucune option ne vaut son coût, avec une date de réévaluation",
@@ -169,7 +169,7 @@ export const WORKFLOWS: { id: string; name: string; cadence: string; purpose: st
     ],
   },
   {
-    id: "daily", name: "Revue quotidienne", cadence: "Chaque jour avant 08:00", purpose: "Ne vous présenter que les exceptions qui méritent une décision.",
+    id: "daily", name: "Revue du logement", cadence: "Au rythme de chaque logement : de toutes les 6 h à tous les 2 jours", purpose: "Ne vous présenter que les exceptions qui méritent une décision.",
     steps: [
       { agent: "onboarding", what: "Rapprocher réservations et calendrier, contrôler la fraîcheur des sources" },
       { agent: "marche", what: "Calculer les écarts au marché sur les fenêtres J+0 à J+90" },

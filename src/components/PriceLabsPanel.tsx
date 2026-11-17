@@ -124,7 +124,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
             {pl.listingId && <ActionForm action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}
             <ActionForm action={disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer la clé</Submit></ActionForm>
           </div>
-          <p className="muted" style={{ margin: 0 }}>Lecture seule. PriceLabs est relu avant chaque revue quotidienne ; ses prix sont recalculés par PriceLabs toutes les 24 heures.</p>
+          <p className="muted" style={{ margin: 0 }}>Lecture seule. PriceLabs est relu une à deux fois par jour, selon le rythme de suivi de ce logement ; ses prix sont recalculés par PriceLabs toutes les 24 heures.</p>
           <PriceLabsGuide />
         </>
       )}
