@@ -116,6 +116,7 @@ npm install
 npm run dev                 # les migrations s'appliquent au démarrage
 npm test                    # tests du moteur (planchers, cumul, cas dorés, machine à états)
 npm run db:generate         # après une modification de src/db/schema.ts
+npm run db:idempotent       # obligatoire juste après db:generate : rend la migration rejouable sans erreur (un test échoue sinon)
 ```
 
 ## Déploiement sur Coolify
