@@ -23,7 +23,7 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 | Promotions et événements | Non fournis par PriceLabs : le registre des promotions reste manuel, les événements ne sont pas détectés sur les logements réels. |
 | Promotions Airbnb / Booking.com | Procédure manuelle guidée avec preuve. Aucune automatisation de navigateur. |
 | Modèle de vente | Heuristique simple et affichée comme telle ; chaque montant est une simulation, pas une prévision. |
-| LLM | Facultatif. Sans `ANTHROPIC_API_KEY`, synthèses et réponses sont composées par règles. Les calculs et garde-fous n'utilisent jamais de LLM. |
+| LLM | Facultatif. Chaque propriétaire saisit sa clé Anthropic (Intégrations, chiffrée) et choisit un modèle par agent (Réglages ou fiche agent) dans une liste alimentée par les modèles que sa clé peut utiliser. `ANTHROPIC_API_KEY` reste un repli serveur ; sans aucune clé, synthèses et réponses sont composées par règles. Les calculs et garde-fous n'utilisent jamais de LLM. |
 
 ## L'agence
 
@@ -116,6 +116,7 @@ npm install
 npm run dev                 # les migrations s'appliquent au démarrage
 npm test                    # tests du moteur (planchers, cumul, cas dorés, machine à états)
 npm run db:generate         # après une modification de src/db/schema.ts
+npm run db:idempotent       # obligatoire juste après db:generate : rend la migration rejouable sans erreur (un test échoue sinon)
 ```
 
 ## Déploiement sur Coolify
@@ -123,7 +124,7 @@ npm run db:generate         # après une modification de src/db/schema.ts
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés PriceLabs. Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (active le raisonnement LLM), `ANTHROPIC_MODEL` et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Voir les sections « Mot de passe oublié » et « Inscription neutre ».
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés API enregistrées (PriceLabs, Anthropic). Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (clé de repli partagée ; chaque propriétaire peut saisir la sienne dans l'application), `ANTHROPIC_MODEL` (modèle par défaut) et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Voir les sections « Mot de passe oublié » et « Inscription neutre ».
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 
