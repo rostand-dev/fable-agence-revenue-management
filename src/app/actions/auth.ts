@@ -5,7 +5,6 @@ import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, ensureMigrated, newId, schema } from "@/db";
 import { createSession, destroySession, hashPassword, verifyPassword } from "@/lib/auth";
-import { seedDemo } from "@/lib/services/seed";
 import { clientIp, generateToken, hashToken, isPwned, looksLikeToken, padTo, passwordProblem, rateKey, resetLink, resetMinutesFromEnv } from "@/lib/password-reset";
 import { allowAttempt, purgeOldAttempts } from "@/lib/rate-limit";
 import { emailConfigured, sendEmail } from "@/lib/email/resend";
@@ -34,7 +33,6 @@ export async function signupAction(_: AuthState, fd: FormData): Promise<AuthStat
     const tenantId = newId("tn"), userId = newId("usr");
     await db.insert(schema.tenants).values({ id: tenantId, name: p.data.name });
     await db.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
-    await seedDemo(tenantId);
     await createSession(userId);
     redirect("/");
   }
@@ -89,7 +87,6 @@ export async function confirmSignupAction(_: ConfirmState, fd: FormData): Promis
     return true;
   });
   if (!created) return { error: BAD_SIGNUP_LINK, invalidLink: true };
-  await seedDemo(tenantId);
   await createSession(userId);
   redirect("/");
 }
