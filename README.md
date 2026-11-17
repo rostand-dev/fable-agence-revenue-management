@@ -102,6 +102,27 @@ Variables à poser sur le preview Coolify :
 
 Garde-fous : sans le drapeau, rien ne se passe et rien n'est consigné. Avec le drapeau mais un domaine non autorisé, un mot de passe trop court ou un e-mail invalide, le compte n'est pas créé et la raison est écrite dans les journaux, sans empêcher le démarrage. Si l'adresse existe déjà, rien n'est modifié : changer le mot de passe dans les variables n'écrase pas celui du compte existant (utiliser « Mot de passe oublié » ou supprimer le compte). Coolify refusant les valeurs vides, on peut simplement ne pas créer ces variables en production, ou mettre `DEMO_ACCOUNT_ENABLED=false` et `DEMO_ACCOUNT_ALLOWED_HOST=disabled`.
 
+## Démo publique (lecture seule)
+
+Pour laisser un visiteur essayer le produit sans compte, on déploie une **seconde application Coolify** depuis ce même dépôt (branche `main`, déploiement automatique, sa propre base, domaine fixe, « Preview Deployments » désactivés). Elle affiche les logements de démonstration en lecture seule.
+
+**Application de la démo** (par exemple `demo.nuit-signal.rosyops.io`) :
+
+- `DEMO_READONLY=true`
+- `DEMO_ACCOUNT_ENABLED=true`, `DEMO_ACCOUNT_ALLOWED_HOST=demo.nuit-signal.rosyops.io`, `DEMO_ACCOUNT_EMAIL` et `DEMO_ACCOUNT_PASSWORD` (long et aléatoire : personne ne le saisit, `/demo` ouvre la session)
+- `DEMO_SIGNUP_URL=https://nuit-signal.rosyops.io/inscription`
+- ne définir ni clé Anthropic, ni Resend, ni PriceLabs, ni SuperHote : les agents restent en mode déterministe et aucun e-mail ne part.
+
+**Production** : `DEMO_URL=https://demo.nuit-signal.rosyops.io` affiche « Voir la démo, sans compte » sur les pages de connexion. Sans cette variable, le bouton n'existe pas. Ne jamais définir `DEMO_READONLY` en production.
+
+Comment ça marche :
+
+- Un verrou central (`src/middleware.ts`) refuse tout ce qui n'est pas une lecture (les actions serveur sont des POST), sauf le suivi d'activité de session. Une action ajoutée plus tard est donc verrouillée d'office.
+- `/demo` ouvre la session du compte de démo. Elle n'existe que si `DEMO_READONLY=true` **et** que le compte de démo est autorisé sur ce domaine ; ailleurs elle répond « introuvable ». Limitée à 60 ouvertures par heure et par adresse IP.
+- Sur la démo, connexion, inscription et mot de passe oublié redirigent vers `/demo` (ou vers `DEMO_SIGNUP_URL`). Après 15 minutes d'inactivité, la session expire et `/demo` en rouvre une.
+- Un bandeau « Démo en lecture seule » propose « Créer mon compte » ; un clic sur un formulaire affiche un message plutôt qu'une erreur.
+- Les données persistent entre les redéploiements (le seed ne recrée rien s'il existe). Pour repartir de données neuves, supprimer le volume de la base dans Coolify.
+
 ## Prix publié estimé (majorations par canal)
 
 Le prix qui fait foi auprès des voyageurs est celui de SuperHote, après une majoration en pourcentage propre à chaque canal. SuperHote ne l'expose pas : le propriétaire la saisit dans le dossier du logement (« Majorations par canal »), à la création ou ensuite. Une majoration vide est **inconnue**, jamais 0 %.

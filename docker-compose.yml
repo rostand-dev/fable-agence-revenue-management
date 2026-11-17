@@ -32,6 +32,10 @@ services:
       - DEMO_ACCOUNT_EMAIL=${DEMO_ACCOUNT_EMAIL:-}
       - DEMO_ACCOUNT_PASSWORD=${DEMO_ACCOUNT_PASSWORD:-}
       - DEMO_ACCOUNT_NAME=${DEMO_ACCOUNT_NAME:-}
+      # Démo publique : DEMO_READONLY=true (application de la démo uniquement) refuse toute modification et ouvre /demo.
+      - DEMO_READONLY=${DEMO_READONLY:-false}
+      - DEMO_SIGNUP_URL=${DEMO_SIGNUP_URL:-}
+      - DEMO_URL=${DEMO_URL:-}
     depends_on:
       db:
         condition: service_healthy
