@@ -18,6 +18,9 @@ export const demoUrl = (raw: string | undefined = process.env.DEMO_URL): string 
 /** Démo : adresse de création de compte sur la production (bandeau et bouton « Quitter la démo »). */
 export const demoSignupUrl = (raw: string | undefined = process.env.DEMO_SIGNUP_URL): string | null => httpUrl(raw);
 
+/** Message affiché partout où une modification est refusée (verrou serveur, formulaires, parcours). */
+export const DEMO_READONLY_MESSAGE = "Démo en lecture seule : cette action n'est pas disponible.";
+
 /** Seuls ces appels peuvent modifier quelque chose en lecture seule : le suivi d'activité et la fin de session pour inactivité. */
 const ALLOWED_WRITES = new Set(["/api/session/touch", "/api/session/end"]);
 

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { DEMO_READONLY_MESSAGE } from "@/lib/demo-mode";
 
 /**
  * Démo en lecture seule : un envoi de formulaire est intercepté avant d'atteindre le serveur et explique pourquoi rien ne se passe.
@@ -27,7 +28,7 @@ export function DemoGuard({ signupUrl }: { signupUrl: string | null }) {
   if (!shown) return null;
   return (
     <div className="demo-toast" role="status">
-      <span>Démo en lecture seule : cette action n'est pas disponible.</span>
+      <span>{DEMO_READONLY_MESSAGE}</span>
       {signupUrl && <a className="btn btn-primary btn-sm" href={signupUrl}>Créer mon compte</a>}
     </div>
   );
