@@ -9,6 +9,7 @@ import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { SuperhotePanel } from "@/components/SuperhotePanel";
+import { superhoteBadge } from "@/lib/integrations/superhote-badge";
 import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
 import { Badge, Banner, Byline, Cascade, Metric, Money, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
@@ -79,7 +80,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
           <div className="idmeta"><span>{p.kind || "type non renseigné"}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city || "ville non renseignée"}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
         </div>
-        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : p.pricelabs?.apiKeyEnc ? <State role="attention">Rattachement à confirmer</State> : <State role="neutre">PriceLabs non connecté</State>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
+        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : p.pricelabs?.apiKeyEnc ? <State role="attention">Rattachement à confirmer</State> : <State role="neutre">PriceLabs non connecté</State>)}{(() => { const b = superhoteBadge(p.superhote, p.isDemo); return b && <Link href={`/logements/${p.id}?tab=superhote`} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>; })()}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
       {miss.length > 0 && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Il manque : {miss.join(", ")}. Aucun plancher n'est calculé et aucune situation n'est ouverte tant que ces valeurs manquent ; une estimation provisoire suffit pour démarrer.{!p.isDemo && <> <Link href={`/logements/${p.id}/couts`}>Les renseigner pas à pas avec {agentName("onboarding", names)}</Link></>}</Banner>}
