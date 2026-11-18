@@ -71,7 +71,7 @@ export default async function Creation({ params, searchParams }: { params: Promi
     body = (
       <>
         <div className="fn-head"><h1>Coûts et seuils</h1><p>Huit questions courtes avec {ines}. Si vous ne savez pas, laissez vide ou donnez une estimation provisoire : vos réponses sont enregistrées à chaque question.</p></div>
-        <CostWizard propertyId={p.id} propertyName={p.name} startAt={0} initial={answersFromModel(model)} doneHref={stepHref(p.id, "verification")} quitHref="/logements?enregistre=1"
+        <CostWizard propertyId={p.id} propertyName={p.name} startAt={p.onboarding?.costQ ?? 0} initial={answersFromModel(model)} doneHref={stepHref(p.id, "verification")} quitHref="/logements?enregistre=1"
           hints={{ ines, observed: p.pricelabs?.lastSync?.observedCommission ?? {}, observedSh: p.superhote?.lastSync?.observedCommission ?? {}, observedFeeSh: p.superhote?.lastSync?.observedPaymentFee ?? null, nightsSold, monthsCovered: k.length || null, avgStay: medianLos(resas), minPriceCents: strat.minPriceCents ?? null }} />
       </>
     );

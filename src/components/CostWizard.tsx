@@ -93,9 +93,9 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt, 
   const v = variablePerNight(a), fixed = fixedMonthly(a), nightsM = parseNum(a.nightsMonth);
   const monthly = hints.nightsSold !== null && hints.monthsCovered ? Math.round(hints.nightsSold / hints.monthsCovered) : null;
 
-  const save = (final: boolean, then?: () => void) => start(async () => {
+  const save = (final: boolean, then?: () => void, resumeAt = step) => start(async () => {
     setMsg(null);
-    const r = await saveCostsAction(propertyId, a, final);
+    const r = await saveCostsAction(propertyId, a, final, resumeAt);
     if (r.error) return setMsg({ error: r.error });
     if (r.done) return router.push(doneHref ?? `/logements/${propertyId}?tab=economie`);
     if (then) then(); else setMsg({ ok: "Réponses enregistrées. Vous pouvez reprendre plus tard, à cette étape." });
@@ -104,7 +104,7 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt, 
   const tax = touristTaxPct(a);
   return (
     <Ctx.Provider value={{ a, set, prov, toggle, ines: hints.ines }}>
-    {quitHref && <form id="funnel-form" hidden onSubmit={(e) => { e.preventDefault(); save(false, () => router.push(quitHref)); }} />}
+    {quitHref && <form id="funnel-form" hidden data-pending={pending ? "" : undefined} onSubmit={(e) => { e.preventDefault(); if (pending) return; save(false, () => router.push(quitHref)); }} />}
     <div className="dcols">
       <div>
         <nav className="wiz-steps" aria-label="Étapes du parcours">
@@ -220,7 +220,7 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt, 
         {msg?.ok && <div className="banner banner-sain" role="status" style={{ marginTop: 16 }}><Icon name="check" /><div><p className="banner-title">{msg.ok}</p></div></div>}
         <div className="row-wrap" style={{ marginTop: 22 }}>
           {step > 0 && <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => setStep(step - 1)}><Icon name="back" />Précédent</button>}
-          {step < LAST && <button type="button" className="btn btn-primary" disabled={pending} onClick={() => save(false, () => setStep(step + 1))}><Icon name={pending ? "spin" : "arrow"} />{pending ? "Enregistrement…" : "Enregistrer et continuer"}</button>}
+          {step < LAST && <button type="button" className="btn btn-primary" disabled={pending} onClick={() => save(false, () => setStep(step + 1), step + 1)}><Icon name={pending ? "spin" : "arrow"} />{pending ? "Enregistrement…" : "Enregistrer et continuer"}</button>}
           {step === LAST && <button type="button" className="btn btn-primary" disabled={pending || miss.length > 0} onClick={() => save(true)}><Icon name={pending ? "spin" : "check"} />{pending ? (doneHref ? "Enregistrement…" : "Validation et première revue…") : doneHref ? "Valider et passer à la vérification" : "Valider mes coûts et seuils"}</button>}
           {!quitHref && <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => save(false)}><Icon name="clock" />Enregistrer et reprendre plus tard</button>}
         </div>

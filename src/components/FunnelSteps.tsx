@@ -45,6 +45,8 @@ export function LogementStep({ p }: { p?: { id: string; name: string; city: stri
     <>
       <div className="fn-head"><h1>Parlez-nous du logement</h1><p>Nom, ville et type suffisent pour continuer. Le reste peut rester « inconnu » : rien n'est jamais remplacé par zéro.</p></div>
       <ActionForm action={saveLogementAction} id="funnel-form" hidden={p ? { propertyId: p.id } : undefined}>
+        {/* bouton par défaut : la touche Entrée vaut toujours « Continuer » */}
+        <button type="submit" name="intent" value="next" className="sr-only" tabIndex={-1} aria-hidden="true">Continuer</button>
         <div className="fn-card">
           <div className="form-grid">
             <Fld name="name" label="Nom du logement" value={p && p.name !== "Logement sans nom" ? p.name : ""} req />
@@ -156,6 +158,8 @@ export function ReglesStep({ propertyId, minStay, markups, seenNote }: { propert
     <>
       <div className="fn-head"><h1>Vos règles de vente</h1><p>La durée minimale d'un séjour, et ce que SuperHote ajoute au prix PriceLabs sur chaque canal.</p></div>
       <ActionForm action={saveReglesAction} id="funnel-form" hidden={{ propertyId }}>
+        {/* bouton par défaut : la touche Entrée vaut toujours « Continuer » */}
+        <button type="submit" name="intent" value="next" className="sr-only" tabIndex={-1} aria-hidden="true">Continuer</button>
         <div className="fn-card">
           <h2 className="fn-h2">Séjour minimum</h2>
           <p className="help" style={{ margin: "0 0 12px" }}>Les prix de base, minimum et maximum sont lus directement dans PriceLabs.</p>

@@ -59,4 +59,9 @@ describe("parcours de création d'un logement", () => {
     const f: FunnelFacts = { ...base, identityOk: true, onboarding: quit };
     expect(funnelView(f, "logement").find((s) => s.key === "verification")!.reachable).toBe(true);
   });
+  it("garde la question de « Coûts et seuils » où reprendre d'une étape à l'autre", () => {
+    expect(advance({ step: "couts", costQ: 4 }, "couts", "stay").costQ).toBe(4);
+    expect(advance({ step: "couts", costQ: 4 }, "logement", "next").costQ).toBe(4);
+    expect(advance(null, "logement", "next")).not.toHaveProperty("costQ");
+  });
 });

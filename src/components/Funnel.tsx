@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Avatar } from "./Avatar";
 import { Icon, Logo } from "./Icon";
+import { QuitButton } from "./QuitButton";
 import type { StepView } from "@/lib/onboarding";
 
 /** Ossature du parcours de création : sans menu latéral, pour ne pas en sortir par erreur. */
@@ -21,7 +22,7 @@ export function FunnelHeader({ title, saved, quit }: { title: string; saved: str
       <div className="fn-top-right">
         {saved && <span className="fn-saved" role="status"><span className="fn-saved-dot" aria-hidden="true" />{saved}</span>}
         {quit === "form"
-          ? <button type="submit" form="funnel-form" name="intent" value="quit" formNoValidate className="btn btn-ghost btn-sm"><Icon name="clock" />Enregistrer et quitter</button>
+          ? <QuitButton />
           : <Link href="/logements" className="btn btn-ghost btn-sm"><Icon name="back" />Quitter</Link>}
       </div>
     </header>

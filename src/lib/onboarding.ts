@@ -13,7 +13,8 @@ export const FUNNEL_STEPS = [
 ] as const;
 export type StepKey = (typeof FUNNEL_STEPS)[number]["key"];
 export type StepStatus = "done" | "skipped" | "current" | "todo";
-export type OnboardingState = { step: string; reached?: string; done?: string[]; skipped?: string[]; savedAt?: string | null; completedAt?: string | null };
+/** `costQ` : question de « Coûts et seuils » où reprendre (0 à 7). */
+export type OnboardingState = { step: string; reached?: string; done?: string[]; skipped?: string[]; savedAt?: string | null; completedAt?: string | null; costQ?: number };
 
 /** Ce dont le calcul a besoin, sans dépendre de la base. */
 export type FunnelFacts = {
@@ -84,5 +85,5 @@ export function advance(prev: OnboardingState | null | undefined, at: StepKey, h
   const target = how === "stay" ? stepIndex(at) : Math.max(stepIndex(nextStep(at)), before);
   const step = FUNNEL_STEPS[target].key;
   const reached = FUNNEL_STEPS[Math.max(before, target, stepIndex(at))].key;
-  return { step, reached, done: [...done], skipped: [...skipped], savedAt: now.toISOString(), completedAt: prev?.completedAt ?? null };
+  return { step, reached, done: [...done], skipped: [...skipped], savedAt: now.toISOString(), completedAt: prev?.completedAt ?? null, ...(prev?.costQ !== undefined ? { costQ: prev.costQ } : {}) };
 }

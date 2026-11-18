@@ -12,7 +12,8 @@ import { advance } from "@/lib/onboarding";
 const KEYS = ["airbnbPct", "bookingPct", "bookingFeePct", "cleaningFee", "cleaningCost", "linenMode", "linenCost", "nightMode", "energyYear", "waterYear", "consumablesStay", "nightsYear", "avgStay", "variableDirect", "hard", "rent", "coop", "insurance", "subs", "taxes", "other", "nightsMonth", "goalMonth", "taxMode", "taxYear", "grossYear", "taxPct"];
 
 /** Enregistre les réponses du parcours « Coûts et seuils ». `final` valide le modèle ; sinon c'est une sauvegarde d'étape. */
-export async function saveCostsAction(propertyId: string, raw: CostAnswers, final: boolean): Promise<{ error?: string; done?: boolean }> {
+/** `question` : dans le parcours de création, la question où reprendre (0 à 7). */
+export async function saveCostsAction(propertyId: string, raw: CostAnswers, final: boolean, question?: number): Promise<{ error?: string; done?: boolean }> {
   const u = await requireUser();
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, propertyId), eq(schema.properties.tenantId, u.tenantId)));
   if (!p) return { error: "Logement introuvable." };
@@ -23,15 +24,14 @@ export async function saveCostsAction(propertyId: string, raw: CostAnswers, fina
   const model = modelFromAnswers(a);
   const miss = missingEconomics(model);
   if (final && miss.length) return { error: `Il manque encore : ${miss.join(", ")}. Donnez au moins une estimation provisoire, ou enregistrez pour reprendre plus tard.` };
-  const identity = p.name.length >= 2 && p.city.length >= 2 && !!p.kind;
-  const complete = miss.length === 0;
   const before = JSON.stringify({ ...(p.economics as any), answers: 0, provisional: 0 }), after = JSON.stringify({ ...model, answers: 0, provisional: 0 });
   const changed = before !== after;
   // Pendant le parcours de création, le logement reste en onboarding : il n'est lancé qu'à l'étape « Vérification ».
+  // Un logement déjà lancé n'est jamais rétrogradé : sans modèle complet, il n'y a simplement pas de revue (bannière « modèle incomplet »).
   const funnel = p.status === "ONBOARDING";
   await db.update(schema.properties).set({
-    economics: model, status: funnel || !complete || !identity ? "ONBOARDING" : p.status,
-    ...(funnel ? { onboarding: advance(p.onboarding, "couts", final ? "next" : "stay") } : {}),
+    economics: model, status: p.status,
+    ...(funnel ? { onboarding: { ...advance(p.onboarding, "couts", final ? "next" : "stay"), costQ: final ? 0 : Math.min(7, Math.max(0, Math.trunc(question ?? 0))) } } : {}),
     strategyVersion: changed && p.status !== "ONBOARDING" ? p.strategyVersion + 1 : p.strategyVersion,
   }).where(eq(schema.properties.id, p.id));
   if (final) {

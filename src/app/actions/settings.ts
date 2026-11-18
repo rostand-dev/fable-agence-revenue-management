@@ -13,7 +13,7 @@ import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
 import { connectSuperhote } from "@/lib/services/superhote-sync";
 
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
-/** Connexions facultatives saisies à l'onboarding : chacune est vérifiée maintenant, une erreur n'empêche jamais la création du dossier. */
+/** Connexions facultatives saisies dans le dossier d'un logement lancé (clé absente) : chacune est vérifiée maintenant, une erreur n'empêche jamais la création du dossier. */
 async function connectKeys(tenantId: string, propertyId: string, actor: string, plKey: string, shKey: string) {
   let plError = "", shError = "";
   if (plKey) { try { await connectPriceLabs(tenantId, propertyId, plKey, actor); } catch (e) { plError = e instanceof SyncError ? e.message : "Erreur technique pendant la connexion à PriceLabs."; } }
@@ -38,7 +38,6 @@ function check(v: ReturnType<typeof readProperty>, draft: boolean): string | nul
 }
 /** Majorations par canal : listes parallèles `markupLabel` / `markupPct`. Pourcentage vide = inconnu. */
 const readMarkups = (fd: FormData) => parseMarkupList(fd.getAll("markupLabel").map(String), fd.getAll("markupPct").map(String));
-const identityOk = (v: { name: string; city: string; kind: string }) => v.name.length >= 2 && v.city.length >= 2 && !!v.kind;
 
 /** Reprise ou correction d'un dossier. Les prix de base, minimum et maximum lus dans PriceLabs ne sont pas touchés. */
 export async function updatePropertyAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -47,6 +46,8 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, u.tenantId)));
   if (!p) return { error: "Logement introuvable." };
   if (p.isDemo) return { error: "Un logement de démonstration ne se modifie pas." };
+  // le lancement (ONBOARDING → SHADOW) ne se fait qu'à la vérification du parcours guidé, PriceLabs connecté
+  if (p.status === "ONBOARDING") return { error: "Ce logement est en cours de création : terminez-la dans le parcours guidé." };
   const draft = txt(fd, "intent") === "draft";
   const v = readProperty(fd);
   const err = check(v, draft);
@@ -55,11 +56,9 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   if (!mk.ok) return { error: mk.error };
   const old = p.strategy as Strategy;
   const strategy: Strategy = { ...old, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: old.maxDiscountStackPct ?? 20, maxPriceChangePct: old.maxPriceChangePct ?? 5 };
-  const complete = missingEconomics(p.economics as EconomicModel).length === 0 && identityOk(v);
   const name = v.name || p.name || "Logement sans nom";
   await db.update(schema.properties).set({
     name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, strategy, channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
-    status: !complete ? "ONBOARDING" : p.status === "ONBOARDING" ? "SHADOW" : p.status,
   }).where(eq(schema.properties.id, p.id));
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.` });
   // Une clé déjà enregistrée ne se remplace pas ici : elle se gère dans l'onglet de l'intégration.
@@ -68,7 +67,7 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   revalidatePath("/", "layout");
   if (plKey || shKey) redirect(landing(p.id, plKey, shKey, plError, shError));
   if (draft) return { ok: "Saisie enregistrée. Vous pouvez fermer cette page et la reprendre plus tard depuis Logements." };
-  if (!complete) redirect(`/logements/${p.id}/couts`);
+  if (missingEconomics(p.economics as EconomicModel).length) redirect(`/logements/${p.id}/couts`);
   redirect(`/logements/${p.id}`);
 }
 
