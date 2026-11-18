@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { CostWizard } from "@/components/CostWizard";
+import { StepTop } from "@/components/StepTop";
 import { FunnelHeader, FunnelStepper, savedLabel } from "@/components/Funnel";
 import { ConnectStep, LogementStep, ReglesStep, stepHref, VerificationStep } from "@/components/FunnelSteps";
 import { db, schema } from "@/db";
@@ -93,7 +94,9 @@ export default async function Creation({ params, searchParams }: { params: Promi
       <FunnelHeader title={title} saved={savedLabel(p.onboarding?.savedAt)} quit="form" />
       <main className={`fn-wrap${step === "couts" ? " is-wide" : ""}`} id="contenu">
         <FunnelStepper steps={steps} href={(k) => stepHref(p.id, k)} />
-        {body}
+        <StepTop stepKey={step} />
+        {/* une étape = un arbre neuf : rien (message d'erreur, saisie) ne passe d'une étape à l'autre */}
+        <div key={step}>{body}</div>
       </main>
     </>
   );
