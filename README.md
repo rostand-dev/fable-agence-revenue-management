@@ -89,6 +89,19 @@ Pour ne pas révéler quelles adresses ont déjà un compte, l'inscription ne cr
 - Limitation : 3 inscriptions/heure/e-mail, 10/heure/IP.
 - **Preview** : `SIGNUP_EMAIL_CONFIRMATION=false` rétablit la création immédiate du compte, sans e-mail (ce mode révèle les adresses déjà inscrites : à réserver aux environnements de test). En production avec la confirmation activée, Resend doit être configuré, sinon l'inscription affiche « momentanément indisponible ».
 
+## Compte de démo (test/preview)
+
+Pour ne plus recréer un compte à chaque déploiement de preview, l'application peut créer un compte propriétaire prêt à l'emploi (avec les deux logements de démonstration) au démarrage, juste après les migrations. Réservé aux environnements de test : **ne rien définir en production**.
+
+Variables à poser sur le preview Coolify :
+
+- `DEMO_ACCOUNT_ENABLED=true`
+- `DEMO_ACCOUNT_ALLOWED_HOST=*.nuit-signal.rosyops.io` : le domaine de `APP_URL` doit correspondre. Le joker de tête exige un sous-domaine, donc il ne couvre pas la production `nuit-signal.rosyops.io`. Un motif exact (`preview.exemple.fr`) est aussi accepté.
+- `DEMO_ACCOUNT_EMAIL` et `DEMO_ACCOUNT_PASSWORD` (10 caractères au moins)
+- facultatif : `DEMO_ACCOUNT_NAME` (« Compte démo » par défaut)
+
+Garde-fous : sans le drapeau, rien ne se passe et rien n'est consigné. Avec le drapeau mais un domaine non autorisé, un mot de passe trop court ou un e-mail invalide, le compte n'est pas créé et la raison est écrite dans les journaux, sans empêcher le démarrage. Si l'adresse existe déjà, rien n'est modifié : changer le mot de passe dans les variables n'écrase pas celui du compte existant (utiliser « Mot de passe oublié » ou supprimer le compte). Coolify refusant les valeurs vides, on peut simplement ne pas créer ces variables en production, ou mettre `DEMO_ACCOUNT_ENABLED=false` et `DEMO_ACCOUNT_ALLOWED_HOST=disabled`.
+
 ## Prix publié estimé (majorations par canal)
 
 Le prix qui fait foi auprès des voyageurs est celui de SuperHote, après une majoration en pourcentage propre à chaque canal. SuperHote ne l'expose pas : le propriétaire la saisit dans le dossier du logement (« Majorations par canal »), à la création ou ensuite. Une majoration vide est **inconnue**, jamais 0 %.
@@ -124,7 +137,7 @@ npm run db:idempotent       # obligatoire juste après db:generate : rend la mig
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés API enregistrées (PriceLabs, Anthropic). Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (clé de repli partagée ; chaque propriétaire peut saisir la sienne dans l'application), `ANTHROPIC_MODEL` (modèle par défaut) et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Voir les sections « Mot de passe oublié » et « Inscription neutre ».
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés API enregistrées (PriceLabs, Anthropic). Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (clé de repli partagée ; chaque propriétaire peut saisir la sienne dans l'application), `ANTHROPIC_MODEL` (modèle par défaut) et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Pour le compte de démo du preview : voir « Compte de démo (test/preview) ». Voir les sections « Mot de passe oublié » et « Inscription neutre ».
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 
