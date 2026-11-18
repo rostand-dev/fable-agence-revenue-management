@@ -5,26 +5,48 @@ services:
     build: .
     restart: unless-stopped
     environment:
+      # Coolify génère le domaine public de l'application et le transmet ici (port 3000).
       - SERVICE_URL_APP_3000
+      # Adresse publique de l'application (liens des e-mails ; cookies sécurisés si https). Reprend le domaine généré par Coolify.
       - APP_URL=${SERVICE_URL_APP:-http://localhost:3000}
+      # Chaîne de connexion à la base du service db ci-dessous ; le mot de passe est généré par Coolify.
       - DATABASE_URL=postgresql://nuitsignal:${SERVICE_PASSWORD_POSTGRES:-nuitsignal_local}@db:5432/nuitsignal
-      # Chiffre les clés API enregistrées (PriceLabs). Générée par Coolify ; ne pas la changer ensuite.
+      # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, Anthropic). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
       - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
-      # Facultatif : active le raisonnement LLM des agents. Vide = repli déterministe.
+      # Facultatif : clé Anthropic de repli, utilisée quand le propriétaire n'a saisi aucune clé. Vide = agents en repli déterministe.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      # Facultatif : modèle Anthropic par défaut des agents.
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
-      # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2).
+      # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2). Sur la démo, la session expirée se rouvre seule.
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
-      # Mot de passe oublié : envoi des e-mails via Resend. Vide = aucun e-mail envoyé (la demande reste sans effet).
+      # Clé API Resend pour envoyer les e-mails (mot de passe oublié, confirmation d'inscription). Vide = aucun e-mail envoyé.
       - RESEND_API_KEY=${RESEND_API_KEY:-}
-      # Expéditeur sur un domaine vérifié dans Resend, ex. NuitSignal <no-reply@votre-domaine.fr>
+      # Expéditeur des e-mails, sur un domaine vérifié dans Resend. Ex. : NuitSignal <no-reply@votre-domaine.fr>
       - EMAIL_FROM=${EMAIL_FROM:-}
+      # Facultatif : adresse de réponse des e-mails envoyés.
       - EMAIL_REPLY_TO=${EMAIL_REPLY_TO:-}
       # Durée de validité du lien de réinitialisation, en minutes (défaut 30, entre 5 et 120).
       - PASSWORD_RESET_MINUTES=${PASSWORD_RESET_MINUTES:-30}
       # Inscription : confirmation de l'adresse par e-mail avant création du compte (nécessite Resend).
       # Mettre false en preview pour créer le compte immédiatement, sans e-mail (révèle alors les adresses déjà inscrites).
       - SIGNUP_EMAIL_CONFIRMATION=${SIGNUP_EMAIL_CONFIRMATION:-true}
+      # Compte de démo (test/preview uniquement, ne rien définir en production) : créé au démarrage s'il n'existe pas.
+      # Interrupteur : true crée le compte ; il faut aussi un domaine de APP_URL correspondant à DEMO_ACCOUNT_ALLOWED_HOST et un mot de passe de 10 caractères au moins.
+      - DEMO_ACCOUNT_ENABLED=${DEMO_ACCOUNT_ENABLED:-false}
+      # Domaine autorisé : motif exact (demo.exemple.fr) ou joker de tête (*.nuit-signal.rosyops.io, qui ne couvre pas le domaine nu de la production).
+      - DEMO_ACCOUNT_ALLOWED_HOST=${DEMO_ACCOUNT_ALLOWED_HOST:-}
+      # Adresse e-mail de connexion du compte de démo.
+      - DEMO_ACCOUNT_EMAIL=${DEMO_ACCOUNT_EMAIL:-}
+      # Mot de passe du compte de démo (10 caractères au moins). Non modifié si le compte existe déjà.
+      - DEMO_ACCOUNT_PASSWORD=${DEMO_ACCOUNT_PASSWORD:-}
+      # Facultatif : nom affiché du compte de démo (défaut : Compte démo).
+      - DEMO_ACCOUNT_NAME=${DEMO_ACCOUNT_NAME:-}
+      # Démo publique (application de la démo uniquement) : true refuse toute modification et ouvre /demo. Ne jamais définir en production ni en preview.
+      - DEMO_READONLY=${DEMO_READONLY:-false}
+      # Sur la démo : adresse de création de compte sur la production (bandeau et bouton « Quitter la démo »).
+      - DEMO_SIGNUP_URL=${DEMO_SIGNUP_URL:-}
+      # Sur la production : adresse de la démo. Affiche « Voir la démo, sans compte » sur la page de connexion ; vide = pas de bouton.
+      - DEMO_URL=${DEMO_URL:-}
     depends_on:
       db:
         condition: service_healthy
@@ -32,8 +54,11 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
+      # Utilisateur PostgreSQL créé au premier démarrage du service.
       - POSTGRES_USER=nuitsignal
+      # Mot de passe PostgreSQL, généré par Coolify (même valeur que dans DATABASE_URL).
       - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES:-nuitsignal_local}
+      # Nom de la base créée au premier démarrage.
       - POSTGRES_DB=nuitsignal
     volumes:
       - nuitsignal-db:/var/lib/postgresql/data

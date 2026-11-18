@@ -3,6 +3,9 @@ import { Icon, Logo } from "./Icon";
 import { TabletNav } from "./Shell";
 import { logoutAction } from "@/app/actions/auth";
 import { getUser } from "@/lib/auth";
+import { demoReadonly, demoSignupUrl } from "@/lib/demo-mode";
+import { DemoGuard } from "./DemoGuard";
+import { State } from "./ui";
 
 export type Crumb = { label: string; href?: string };
 
@@ -10,6 +13,7 @@ export type Crumb = { label: string; href?: string };
 export async function Page({ title, sub, crumbs, right, children, after }: { title: string; sub?: string; crumbs: Crumb[]; right?: React.ReactNode; children: React.ReactNode; after?: React.ReactNode }) {
   const user = await getUser();
   const all: Crumb[] = [{ label: "Cockpit", href: "/" }, ...crumbs];
+  const demo = demoReadonly(), signup = demoSignupUrl();
   return (
     <>
       <header className="topbar">
@@ -22,9 +26,13 @@ export async function Page({ title, sub, crumbs, right, children, after }: { tit
           {right}
           <Link href="/glossaire" className="btn btn-ghost btn-sm glossary-link" aria-label="Glossaire : comprendre les termes" title="Glossaire"><Icon name="glossary" /><span className="glossary-link-label">Glossaire</span></Link>
           {user && <span className="who" title={user.email}>{user.name}</span>}
-          <form action={logoutAction} className="inline logout-form">
-            <button type="submit" className="btn btn-ghost btn-sm" aria-label="Se déconnecter"><Icon name="logout" /></button>
-          </form>
+          {demo ? (
+            <a className="btn btn-ghost btn-sm logout-form" href={signup ?? "/demo"} aria-label="Quitter la démo" title="Quitter la démo"><Icon name="logout" /></a>
+          ) : (
+            <form action={logoutAction} className="inline logout-form">
+              <button type="submit" className="btn btn-ghost btn-sm" aria-label="Se déconnecter"><Icon name="logout" /></button>
+            </form>
+          )}
         </div>
       </header>
       <TabletNav />
@@ -37,7 +45,17 @@ export async function Page({ title, sub, crumbs, right, children, after }: { tit
           })}
         </ol>
       </nav>
-      <div className="content">{children}</div>
+      <div className="content">
+        {demo && (
+          <div className="mode-strip" style={{ marginBottom: 20 }}>
+            <State role="tech">Démo en lecture seule</State>
+            <span>Vous explorez des <strong>données synthétiques</strong> : rien ne peut être modifié.</span>
+            {signup && <a className="btn btn-primary btn-sm" href={signup}>Créer mon compte</a>}
+          </div>
+        )}
+        {children}
+      </div>
+      {demo && <DemoGuard signupUrl={signup} />}
       {after}
     </>
   );

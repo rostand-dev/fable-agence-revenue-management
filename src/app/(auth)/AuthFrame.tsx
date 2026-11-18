@@ -1,8 +1,10 @@
 import { Logo } from "@/components/Icon";
 import { Avatar } from "@/components/Avatar";
 import { AGENTS } from "@/lib/agents/registry";
+import { demoUrl } from "@/lib/demo-mode";
 
 export function AuthFrame({ children }: { children: React.ReactNode }) {
+  const demo = demoUrl();
   return (
     <main className="auth">
       <section className="auth-pitch">
@@ -19,7 +21,15 @@ export function AuthFrame({ children }: { children: React.ReactNode }) {
           <li>Rien n'est écrit dans un outil externe sans votre approbation.</li>
         </ul>
       </section>
-      <section className="auth-form">{children}</section>
+      <section className="auth-form">
+        {children}
+        {demo && (
+          <div className="demo-entry">
+            <p className="muted">Envie de voir avant de vous inscrire ?</p>
+            <a className="btn btn-ghost" href={demo}>Voir la démo, sans compte</a>
+          </div>
+        )}
+      </section>
     </main>
   );
 }
