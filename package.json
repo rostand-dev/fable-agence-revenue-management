@@ -9,7 +9,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:idempotent": "tsx scripts/idempotent-migrations.ts"
+    "db:idempotent": "tsx scripts/idempotent-migrations.ts",
+    "docs:money": "tsx scripts/generate-money-doc.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
