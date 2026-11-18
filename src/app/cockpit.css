@@ -1740,9 +1740,21 @@ table.cascade .delta-neu { color: var(--quiet); }
   }
 }
 
-/* le fil d'Ariane reste la position courante détaillée : il ne disparaît jamais */
+/* mobile : le fil d'Ariane est masqué pour gagner de la hauteur (visible dès la tablette) ;
+   --crumbs-h retombe à 0 car Shell ne mesure que les éléments affichés */
 @media (max-width: 767px) {
-  .crumbs ol { font-size: 12px; }
+  .crumbs { display: none; }
+  .nav-sheet-logout { margin: 14px 0 0; }
+  .nav-sheet-logout-btn {
+    width: 100%;
+    border: 0;
+    border-top: 1px solid var(--line);
+    background: none;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+    color: var(--ink);
+  }
 }
 
 /* Avertissement d'inactivité (IdleGuard) */

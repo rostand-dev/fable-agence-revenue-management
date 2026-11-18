@@ -27,9 +27,9 @@ export async function Page({ title, sub, crumbs, right, children, after }: { tit
           <Link href="/glossaire" className="btn btn-ghost btn-sm glossary-link" aria-label="Glossaire : comprendre les termes" title="Glossaire"><Icon name="glossary" /><span className="glossary-link-label">Glossaire</span></Link>
           {user && <span className="who" title={user.email}>{user.name}</span>}
           {demo ? (
-            <a className="btn btn-ghost btn-sm" href={signup ?? "/demo"} aria-label="Quitter la démo" title="Quitter la démo"><Icon name="logout" /></a>
+            <a className="btn btn-ghost btn-sm logout-form" href={signup ?? "/demo"} aria-label="Quitter la démo" title="Quitter la démo"><Icon name="logout" /></a>
           ) : (
-            <form action={logoutAction} className="inline">
+            <form action={logoutAction} className="inline logout-form">
               <button type="submit" className="btn btn-ghost btn-sm" aria-label="Se déconnecter"><Icon name="logout" /></button>
             </form>
           )}

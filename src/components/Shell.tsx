@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useRef } from "react";
 import { Icon, Logo } from "./Icon";
+import { logoutAction } from "@/app/actions/auth";
 
 type Item = { href: string; icon: string; label: string; primary?: boolean; count?: boolean };
 const GROUPS: { label: string; items: Item[] }[] = [
@@ -28,7 +29,7 @@ const isCurrent = (path: string, href: string) => (href === "/" ? path === "/" |
 const NavCtx = createContext<{ open: number }>({ open: 0 });
 
 /** Une seule source de navigation, trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
-export function Shell({ open, children }: { open: number; children: React.ReactNode }) {
+export function Shell({ open, demo = false, exitHref = "/demo", children }: { open: number; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
   const path = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
   const more = useRef<HTMLButtonElement>(null);
@@ -103,6 +104,19 @@ export function Shell({ open, children }: { open: number; children: React.ReactN
               })}
             </section>
           ))}
+          {demo ? (
+            <div className="nav-sheet-logout">
+              <a className="nav-sheet-link nav-sheet-logout-btn" href={exitHref}>
+                <span data-icon><Icon name="logout" /></span><span>Quitter la démo</span>
+              </a>
+            </div>
+          ) : (
+            <form action={logoutAction} className="nav-sheet-logout">
+              <button type="submit" className="nav-sheet-link nav-sheet-logout-btn">
+                <span data-icon><Icon name="logout" /></span><span>Se déconnecter</span>
+              </button>
+            </form>
+          )}
         </div>
       </dialog>
     </NavCtx.Provider>
