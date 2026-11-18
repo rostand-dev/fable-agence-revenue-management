@@ -6,6 +6,7 @@ import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { SitCard } from "@/components/SitCard";
 import { Banner, Metric, State, Vq } from "@/components/ui";
+import { Icon } from "@/components/Icon";
 import { AGENTS } from "@/lib/agents/registry";
 import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
@@ -36,6 +37,23 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const nights = props.length * 91;
   // chaque logement est revu à son rythme : le blocage se lit sur le logement, plus sur la dernière revue du compte
   const blocked = props.filter((p) => p.cadence?.blocked).length;
+
+  // Compte neuf : rien à arbitrer tant qu'aucun logement n'existe, on guide vers la première étape.
+  if (props.length === 0) {
+    return (
+      <Page title="Opportunités" sub="Bienvenue" crumbs={[{ label: "Opportunités" }]}>
+        <div className="page-head">
+          <h1>Commençons par votre premier logement</h1>
+          <p>L'agence travaille logement par logement. Ajoutez le vôtre : l'équipe vous guide ensuite pour renseigner ses coûts et brancher vos outils, puis elle ne vous présente que les exceptions à arbitrer.</p>
+        </div>
+        <div className="empty">
+          <h3>Aucun logement pour le moment</h3>
+          <p style={{ marginBottom: 16 }}>Vous pourrez enregistrer votre saisie et la reprendre plus tard.</p>
+          <Link className="btn btn-primary" href="/logements/nouveau"><Icon name="plus" />Ajouter mon premier logement</Link>
+        </div>
+      </Page>
+    );
+  }
 
   return (
     <Page title="Opportunités" sub={review ? `Revue du ${fmtDateTime(review.startedAt)} · ${props.length} logement${props.length > 1 ? "s" : ""}` : "Aucune revue encore lancée"} crumbs={[{ label: "Opportunités" }]}>
