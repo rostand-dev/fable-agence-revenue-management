@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
@@ -16,6 +16,8 @@ export default async function Modifier({ params, searchParams }: { params: Promi
   const { id } = await params;
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, user.tenantId)));
   if (!p || p.isDemo) notFound();
+  // pendant la création, le dossier se complète dans le parcours guidé
+  if (p.status === "ONBOARDING") redirect(`/logements/${p.id}/creation?etape=logement`);
   const miss = missingEconomics(p.economics as EconomicModel);
   const draft = p.status === "ONBOARDING";
   return (

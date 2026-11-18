@@ -52,6 +52,8 @@ export const properties = pgTable("properties", {
   superhote: jsonb("superhote").$type<Record<string, any>>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
   channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),
+  /** Parcours de création (funnel) : étape où reprendre, étapes validées et reportées, heure du dernier enregistrement « à faire plus tard ». null = logement créé avant le funnel ou parcours terminé */
+  onboarding: jsonb("onboarding").$type<{ step: string; done?: string[]; skipped?: string[]; savedAt?: string | null; completedAt?: string | null }>(),
   /** Rythme de suivi adaptatif : palier, raisons, intervalles, dernier passage, relevé de marché de référence, échecs de lecture */
   cadence: jsonb("cadence").$type<Record<string, any>>(),
   /** Prochaines échéances du planificateur ; null = à faire dès que la source est connectée */

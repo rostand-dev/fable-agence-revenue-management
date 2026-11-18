@@ -1,4 +1,4 @@
-import { createPropertyAction, updatePropertyAction } from "@/app/actions/settings";
+import { updatePropertyAction } from "@/app/actions/settings";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 void (null as unknown as EconomicModel);
 import { ActionForm, Submit } from "./forms";
@@ -33,12 +33,12 @@ export function valuesOf(p: Existing): Record<string, string> {
   };
 }
 
-/** Formulaire de dossier logement, partagé entre la création et la reprise. Deux sorties : enregistrer pour plus tard, ou valider. */
+/** Formulaire de modification du dossier d'un logement déjà lancé (la création passe par le parcours guidé). */
 export function PropertyForm({ existing }: { existing?: Existing }) {
   const v = existing ? valuesOf(existing) : {};
   const total = SECTIONS.flatMap((s) => s.fields).length, filled = Object.values(v).filter((x) => x !== "").length;
   return (
-    <ActionForm action={existing ? updatePropertyAction : createPropertyAction} hidden={existing ? { propertyId: existing.id } : undefined}>
+    <ActionForm action={updatePropertyAction} hidden={existing ? { propertyId: existing.id } : undefined}>
       {existing && <p className="muted" style={{ margin: "0 0 4px" }}>{filled} champ{filled > 1 ? "s" : ""} renseigné{filled > 1 ? "s" : ""} sur {total}. Les champs vides restent « inconnus ».</p>}
       {SECTIONS.map((s) => (
         <section className="section" key={s.title} style={{ marginTop: 28 }}>

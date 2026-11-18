@@ -28,8 +28,7 @@ function landing(id: string, plKey: string, shKey: string, plError: string, shEr
 /** Champ vide = inconnu (null), jamais zéro. */
 const num = (fd: FormData, k: string): number | null => { const v = txt(fd, k).replace(",", "."); if (v === "") return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
 
-const EMPTY: EconomicModel = { channels: {}, cleaningFeeChargedCents: null, cleaningCostCents: null, linenCostCents: null, nightlyVariableCostCents: null, hardContributionPerNightCents: null, strategyContributionPerNightCents: null, targetContributionPerNightCents: null, origin: "DECLARED", touristTaxPct: null };
-/** Identité du logement. Coûts, commissions et seuils se renseignent dans le parcours « Coûts et seuils ». */
+/** Identité du logement (la création passe par le parcours guidé, actions/onboarding.ts). Coûts, commissions et seuils se renseignent dans le parcours « Coûts et seuils ». */
 function readProperty(fd: FormData) {
   return { name: txt(fd, "name"), city: txt(fd, "city"), kind: txt(fd, "kind"), bedrooms: num(fd, "bedrooms"), capacity: num(fd, "capacity"), minStay: num(fd, "minStay"), objective: txt(fd, "objective") || undefined, positioning: txt(fd, "positioning") || undefined };
 }
@@ -40,29 +39,6 @@ function check(v: ReturnType<typeof readProperty>, draft: boolean): string | nul
 /** Majorations par canal : listes parallèles `markupLabel` / `markupPct`. Pourcentage vide = inconnu. */
 const readMarkups = (fd: FormData) => parseMarkupList(fd.getAll("markupLabel").map(String), fd.getAll("markupPct").map(String));
 const identityOk = (v: { name: string; city: string; kind: string }) => v.name.length >= 2 && v.city.length >= 2 && !!v.kind;
-
-/** Création d'un logement. « draft » enregistre la saisie telle quelle, sans champ obligatoire, pour la reprendre plus tard. */
-export async function createPropertyAction(_: FormState, fd: FormData): Promise<FormState> {
-  const u = await requireUser();
-  const draft = txt(fd, "intent") === "draft";
-  const v = readProperty(fd);
-  const err = check(v, draft);
-  if (err) return { error: err };
-  const mk = readMarkups(fd);
-  if (!mk.ok) return { error: mk.error };
-  const strategy: Strategy = { basePriceCents: null, minPriceCents: null, maxPriceCents: null, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: 20, maxPriceChangePct: 5 };
-  const id = newId("prop"), name = v.name || "Logement sans nom";
-  await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, status: "ONBOARDING", isDemo: false, profile: { positioning: v.positioning ?? null }, economics: EMPTY, strategy, channelMarkups: mk.markups });
-  await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: draft ? `${name} : saisie enregistrée, à reprendre.` : `${name} : logement créé. Il reste à renseigner ses coûts et ses seuils pour calculer les planchers.` });
-  await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.created", entity: "Property", entityId: id, summary: `${u.name} ${draft ? "enregistre un brouillon de logement" : "ajoute le logement"} ${name}.` });
-  // Les clés PriceLabs et SuperHote sont rattachées au logement : vérifiées maintenant, le dossier est créé dans tous les cas.
-  const plKey = txt(fd, "pricelabsKey"), shKey = txt(fd, "superhoteKey");
-  const { plError, shError } = await connectKeys(u.tenantId, id, "user:" + u.id, plKey, shKey);
-  revalidatePath("/", "layout");
-  if (draft && !plKey && !shKey) redirect(`/logements/${id}/modifier?enregistre=1`);
-  if (!plKey && !shKey) redirect(`/logements/${id}/couts`);
-  redirect(landing(id, plKey, shKey, plError, shError));
-}
 
 /** Reprise ou correction d'un dossier. Les prix de base, minimum et maximum lus dans PriceLabs ne sont pas touchés. */
 export async function updatePropertyAction(_: FormState, fd: FormData): Promise<FormState> {

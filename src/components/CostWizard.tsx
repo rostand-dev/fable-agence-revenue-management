@@ -69,7 +69,11 @@ function Choice({ field, value, label, note }: { field: "linenMode" | "taxMode" 
   );
 }
 
-export function CostWizard({ propertyId, propertyName, initial, hints, startAt }: { propertyId: string; propertyName: string; initial: CostAnswers; hints: CostHints; startAt: number }) {
+/**
+ * `doneHref` : où aller après validation (par défaut la fiche, onglet Économie).
+ * `quitHref` : dans le parcours de création, le bouton « Enregistrer et quitter » de l'en-tête soumet le formulaire `funnel-form` rendu ici.
+ */
+export function CostWizard({ propertyId, propertyName, initial, hints, startAt, doneHref, quitHref }: { propertyId: string; propertyName: string; initial: CostAnswers; hints: CostHints; startAt: number; doneHref?: string; quitHref?: string }) {
   const [a, setA] = useState<CostAnswers>({ nightMode: "calc", linenMode: "", taxMode: "calc", provisional: [], ...initial });
   const [step, setStep] = useState(startAt);
   const [msg, setMsg] = useState<{ error?: string; ok?: string } | null>(null);
@@ -89,13 +93,14 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
     setMsg(null);
     const r = await saveCostsAction(propertyId, a, final);
     if (r.error) return setMsg({ error: r.error });
-    if (r.done) return router.push(`/logements/${propertyId}?tab=economie`);
+    if (r.done) return router.push(doneHref ?? `/logements/${propertyId}?tab=economie`);
     if (then) then(); else setMsg({ ok: "Réponses enregistrées. Vous pouvez reprendre plus tard, à cette étape." });
   });
 
   const tax = touristTaxPct(a);
   return (
     <Ctx.Provider value={{ a, set, prov, toggle, ines: hints.ines }}>
+    {quitHref && <form id="funnel-form" hidden onSubmit={(e) => { e.preventDefault(); save(false, () => router.push(quitHref)); }} />}
     <div className="dcols">
       <div>
         <nav className="wiz-steps" aria-label="Étapes du parcours">
@@ -212,8 +217,8 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
         <div className="row-wrap" style={{ marginTop: 22 }}>
           {step > 0 && <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => setStep(step - 1)}><Icon name="back" />Précédent</button>}
           {step < LAST && <button type="button" className="btn btn-primary" disabled={pending} onClick={() => save(false, () => { setStep(step + 1); window.scrollTo({ top: 0 }); })}><Icon name={pending ? "spin" : "arrow"} />{pending ? "Enregistrement…" : "Enregistrer et continuer"}</button>}
-          {step === LAST && <button type="button" className="btn btn-primary" disabled={pending || miss.length > 0} onClick={() => save(true)}><Icon name={pending ? "spin" : "check"} />{pending ? "Validation et première revue…" : "Valider mes coûts et seuils"}</button>}
-          <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => save(false)}><Icon name="clock" />Enregistrer et reprendre plus tard</button>
+          {step === LAST && <button type="button" className="btn btn-primary" disabled={pending || miss.length > 0} onClick={() => save(true)}><Icon name={pending ? "spin" : "check"} />{pending ? (doneHref ? "Enregistrement…" : "Validation et première revue…") : doneHref ? "Valider et passer à la vérification" : "Valider mes coûts et seuils"}</button>}
+          {!quitHref && <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => save(false)}><Icon name="clock" />Enregistrer et reprendre plus tard</button>}
         </div>
       </div>
 
