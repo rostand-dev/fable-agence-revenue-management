@@ -951,6 +951,8 @@ td .vq, th .vq { font-size: 12.5px; }
 .idhead h1 { margin: 0 0 4px; font-size: 24px; letter-spacing: -.02em; font-weight: 650; }
 .idhead .idmeta { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; color: var(--quiet); }
 .idhead .idsync { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
+.idhead .idsync .state-link { text-decoration: none; color: inherit; border-radius: 6px; }
+.idhead .idsync .state-link:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
 .read-date {
   font-family: var(--mono);
   font-size: 12px;
