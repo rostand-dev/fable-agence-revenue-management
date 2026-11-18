@@ -32,10 +32,9 @@ export default async function Creation({ params, searchParams }: { params: Promi
   const facts: FunnelFacts = { identityOk: p.name.length >= 2 && p.city.length >= 2 && !!p.kind, superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: miss.length, onboarding: p.onboarding };
   const asked = (await searchParams).etape;
   const resume = resumeStep(facts);
-  let step: StepKey = isStep(asked) ? asked : resume;
-  // une étape encore jamais atteinte n'est pas ouverte par l'adresse : on revient à la plus avancée
-  const views0 = funnelView(facts, resume);
-  if (!views0.find((v) => v.key === step)!.reachable) step = resume;
+  const step: StepKey = isStep(asked) ? asked : resume;
+  // une étape encore jamais atteinte ne s'ouvre pas par l'adresse : redirection vers l'étape où reprendre
+  if (!funnelView(facts, resume).find((v) => v.key === step)!.reachable) redirect(stepHref(p.id, resume));
   const steps = funnelView(facts, step);
   const ines = agentName("onboarding", user.settings.agentNames);
   const title = `Nouveau logement · ${p.name}`;

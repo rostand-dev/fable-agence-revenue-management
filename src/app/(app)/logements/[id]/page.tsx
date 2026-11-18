@@ -9,7 +9,7 @@ import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { SuperhotePanel } from "@/components/SuperhotePanel";
-import { superhoteBadge } from "@/lib/integrations/superhote-badge";
+import { badgeHref, pricelabsBadge, superhoteBadge } from "@/lib/integrations/connection-badge";
 import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
 import { Badge, Banner, Byline, Cascade, Metric, Money, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
@@ -82,7 +82,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
           <div className="idmeta"><span>{p.kind || "type non renseigné"}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city || "ville non renseignée"}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
         </div>
-        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{!p.isDemo && (p.pricelabs?.listingId ? <State role={p.pricelabs.lastSync?.ok === false ? "attention" : "sain"}>PriceLabs connecté</State> : p.pricelabs?.apiKeyEnc ? <State role="attention">Rattachement à confirmer</State> : <State role="neutre">PriceLabs non connecté</State>)}{(() => { const b = superhoteBadge(p.superhote, p.isDemo); return b && <Link href={p.status === "ONBOARDING" ? `/logements/${p.id}/creation?etape=superhote` : `/logements/${p.id}?tab=superhote`} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>; })()}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
+        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{([["pricelabs", pricelabsBadge(p.pricelabs, p.isDemo)], ["superhote", superhoteBadge(p.superhote, p.isDemo)]] as const).map(([k, b]) => b && <Link key={k} href={badgeHref(k, p.id, p.status)} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
       {!p.isDemo && p.status === "ONBOARDING" && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link></span></Banner>}
