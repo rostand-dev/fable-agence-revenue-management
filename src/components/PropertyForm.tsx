@@ -1,4 +1,4 @@
-import { createPropertyAction, updatePropertyAction } from "@/app/actions/settings";
+import { updatePropertyAction } from "@/app/actions/settings";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 void (null as unknown as EconomicModel);
 import { ActionForm, Submit } from "./forms";
@@ -33,12 +33,12 @@ export function valuesOf(p: Existing): Record<string, string> {
   };
 }
 
-/** Formulaire de dossier logement, partagé entre la création et la reprise. Deux sorties : enregistrer pour plus tard, ou valider. */
-export function PropertyForm({ existing }: { existing?: Existing }) {
-  const v = existing ? valuesOf(existing) : {};
+/** Formulaire de modification du dossier d'un logement déjà lancé (la création passe par le parcours guidé). */
+export function PropertyForm({ existing }: { existing: Existing }) {
+  const v = valuesOf(existing);
   const total = SECTIONS.flatMap((s) => s.fields).length, filled = Object.values(v).filter((x) => x !== "").length;
   return (
-    <ActionForm action={existing ? updatePropertyAction : createPropertyAction} hidden={existing ? { propertyId: existing.id } : undefined}>
+    <ActionForm action={updatePropertyAction} hidden={{ propertyId: existing.id }}>
       {existing && <p className="muted" style={{ margin: "0 0 4px" }}>{filled} champ{filled > 1 ? "s" : ""} renseigné{filled > 1 ? "s" : ""} sur {total}. Les champs vides restent « inconnus ».</p>}
       {SECTIONS.map((s) => (
         <section className="section" key={s.title} style={{ marginTop: 28 }}>
@@ -57,11 +57,11 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
       <section className="section" style={{ marginTop: 28 }}>
         <h2>3 · Majorations par canal</h2>
         <p className="section-note">Le prix que voit le voyageur est celui de SuperHote, après la majoration propre à chaque canal. SuperHote ne la communique pas : saisissez-la ici, en pourcentage. NuitSignal s'en sert pour estimer le prix publié, sans toucher aux prix de PriceLabs. Un canal laissé sans pourcentage reste « inconnu », jamais 0 %.</p>
-        <MarkupsEditor initial={existing?.channelMarkups ?? []} />
+        <MarkupsEditor initial={existing.channelMarkups ?? []} />
       </section>
       <section className="section" style={{ marginTop: 28 }}>
         <h2>4 · Connexion PriceLabs</h2>
-        {existing?.hasKey ? (
+        {existing.hasKey ? (
           <p className="section-note">Une clé PriceLabs est déjà enregistrée pour ce logement. Elle se gère dans sa fiche, onglet PriceLabs.</p>
         ) : (
           <>
@@ -77,7 +77,7 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
       </section>
       <section className="section" style={{ marginTop: 28 }}>
         <h2>5 · Connexion SuperHote</h2>
-        {existing?.hasShKey ? (
+        {existing.hasShKey ? (
           <p className="section-note">Un jeton SuperHote est déjà enregistré pour ce logement. Il se gère dans sa fiche, onglet SuperHote.</p>
         ) : (
           <>
@@ -92,10 +92,10 @@ export function PropertyForm({ existing }: { existing?: Existing }) {
         )}
       </section>
       <Banner role="tech" title="Et les coûts, les commissions, les seuils ?" style={{ margin: "28px 0 18px" }}>
-        Ils ne se saisissent plus ici : {existing ? "ils se renseignent" : "une fois le logement créé, vous les renseignez"} pas à pas avec votre chargée d'onboarding, qui en déduit vos planchers. <strong>Enregistrer et reprendre plus tard</strong> garde votre saisie telle quelle, sans champ obligatoire.
+        Ils ne se saisissent plus ici : ils se renseignent pas à pas avec votre chargée d'onboarding, qui en déduit vos planchers. <strong>Enregistrer et reprendre plus tard</strong> garde votre saisie telle quelle, sans champ obligatoire.
       </Banner>
       <div className="row-wrap">
-        <Submit icon="check" name="intent" value="final" pendingLabel="Enregistrement…">{existing ? "Enregistrer le dossier" : "Créer le logement et passer aux coûts"}</Submit>
+        <Submit icon="check" name="intent" value="final" pendingLabel="Enregistrement…">Enregistrer le dossier</Submit>
         <Submit className="btn btn-ghost" icon="clock" name="intent" value="draft" formNoValidate pendingLabel="Enregistrement…">Enregistrer et reprendre plus tard</Submit>
       </div>
     </ActionForm>

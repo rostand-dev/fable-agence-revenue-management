@@ -1,3 +1,4 @@
+import type { OnboardingState } from "@/lib/onboarding";
 import { pgTable, text, integer, boolean, timestamp, jsonb, date, real, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
@@ -52,6 +53,8 @@ export const properties = pgTable("properties", {
   superhote: jsonb("superhote").$type<Record<string, any>>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
   channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),
+  /** Parcours de création (funnel) : étape où reprendre, étapes validées et reportées, heure du dernier enregistrement « à faire plus tard ». null = logement créé avant le funnel ou parcours terminé */
+  onboarding: jsonb("onboarding").$type<OnboardingState>(),
   /** Rythme de suivi adaptatif : palier, raisons, intervalles, dernier passage, relevé de marché de référence, échecs de lecture */
   cadence: jsonb("cadence").$type<Record<string, any>>(),
   /** Prochaines échéances du planificateur ; null = à faire dès que la source est connectée */

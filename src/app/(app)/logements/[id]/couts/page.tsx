@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { CostWizard } from "@/components/CostWizard";
 import { Icon } from "@/components/Icon";
@@ -18,6 +18,8 @@ export default async function Couts({ params, searchParams }: { params: Promise<
   const { id } = await params;
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, user.tenantId)));
   if (!p || p.isDemo) notFound();
+  // pendant la création, le dossier se complète dans le parcours guidé
+  if (p.status === "ONBOARDING") redirect(`/logements/${p.id}/creation?etape=couts`);
   const resas = await db.select().from(schema.reservations).where(eq(schema.reservations.propertyId, p.id));
   const k = monthlyKpis(resas, lastMonths(todayISO(), 12)).filter((m) => m.nights > 0);
   const nightsSold = k.length ? k.reduce((a, m) => a + m.nights, 0) : null;

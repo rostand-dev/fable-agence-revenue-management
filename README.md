@@ -12,7 +12,7 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 - **Dossier de décision** : preuves sourcées, arbre de diagnostic, hypothèses alternatives, options comparées (dont l'inaction), cascade du prix publié à la contribution, verdict d'audit règle par règle.
 - **Cycle d'action tracé** : approuver → exécuter → vérifier → mesurer, avec machine à états, retour arrière et journal d'audit en ajout seul.
 - **Équipe IA** : huit postes avec fiche de poste, workflows, activité et conversation.
-- **Onboarding d'un logement** : identité et clé PriceLabs, puis parcours « Coûts et seuils » pas à pas avec la chargée d'onboarding (commissions relevées sur les réservations, taxe de séjour, ménage, coût d'une nuit, seuil de dérangement, charges fixes, objectif) → planchers par canal et par durée de séjour. Une réponse absente reste *inconnue* ; une estimation peut être marquée *provisoire* et les dossiers la signalent.
+- **Création d'un logement (funnel guidé)** : six étapes plein écran, sans menu latéral (`/logements/nouveau` puis `/logements/<id>/creation`) — le logement, SuperHote, PriceLabs, règles de vente (séjour minimum, majorations par canal), coûts et seuils, vérification. Chaque passage d'étape enregistre la saisie et l'étape où reprendre ; « Enregistrer et quitter » est toujours disponible, et la liste des logements propose « Reprendre la création ». SuperHote et PriceLabs peuvent être reportés, mais l'observation ne se lance pas sans PriceLabs. Le parcours « Coûts et seuils » pas à pas avec la chargée d'onboarding (commissions relevées sur les réservations, taxe de séjour, ménage, coût d'une nuit, seuil de dérangement, charges fixes, objectif) → planchers par canal et par durée de séjour. Une réponse absente reste *inconnue* ; une estimation peut être marquée *provisoire* et les dossiers la signalent.
 
 ### Limites connues, assumées
 
@@ -56,7 +56,7 @@ src/app/            écrans et actions serveur
 
 ## Connexion PriceLabs
 
-La clé API est rattachée à **un logement**, pas au compte : elle se saisit à la création du logement (étape 6 de l'onboarding) ou dans sa fiche, onglet *PriceLabs*. Elle est vérifiée auprès de PriceLabs, chiffrée (AES-256-GCM, `APP_SECRET`) et n'est jamais réaffichée. Le rattachement à une annonce PriceLabs (identifiant + PMS) est toujours confirmé par le propriétaire, même s'il n'y en a qu'une, et une annonce ne peut alimenter qu'un seul de ses logements.
+La clé API est rattachée à **un logement**, pas au compte : elle se saisit à la création du logement (étape 3 du parcours de création, confirmation de l'annonce comprise) ou dans sa fiche, onglet *PriceLabs*. Elle est vérifiée auprès de PriceLabs, chiffrée (AES-256-GCM, `APP_SECRET`) et n'est jamais réaffichée. Le rattachement à une annonce PriceLabs (identifiant + PMS) est toujours confirmé par le propriétaire, même s'il n'y en a qu'une, et une annonce ne peut alimenter qu'un seul de ses logements.
 
 Code : `src/lib/integrations/pricelabs.ts` (client), `pricelabs-map.ts` (traduction, testée sur des réponses de forme réelle), `src/lib/services/pricelabs-sync.ts` (lecture avant chaque revue).
 
@@ -134,7 +134,7 @@ Le prix qui fait foi auprès des voyageurs est celui de SuperHote, après une ma
 
 ## Connexion SuperHote (lecture seule)
 
-Le jeton API se saisit par logement, à l'onboarding (comme la clé PriceLabs, facultatif, vérifié à l'enregistrement sans jamais bloquer la création du dossier) ou plus tard dans l'onglet *SuperHote*, avec les seuls droits `rentals.read`, `calendar.read` et `reservations.read`. Il est vérifié, chiffré comme la clé PriceLabs, et le rattachement au logement SuperHote est toujours confirmé par le propriétaire (un logement SuperHote ne peut alimenter qu'un seul logement NuitSignal).
+Le jeton API se saisit par logement, à la création du logement (étape 2 du parcours, avant PriceLabs ; facultatif, « Je le ferai plus tard ») ou plus tard dans l'onglet *SuperHote*, avec les seuls droits `rentals.read`, `calendar.read` et `reservations.read`. Il est vérifié, chiffré comme la clé PriceLabs, et le rattachement au logement SuperHote est toujours confirmé par le propriétaire (un logement SuperHote ne peut alimenter qu'un seul logement NuitSignal).
 
 - **Canal des réservations** : celles que PriceLabs transmet sans canal reçoivent celui de SuperHote (rapprochement par identifiant, sinon par dates exactes d'arrivée et de départ si une seule réservation correspond). Une ambiguïté n'est jamais tranchée ; un choix manuel du propriétaire prime.
 - **Comparaison des prix** : le prix de calendrier SuperHote est comparé au `user_price` PriceLabs sur les nuits libres (tolérance 1 €). Identiques : le prix du calendrier SuperHote est avant majoration par canal. La documentation SuperHote ne le précise pas, d'où cette vérification sur données réelles.

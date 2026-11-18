@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { createContext, useContext, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useTransition } from "react";
 import { saveCostsAction } from "@/app/actions/costs";
 import { fixedMonthly, modelFromAnswers, parseNum, touristTaxPct, variablePerNight, type CostAnswers } from "@/lib/engine/costs";
 import { hardFloorCents, missingEconomics, strategyFloorCents } from "@/lib/engine/economics";
@@ -8,6 +8,7 @@ import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { euro } from "@/lib/format";
 import { Avatar } from "./Avatar";
 import { Icon } from "./Icon";
+import { moveToTop } from "./StepTop";
 
 export type CostHints = {
   ines: string;
@@ -69,9 +70,16 @@ function Choice({ field, value, label, note }: { field: "linenMode" | "taxMode" 
   );
 }
 
-export function CostWizard({ propertyId, propertyName, initial, hints, startAt }: { propertyId: string; propertyName: string; initial: CostAnswers; hints: CostHints; startAt: number }) {
+/**
+ * `doneHref` : où aller après validation (par défaut la fiche, onglet Économie).
+ * `quitHref` : dans le parcours de création, le bouton « Enregistrer et quitter » de l'en-tête soumet le formulaire `funnel-form` rendu ici.
+ */
+export function CostWizard({ propertyId, propertyName, initial, hints, startAt, doneHref, quitHref }: { propertyId: string; propertyName: string; initial: CostAnswers; hints: CostHints; startAt: number; doneHref?: string; quitHref?: string }) {
   const [a, setA] = useState<CostAnswers>({ nightMode: "calc", linenMode: "", taxMode: "calc", provisional: [], ...initial });
   const [step, setStep] = useState(startAt);
+  // chaque changement de question ramène en haut, focus sur « Étape X sur 8 » (pas au premier affichage)
+  const here = useRef<HTMLParagraphElement>(null), firstStep = useRef(true);
+  useEffect(() => { if (firstStep.current) { firstStep.current = false; return; } moveToTop(here.current); }, [step]);
   const [msg, setMsg] = useState<{ error?: string; ok?: string } | null>(null);
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -85,21 +93,22 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
   const v = variablePerNight(a), fixed = fixedMonthly(a), nightsM = parseNum(a.nightsMonth);
   const monthly = hints.nightsSold !== null && hints.monthsCovered ? Math.round(hints.nightsSold / hints.monthsCovered) : null;
 
-  const save = (final: boolean, then?: () => void) => start(async () => {
+  const save = (final: boolean, then?: () => void, resumeAt = step) => start(async () => {
     setMsg(null);
-    const r = await saveCostsAction(propertyId, a, final);
+    const r = await saveCostsAction(propertyId, a, final, resumeAt);
     if (r.error) return setMsg({ error: r.error });
-    if (r.done) return router.push(`/logements/${propertyId}?tab=economie`);
+    if (r.done) return router.push(doneHref ?? `/logements/${propertyId}?tab=economie`);
     if (then) then(); else setMsg({ ok: "Réponses enregistrées. Vous pouvez reprendre plus tard, à cette étape." });
   });
 
   const tax = touristTaxPct(a);
   return (
     <Ctx.Provider value={{ a, set, prov, toggle, ines: hints.ines }}>
+    {quitHref && <form id="funnel-form" hidden data-pending={pending ? "" : undefined} onSubmit={(e) => { e.preventDefault(); if (pending) return; save(false, () => router.push(quitHref)); }} />}
     <div className="dcols">
       <div>
         <nav className="wiz-steps" aria-label="Étapes du parcours">
-          <p className="wiz-here"><span className="mono">Étape {step + 1} sur {STEPS.length}</span> · <strong>{STEPS[step]}</strong></p>
+          <p className="wiz-here" ref={here}><span className="mono">Étape {step + 1} sur {STEPS.length}</span> · <strong>{STEPS[step]}</strong></p>
           <ol>
             {STEPS.map((s, i) => (
               <li key={s}><button type="button" className={i < step ? "is-done" : i === step ? "is-here" : ""} aria-current={i === step ? "step" : undefined} aria-label={`Étape ${i + 1} : ${s}`} title={s} onClick={() => setStep(i)}>{i < step ? <Icon name="check" /> : i + 1}</button></li>
@@ -211,9 +220,9 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt }
         {msg?.ok && <div className="banner banner-sain" role="status" style={{ marginTop: 16 }}><Icon name="check" /><div><p className="banner-title">{msg.ok}</p></div></div>}
         <div className="row-wrap" style={{ marginTop: 22 }}>
           {step > 0 && <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => setStep(step - 1)}><Icon name="back" />Précédent</button>}
-          {step < LAST && <button type="button" className="btn btn-primary" disabled={pending} onClick={() => save(false, () => { setStep(step + 1); window.scrollTo({ top: 0 }); })}><Icon name={pending ? "spin" : "arrow"} />{pending ? "Enregistrement…" : "Enregistrer et continuer"}</button>}
-          {step === LAST && <button type="button" className="btn btn-primary" disabled={pending || miss.length > 0} onClick={() => save(true)}><Icon name={pending ? "spin" : "check"} />{pending ? "Validation et première revue…" : "Valider mes coûts et seuils"}</button>}
-          <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => save(false)}><Icon name="clock" />Enregistrer et reprendre plus tard</button>
+          {step < LAST && <button type="button" className="btn btn-primary" disabled={pending} onClick={() => save(false, () => setStep(step + 1), step + 1)}><Icon name={pending ? "spin" : "arrow"} />{pending ? "Enregistrement…" : "Enregistrer et continuer"}</button>}
+          {step === LAST && <button type="button" className="btn btn-primary" disabled={pending || miss.length > 0} onClick={() => save(true)}><Icon name={pending ? "spin" : "check"} />{pending ? (doneHref ? "Enregistrement…" : "Validation et première revue…") : doneHref ? "Valider et passer à la vérification" : "Valider mes coûts et seuils"}</button>}
+          {!quitHref && <button type="button" className="btn btn-ghost btn-sm" disabled={pending} onClick={() => save(false)}><Icon name="clock" />Enregistrer et reprendre plus tard</button>}
         </div>
       </div>
 
