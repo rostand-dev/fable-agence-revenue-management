@@ -1758,3 +1758,15 @@ table.cascade .delta-neu { color: var(--quiet); }
 .idle-dialog h2 { margin: 0 0 8px; font-size: 17px; font-weight: 640; }
 .idle-dialog p { margin: 0 0 18px; }
 .idle-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* Démo publique en lecture seule */
+.demo-toast {
+  position: fixed; left: 50%; transform: translateX(-50%); z-index: 80;
+  bottom: calc(var(--bottombar-h, 0px) + 16px);
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center;
+  width: max-content; max-width: min(92vw, 560px);
+  padding: 12px 16px; border-radius: var(--r-md);
+  border: 1px solid rgb(167 139 250 / 50%);
+  background: #1a1633; color: var(--ink); font-size: 13.5px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
+}
