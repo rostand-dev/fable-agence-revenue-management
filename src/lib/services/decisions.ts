@@ -47,7 +47,7 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
     const prov = providerOfTarget(c.target.system);
     const [ig] = prov ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, prov))) : [];
     const blocked = executionBlock(c.executionMode, { provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch });
-    if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée.");
+    if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée, ou utilisez la procédure manuelle.");
   }
   const id = newId("act");
   await db.insert(revenueActions).values({

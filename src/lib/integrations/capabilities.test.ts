@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   AVAILABILITY, CAPABILITIES, PROVIDERS, PROVIDER_INFO, capabilitiesOf, capabilityFlags, checkWrite, executionBlock, isProvider,
-  providerOfTarget, providerStatus, resolveCapability, resolveProvider, type AccountFacts,
+  providerOfTarget, providerStatus, KILL_SWITCH_PROVIDERS, resolveCapability, resolveProvider, type AccountFacts,
 } from "./capabilities";
 import { renderCapabilitiesMarkdown } from "./capabilities-doc";
 
@@ -105,12 +105,23 @@ describe("blocage d'exécution (API et fiche du dossier)", () => {
   it("bloque l'écriture par API sur un logement réel et sous coupe-circuit", () => {
     expect(executionBlock("API_PRICELABS", { ...ok, isDemo: false })).toContain("procédure manuelle");
     expect(executionBlock("API_PRICELABS", { ...ok, killSwitch: true })).toContain("Coupe-circuit");
-    expect(executionBlock("MANUAL_RUNBOOK", { provider: "booking", isDemo: false, killSwitch: true })).toContain("Coupe-circuit");
+  });
+  it("le coupe-circuit ne coupe que l'API : la procédure manuelle reste possible", () => {
+    expect(executionBlock("MANUAL_RUNBOOK", { provider: "pricelabs", isDemo: false, killSwitch: true })).toBeNull();
+    expect(executionBlock("MANUAL_RUNBOOK", { provider: "booking", isDemo: false, killSwitch: true })).toBeNull();
+    expect(KILL_SWITCH_PROVIDERS).toEqual(["pricelabs"]);
   });
   it("refuse un mode inconnu ou une future écriture API sans capacité", () => {
     expect(executionBlock("NONE", ok)).toContain("inconnu");
     expect(executionBlock("API_BOOKING", ok)).toContain("inconnu");
     expect(executionBlock(undefined, ok)).toContain("inconnu");
+  });
+  it("une écriture API visant un autre fournisseur que PriceLabs est refusée, même sans coupe-circuit", () => {
+    expect(executionBlock("API_PRICELABS", { provider: "booking", isDemo: true, killSwitch: false })).toContain("incohérente");
+    expect(executionBlock("API_PRICELABS", { provider: null, isDemo: true, killSwitch: false })).toContain("incohérente");
+  });
+  it("une tâche interne avec fournisseur reste possible sous coupe-circuit", () => {
+    expect(executionBlock("INTERNAL", { provider: "pricelabs", isDemo: true, killSwitch: true })).toBeNull();
   });
   it("une tâche interne n'est pas concernée par un coupe-circuit", () => {
     expect(executionBlock("INTERNAL", { provider: null, isDemo: false, killSwitch: true })).toBeNull();

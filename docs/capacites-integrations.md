@@ -8,7 +8,7 @@ US-002 · blueprint §4.2. Le catalogue décrit ce que le **code** sait faire au
 
 - **Lecture seule par défaut** : aucun client du code n'écrit chez un fournisseur. Un test le vérifie (aucune méthode PUT, PATCH, DELETE ; le seul POST de PriceLabs lit la grille).
 - **Démonstration** : l'écriture PriceLabs est simulée sur les logements de démonstration. Sur un logement réel, l'option est proposée en procédure manuelle guidée.
-- **Coupe-circuit** : par fournisseur ; bloque toute exécution vers lui, immédiatement. Les lectures continuent.
+- **Coupe-circuit** : uniquement pour les fournisseurs ayant une écriture automatique (PriceLabs). Il bloque l'écriture par API, immédiatement ; les lectures et les procédures manuelles guidées continuent.
 - **Déduit des logements** : le statut d'un fournisseur et le nombre de logements branchés viennent des rattachements réels (`listingId` PriceLabs, `rentalId` SuperHote), jamais d'une ligne de configuration.
 
 ## États affichés

@@ -123,18 +123,20 @@ export const providerOfTarget = (system: string | undefined | null): Provider | 
  * Appelée par `execute()` (refus côté API, avant tout changement d'état) et par la fiche du dossier (bouton désactivé) : une seule règle.
  */
 export function executionBlock(mode: string | undefined, ctx: { provider: Provider | null; isDemo: boolean; killSwitch: boolean }): string | null {
-  if (ctx.provider && ctx.killSwitch) return "Coupe-circuit actif sur cette intégration : aucune exécution possible.";
+  // le coupe-circuit ne coupe que l'écriture automatique par API ; la procédure manuelle (geste humain, avec preuve) reste possible
   // liste blanche : tout mode inconnu ou toute future écriture « API_* » est refusé tant qu'il n'a pas de capacité
   if (mode === "INTERNAL" || mode === "MANUAL_RUNBOOK") return null;
   if (mode === "API_PRICELABS") {
+    // le coupe-circuit consulté est celui de la cible : une écriture PriceLabs visant un autre fournisseur est incohérente, donc refusée
+    if (ctx.provider !== "pricelabs") return "Écriture par API incohérente avec la cible de l'action : aucune exécution possible.";
     const w = checkWrite("pricelabs.write", { isDemo: ctx.isDemo, killSwitch: ctx.killSwitch });
     return w.ok ? null : w.reason;
   }
   return "Mode d'exécution inconnu : aucune exécution possible.";
 }
 
-/** Fournisseurs qui peuvent être la cible d'une action : seuls ceux-là ont un coupe-circuit utile (SuperHote n'est jamais écrit) */
-export const KILL_SWITCH_PROVIDERS: Provider[] = ["pricelabs", "booking", "airbnb"];
+/** Fournisseurs ayant une écriture automatique développée (même simulée) : seuls ceux-là ont un coupe-circuit utile */
+export const KILL_SWITCH_PROVIDERS: Provider[] = PROVIDERS.filter((p) => CAPABILITIES.some((c) => c.provider === p && c.kind === "write" && c.built !== "NONE"));
 
 /** Statut d'ensemble d'un fournisseur, déduit des logements : jamais lu dans une ligne de base qui pourrait être périmée */
 export type ProviderStatus = "DEMO" | "CONNECTED" | "NOT_CONNECTED" | "DEGRADED";
