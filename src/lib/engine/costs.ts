@@ -11,6 +11,8 @@ export type CostAnswers = {
   linenMode?: "included" | "self" | "service" | ""; linenCost?: string;
   /** « included » : l'énergie, l'eau et les consommables sont déjà dans les charges du mois ; le coût par nuit est alors un zéro déclaré. */
   nightMode?: "calc" | "direct" | "included"; energyYear?: string; waterYear?: string; consumablesStay?: string; nightsYear?: string; avgStay?: string; variableDirect?: string;
+  /** « none » : pas de seuil de dérangement, couvrir les coûts de la nuit suffit ; le seuil vaut alors 0, un zéro déclaré. Absent ou « set » : seuil saisi dans `hard`. */
+  hardMode?: "set" | "none";
   hard?: string;
   /** « no » : le loyer ou la mensualité de crédit n'est pas compté dans les charges à couvrir (absent ou « yes » = compté). */
   rentCounted?: "yes" | "no";
@@ -66,7 +68,7 @@ export function modelFromAnswers(a: CostAnswers): EconomicModel {
   const ab = parseNum(a.airbnbPct), bk = parseNum(a.bookingPct);
   if (ab !== null) channels.AIRBNB = { commissionPct: ab, paymentFeePct: 0 };
   if (bk !== null) channels.BOOKING = { commissionPct: bk, paymentFeePct: parseNum(a.bookingFeePct) ?? 0 };
-  const hard = parseNum(a.hard), fixed = fixedMonthly(a), nights = parseNum(a.nightsMonth), goal = parseNum(a.goalMonth);
+  const hard = a.hardMode === "none" ? 0 : parseNum(a.hard), fixed = fixedMonthly(a), nights = parseNum(a.nightsMonth), goal = parseNum(a.goalMonth);
   const perNightFixed = fixed !== null && nights ? fixed / nights : null;
   // le plancher stratégique couvre les charges fixes ; il ne descend jamais sous le seuil de dérangement
   const strategy = perNightFixed === null ? null : Math.max(perNightFixed, hard ?? 0);
@@ -77,7 +79,7 @@ export function modelFromAnswers(a: CostAnswers): EconomicModel {
     linenCostCents: a.linenMode === "included" ? 0 : cents(parseNum(a.linenCost)),
     nightlyVariableCostCents: v === null ? null : Math.round(v * 100),
     hardContributionPerNightCents: cents(hard), strategyContributionPerNightCents: strategy === null ? null : Math.round(strategy * 100), targetContributionPerNightCents: target === null ? null : Math.round(target * 100),
-    origin: "DECLARED", touristTaxPct: touristTaxPct(a), provisional: (a.provisional ?? []).filter((k) => LABELS[k] && !(k === "variable" && a.nightMode === "included")).map((k) => LABELS[k]), answers: a,
+    origin: "DECLARED", touristTaxPct: touristTaxPct(a), provisional: (a.provisional ?? []).filter((k) => LABELS[k] && !(k === "variable" && a.nightMode === "included") && !(k === "hard" && a.hardMode === "none")).map((k) => LABELS[k]), answers: a,
   };
 }
 

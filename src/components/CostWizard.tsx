@@ -229,9 +229,16 @@ export function CostWizard({ propertyId, propertyName, initial, hints, startAt, 
 
         {step === 4 && (<>
           <Say>Il reste trois questions, une par écran. Je ne vous demande pas de « contribution par nuit » : répondez simplement, je fais la conversion. La première : votre seuil de dérangement.</Say>
-          <p className="section-note" style={{ margin: "0 0 10px" }}>Une fois le ménage, la commission et les consommations payés, en dessous de combien par nuit préférez-vous laisser le logement vide ? Pensez à l'usure et au temps passé. C'est le plancher absolu : en dessous, l'auditeur oppose son veto.</p>
-          <div className="form-grid"><Field k="hard" label="Seuil de dérangement" unit="€ par nuit" provKey="hard" /></div>
-
+          <p className="section-note" style={{ margin: "0 0 10px" }}>Une fois le ménage, la commission et les consommations payés, en dessous de combien par nuit préférez-vous laisser le logement vide ? Pensez à l'usure et au temps passé. C'est le plancher absolu quand vous en fixez un : en dessous, l'auditeur oppose son veto.</p>
+          <div className="filters" role="group" aria-label="Seuil de dérangement">
+            <button type="button" className="chip" aria-pressed={a.hardMode !== "none"} onClick={() => set("hardMode", "set")}>Je fixe un seuil</button>
+            <button type="button" className="chip" aria-pressed={a.hardMode === "none"} onClick={() => setA((s) => ({ ...s, hardMode: "none", provisional: (s.provisional ?? []).filter((x) => x !== "hard") }))}>Couvrir les coûts de la nuit me suffit</button>
+          </div>
+          {a.hardMode === "none" ? (
+            <div className="banner banner-tech" role="status" style={{ marginTop: 14 }}><Icon name="info" /><div><p className="banner-title">Je compte 0 € de seuil de dérangement</p><p className="banner-body">C'est un zéro que vous déclarez, pas une valeur manquante. Le plancher absolu devient le prix qui couvre juste les coûts de la nuit (commission, ménage, linge, consommations). L'équipe pourra donc accepter une nuit qui ne vous laisse rien, après votre validation commentée sous le plancher stratégique. Vous pourrez fixer un seuil plus tard.</p></div></div>
+          ) : (
+            <div className="form-grid" style={{ marginTop: 14 }}><Field k="hard" label="Seuil de dérangement" unit="€ par nuit" provKey="hard" /></div>
+          )}
         </>)}
 
         {step === 5 && (<>

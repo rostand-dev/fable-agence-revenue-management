@@ -11,7 +11,7 @@ import { runDailyReview } from "@/lib/services/review";
 import { syncPriceLabs } from "@/lib/services/pricelabs-sync";
 import { advance } from "@/lib/onboarding";
 
-const KEYS = ["airbnbPct", "bookingPct", "bookingFeePct", "cleaningFee", "cleaningCost", "linenMode", "linenCost", "nightMode", "energyYear", "waterYear", "consumablesStay", "nightsYear", "avgStay", "variableDirect", "hard", "rentCounted", "rent", "coop", "insurance", "subs", "taxes", "other", "nightsMonth", "goalMonth", "taxMode", "taxYear", "grossYear", "taxPct"];
+const KEYS = ["airbnbPct", "bookingPct", "bookingFeePct", "cleaningFee", "cleaningCost", "linenMode", "linenCost", "nightMode", "energyYear", "waterYear", "consumablesStay", "nightsYear", "avgStay", "variableDirect", "hard", "rentCounted", "hardMode", "rent", "coop", "insurance", "subs", "taxes", "other", "nightsMonth", "goalMonth", "taxMode", "taxYear", "grossYear", "taxPct"];
 
 /** Enregistre les réponses du parcours « Coûts et seuils ». `final` valide le modèle ; sinon c'est une sauvegarde d'étape. */
 /** `question` : dans le parcours de création, la question où reprendre (0 à 7). */
@@ -23,6 +23,7 @@ export async function saveCostsAction(propertyId: string, raw: CostAnswers, fina
   const a: CostAnswers = {};
   for (const k of KEYS) { const v = (raw as any)?.[k]; if (typeof v === "string") (a as any)[k] = v.slice(0, 24); }
   if (a.rentCounted !== "yes" && a.rentCounted !== "no") delete a.rentCounted;
+  if (a.hardMode !== "set" && a.hardMode !== "none") delete a.hardMode;
   a.provisional = Array.isArray(raw?.provisional) ? raw.provisional.filter((x) => typeof x === "string").slice(0, 20) : [];
   const model = modelFromAnswers(a);
   const miss = missingEconomics(model);

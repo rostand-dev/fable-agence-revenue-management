@@ -239,4 +239,16 @@ describe("charges du mois et seuil de rentabilité", () => {
     expect(() => breakEvenPriceCents(m, "AIRBNB", 2, 0, 60000)).toThrow();
     expect(modelFromAnswers({ ...a, linenMode: "service", linenCost: "10" }).nightlyVariableCostCents).toBe(0); // linge et coût par nuit restent indépendants
   });
+  it("« couvrir les coûts de la nuit me suffit » est un seuil de dérangement à 0, déclaré", () => {
+    const m = modelFromAnswers({ ...a, hard: "30", hardMode: "none", provisional: ["hard"] });
+    expect(m.hardContributionPerNightCents).toBe(0);                 // la valeur saisie est ignorée
+    expect(m.provisional).toEqual([]);
+    expect(m.strategyContributionPerNightCents).toBe(3000);          // 600 € ÷ 20 nuits, plus de plancher de dérangement
+    expect(missingEconomics(m)).toHaveLength(0);
+    expect(modelFromAnswers({ ...a, hard: "30", hardMode: "set" }).hardContributionPerNightCents).toBe(3000);
+    // le retour au mode « set » retrouve la valeur saisie ; un dossier repris garde son choix
+    expect(answersFromModel({ ...model, answers: { hard: "30", hardMode: "none" } as any })).toMatchObject({ hard: "30", hardMode: "none" });
+    expect(answersFromModel({ ...model, hardContributionPerNightCents: 3000 }).hardMode).toBeUndefined();
+    expect(modelFromAnswers({ ...a, hard: "", hardMode: "set" }).hardContributionPerNightCents).toBeNull(); // sans choix ni valeur : inconnu
+  });
 });
