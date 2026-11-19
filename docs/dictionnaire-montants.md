@@ -296,6 +296,7 @@ Prix médian réservé du voisinage PriceLabs (`Median Booked Price`), sinon 50e
 | Contribution visée par nuit vendue | `targetContributionPerNightCents` | Propriétaire / Calcul | calculé | — | **inconnu** | — | — | — | ≥ 0 | à confirmer |
 | Réponses brutes du parcours « Coûts et seuils » | `CostAnswers` | Propriétaire | déclaré | — | **inconnu** | — | — | — | ≥ 0 | à confirmer |
 | Part de taxe de séjour dans le total des réservations | `touristTaxPct` | Propriétaire | déclaré | inclus | — | — | — | — | ≥ 0 | établi |
+| Charges fixes du mois (seuil de rentabilité) | `fixedMonthlyCents`, `fixedCents` | Propriétaire / Calcul | calculé | — | **inconnu** | — | — | — | ≥ 0 | à confirmer |
 
 ### Frais de ménage facturés (réglage)
 
@@ -377,12 +378,21 @@ Pourcentage retiré du total des réservations PriceLabs pour obtenir l'héberge
 
 - Réserve : Appliqué seulement entre 0 et 50 % exclus.
 
+### Charges fixes du mois (seuil de rentabilité)
+
+`economics.fixed_monthly` · paramètre des fonctions de seuil de rentabilité (economics.ts), calculé depuis les réponses du parcours « Charges fixes » (properties.economics.answers, en euros)
+
+Somme des charges mensuelles saisies : loyer ou mensualité de crédit (comptée seulement si le propriétaire ne l'a pas décochée), copropriété, assurance, abonnements, taxes, autres. Sert uniquement au seuil de rentabilité du mois, jamais à baisser un prix.
+
+`null` = inconnu.
+
 ## Planchers et simulation
 
 | Montant | Noms dans le code | Source | Nature | Taxe de séjour | TVA | Ménage | Commission | Frais de paiement | Signe | Statut |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Coût de séjour non récupéré | `unrecoveredStayCostCents` | Calcul | calculé | — | **inconnu** | inclus | exclu | exclu | signé | à confirmer |
 | Plancher brut par nuit (dur, stratégique) | `floorGrossNightlyCents`, `hardFloorCents`, `strategyFloorCents`, `hardCents`, `strategyCents` | Calcul | calculé | exclu | **inconnu** | exclu | inclus | inclus | ≥ 0 | à confirmer |
+| Prix minimal du seuil de rentabilité (prix brut par nuit) | `breakEvenPriceCents`, `grossNightlyCents` | Calcul | calculé | exclu | **inconnu** | exclu | inclus | inclus | ≥ 0 | à confirmer |
 | Prix vendu par nuit (simulation) | `soldNightlyCents`, `publishedNightlyCents`, `soldAtMinCents` | PriceLabs / Calcul | calculé | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 | Revenu net d'hébergement (simulation) | `netRoomCents` | Calcul | calculé | exclu | **inconnu** | exclu | exclu | exclu | ≥ 0 | à confirmer |
 | Contribution (simulation) | `contributionCents`, `contributionPerNightCents` | Calcul | calculé | exclu | **inconnu** | inclus | exclu | exclu | signé | à confirmer |
@@ -403,6 +413,14 @@ Signe : Négatif = le ménage dégage une marge.
 `floor.gross_nightly` · fonctions de economics.ts · floorGrid
 
 Prix de vente minimal par nuit (hébergement, avant commission) pour atteindre la contribution visée sur un séjour de n nuits, formule du blueprint §8.3. Arrondi à l'unité supérieure.
+
+- Réserve : Comparable à un prix d'hébergement brut, pas au prix catalogue PriceLabs tant que ses inclusions restent inconnues.
+
+### Prix minimal du seuil de rentabilité (prix brut par nuit)
+
+`floor.break_even` · fonctions breakEvenPriceCents · breakEvenNights · contributionPerNightCents (economics.ts)
+
+Prix brut par nuit (hébergement, avant commission) qui, multiplié par le nombre de nuits vendues dans le mois, couvre les charges fixes du mois. Entrée du calcul inverse : prix brut saisi pour obtenir le nombre de nuits à vendre. Objectif de pilotage mensuel, pas un plancher.
 
 - Réserve : Comparable à un prix d'hébergement brut, pas au prix catalogue PriceLabs tant que ses inclusions restent inconnues.
 
@@ -557,7 +575,7 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 
 ## À confirmer
 
-42 montants sur 48 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
+44 montants sur 50 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
 
 - TVA : SuperHote ne dit pas si `total_price` est TTC. Lire `vat_rate` des lignes `price_details` sur des réservations réelles. — `reservation.gross_room`
 - TVA sur le ménage : lire `vat_rate` de la ligne `cleaning_fee` sur des réservations réelles. — `reservation.cleaning`
@@ -567,7 +585,7 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 - Taxe, TVA, ménage : non précisés par SuperHote. Comparer à ce qu'affiche chaque canal pour la même nuit. — `superhote.calendar_price`
 - La documentation PriceLabs (Customer API) ne dit pas si les prix incluent taxe de séjour, TVA ou ménage. À lever par un cas concret : comparer le prix d'une nuit à ce que voit le voyageur sur le canal. — `price.engine`, `price.recommended`, `price.sent`, `price.published_estimate`, `price.shown_in_calendar`, `price.published_actual`, `price.night_in_action`, `strategy.base_price`, `strategy.min_price`, `strategy.max_price`, `price.display_euros`, `sim.sold_nightly`, `kpi.avg_free_price`
 - Taxes, TVA et ménage non précisés par PriceLabs pour les données de voisinage. — `market.adr`
-- Préciser dans le parcours « Coûts et seuils » si les montants saisis s'entendent TTC ou HT. — `economics.cleaning_fee_charged`, `economics.cleaning_cost`, `economics.linen_cost`, `economics.nightly_variable_cost`, `economics.hard_contribution`, `economics.strategy_contribution`, `economics.target_contribution`, `economics.answers`, `floor.unrecovered_stay_cost`, `floor.gross_nightly`, `sim.contribution`, `sim.expected_delta`, `sim.incremental`
+- Préciser dans le parcours « Coûts et seuils » si les montants saisis s'entendent TTC ou HT. — `economics.cleaning_fee_charged`, `economics.cleaning_cost`, `economics.linen_cost`, `economics.nightly_variable_cost`, `economics.hard_contribution`, `economics.strategy_contribution`, `economics.target_contribution`, `economics.answers`, `floor.unrecovered_stay_cost`, `economics.fixed_monthly`, `floor.gross_nightly`, `floor.break_even`, `sim.contribution`, `sim.expected_delta`, `sim.incremental`
 - Selon le type de ligne, le montant est ou non TTC : à lire avec `vat_rate` sur des réservations réelles. — `superhote.fee_line`
 - Hérite de la TVA du prix publié en entrée de la cascade (voir `price.engine`). — `sim.net_room`
 - Fixer une inclusion par clé d'étape (`published`, `promo`, `gross`, `commission`, `fee`, `net`, `stay`, `variable`, `contribution`) si ce montant doit être consommé automatiquement. — `sim.waterfall_step`

@@ -9,8 +9,11 @@ export type CostAnswers = {
   taxMode?: "calc" | "direct" | "none"; taxYear?: string; grossYear?: string; taxPct?: string;
   cleaningFee?: string; cleaningCost?: string;
   linenMode?: "included" | "self" | "service" | ""; linenCost?: string;
-  nightMode?: "calc" | "direct"; energyYear?: string; waterYear?: string; consumablesStay?: string; nightsYear?: string; avgStay?: string; variableDirect?: string;
+  /** « included » : l'énergie, l'eau et les consommables sont déjà dans les charges du mois ; le coût par nuit est alors un zéro déclaré. */
+  nightMode?: "calc" | "direct" | "included"; energyYear?: string; waterYear?: string; consumablesStay?: string; nightsYear?: string; avgStay?: string; variableDirect?: string;
   hard?: string;
+  /** « no » : le loyer ou la mensualité de crédit n'est pas compté dans les charges à couvrir (absent ou « yes » = compté). */
+  rentCounted?: "yes" | "no";
   rent?: string; coop?: string; insurance?: string; subs?: string; taxes?: string; other?: string;
   nightsMonth?: string; goalMonth?: string;
   /** clés de réponses données comme estimations provisoires */
@@ -28,12 +31,16 @@ export function parseNum(v: string | undefined | null): number | null {
 const cents = (v: number | null) => (v === null ? null : Math.round(v * 100));
 export const FIXED_KEYS = ["rent", "coop", "insurance", "subs", "taxes", "other"] as const;
 
+/** Charges fixes du mois. Le loyer ou le crédit n'y entre que s'il est compté (par défaut oui). */
 export function fixedMonthly(a: CostAnswers): number | null {
-  const xs = FIXED_KEYS.map((k) => parseNum(a[k])).filter((x): x is number => x !== null);
+  const xs = FIXED_KEYS.filter((k) => k !== "rent" || a.rentCounted !== "no").map((k) => parseNum(a[k])).filter((x): x is number => x !== null);
+  // loyer seul et décoché : c'est un choix déclaré, les charges à couvrir valent alors 0 (pas inconnues)
+  if (!xs.length && a.rentCounted === "no" && parseNum(a.rent) !== null) return 0;
   return xs.length ? xs.reduce((s, x) => s + x, 0) : null;
 }
-/** Coût variable par nuit occupée : saisi directement, ou (énergie + eau) ÷ nuits occupées + consommables ÷ durée moyenne. */
+/** Coût variable par nuit occupée : saisi directement, déjà compris dans les charges du mois (zéro déclaré), ou (énergie + eau) ÷ nuits occupées + consommables ÷ durée moyenne. */
 export function variablePerNight(a: CostAnswers): number | null {
+  if (a.nightMode === "included") return 0;
   if (a.nightMode === "direct") return parseNum(a.variableDirect);
   const e = parseNum(a.energyYear), w = parseNum(a.waterYear), n = parseNum(a.nightsYear), c = parseNum(a.consumablesStay), los = parseNum(a.avgStay);
   if ((e === null && w === null && c === null) || !n) return null;
@@ -70,7 +77,7 @@ export function modelFromAnswers(a: CostAnswers): EconomicModel {
     linenCostCents: a.linenMode === "included" ? 0 : cents(parseNum(a.linenCost)),
     nightlyVariableCostCents: v === null ? null : Math.round(v * 100),
     hardContributionPerNightCents: cents(hard), strategyContributionPerNightCents: strategy === null ? null : Math.round(strategy * 100), targetContributionPerNightCents: target === null ? null : Math.round(target * 100),
-    origin: "DECLARED", touristTaxPct: touristTaxPct(a), provisional: (a.provisional ?? []).filter((k) => LABELS[k]).map((k) => LABELS[k]), answers: a,
+    origin: "DECLARED", touristTaxPct: touristTaxPct(a), provisional: (a.provisional ?? []).filter((k) => LABELS[k] && !(k === "variable" && a.nightMode === "included")).map((k) => LABELS[k]), answers: a,
   };
 }
 

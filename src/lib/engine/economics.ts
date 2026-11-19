@@ -47,6 +47,28 @@ export function floorGrossNightlyCents(m: EconomicModel, channel: Channel, night
   const num = contributionPerNightCents * nights + stay + m.nightlyVariableCostCents! * nights;
   return Math.ceil(num / (nights * rate(m, channel)));
 }
+/** Nuits d'un mois, pour borner le seuil de rentabilité. */
+export const NIGHTS_PER_MONTH = 30;
+
+/** Ce que laisse une nuit vendue au prix brut donné, avant charges fixes : prix net de commission, moins coût par nuit, moins la part non récupérée du séjour. */
+export function contributionPerNightCents(m: EconomicModel, channel: Channel, nights: number, grossNightlyCents: number): number {
+  if (nights < 1) throw new Error("Durée de séjour invalide");
+  const stay = unrecoveredStayCostCents(m, channel);
+  return Math.round(grossNightlyCents * rate(m, channel) - m.nightlyVariableCostCents! - stay / nights);
+}
+
+/** Seuil de rentabilité, en nuits : nuits à vendre par mois à ce prix pour couvrir les charges fixes. null si une nuit ne laisse rien à ce prix. */
+export function breakEvenNights(m: EconomicModel, channel: Channel, nights: number, grossNightlyCents: number, fixedMonthlyCents: number): number | null {
+  const c = contributionPerNightCents(m, channel, nights, grossNightlyCents);
+  return c <= 0 ? null : Math.ceil(fixedMonthlyCents / c);
+}
+
+/** Seuil de rentabilité, en prix : prix brut minimal par nuit pour couvrir les charges fixes en vendant ce nombre de nuits par mois. */
+export function breakEvenPriceCents(m: EconomicModel, channel: Channel, nights: number, soldNightsPerMonth: number, fixedMonthlyCents: number): number {
+  if (soldNightsPerMonth < 1) throw new Error("Nombre de nuits vendues invalide");
+  return floorGrossNightlyCents(m, channel, nights, Math.round(fixedMonthlyCents / soldNightsPerMonth));
+}
+
 export const hardFloorCents = (m: EconomicModel, c: Channel, n: number) => floorGrossNightlyCents(m, c, n, m.hardContributionPerNightCents!);
 export const strategyFloorCents = (m: EconomicModel, c: Channel, n: number) => floorGrossNightlyCents(m, c, n, m.strategyContributionPerNightCents!);
 
