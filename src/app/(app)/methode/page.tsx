@@ -6,6 +6,8 @@ import { State } from "@/components/ui";
 import { agentName, WORKFLOWS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { CYCLE } from "@/lib/engine/stateMachine";
+import { CHANNEL_LABEL } from "@/lib/engine/types";
+import { RULES_CHECKED_AT, STACK_STATUS, groupedRules } from "@/lib/stacking/rules";
 
 export const metadata = { title: "Méthode de travail" };
 const SPLIT: [string, string, string][] = [
@@ -52,6 +54,29 @@ export default async function Methode() {
         <p className="section-note">L'autonomie se gagne par type d'action, jamais globalement. Dans cette version, aucune écriture n'a lieu sans votre approbation.</p>
         <div className="table-wrap"><table className="econ"><thead><tr><th scope="col">Action</th><th scope="col">Risque</th><th scope="col">Traitement</th></tr></thead>
           <tbody>{AUTONOMY.map(([a, b, c]) => <tr key={a}><th scope="row">{a}</th><td>{b === "interdit" ? <State role="veto">interdit</State> : b}</td><td>{c}</td></tr>)}</tbody></table></div>
+      </section>
+      <section className="section" aria-labelledby="cumul-h">
+        <h2 id="cumul-h">Règles de cumul des promotions</h2>
+        <p className="section-note">Quand deux promotions d'un même canal valent pour les mêmes nuits, <Term id="regle-de-cumul">la règle de cumul</Term> décide du prix réel. L'agence ne la devine jamais : si l'aide officielle du canal ne la donne pas, l'auditeur renvoie l'option vers vous (validation commentée). Relecture des sources : {new Date(RULES_CHECKED_AT).toLocaleDateString("fr-FR", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })}.</p>
+        {(["BOOKING", "AIRBNB"] as const).map((ch) => (
+          <div key={ch} className="stack-channel">
+            <h3>{CHANNEL_LABEL[ch]}</h3>
+            <ul className="rules stack-rules">
+              {groupedRules(ch).map((g) => (
+                <li key={g.status + g.detail}>
+                  <State role={STACK_STATUS[g.status].role}>{STACK_STATUS[g.status].label}</State>
+                  <div>
+                    <span className="rule-detail">{g.detail}{g.source && <> <a href={g.source.url} target="_blank" rel="noopener noreferrer">Source officielle<span className="sr-only"> (nouvel onglet)</span></a></>}</span>
+                    <details className="fold stack-pairs">
+                      <summary>{g.pairs.length} combinaison{g.pairs.length > 1 ? "s" : ""}</summary>
+                      <ul className="fold-body">{g.pairs.map(([a, b]) => <li key={a + b}>{a} + {b}</li>)}</ul>
+                    </details>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       </section>
       <p className="foot">Aucune automatisation de navigateur n'est utilisée sur Airbnb ou Booking.com : les promotions passent par une procédure manuelle guidée tant que les accès partenaires officiels ne sont pas obtenus.</p>
     </Page>

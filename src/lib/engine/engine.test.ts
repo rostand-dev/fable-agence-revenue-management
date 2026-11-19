@@ -196,7 +196,7 @@ describe("capacités d'exécution (US-002)", () => {
   it("l'auditeur rejette une écriture par API sans capacité, quelle que soit la simulation", () => {
     const o = reviewProperty(inputFor("chatillon")).opportunities.flatMap((x) => x.candidates).find((c) => c.executionMode === "API_PRICELABS")!;
     const { audit: _, ...draft } = o;
-    const ctx = { model: inputFor("chatillon").model, strategy: inputFor("chatillon").strategy, stalePromoChannels: [], conflict: false, demo: true };
+    const ctx = { model: inputFor("chatillon").model, strategy: inputFor("chatillon").strategy, stalePromoChannels: [], conflict: false, demo: true, promos: [], window: { from: "2026-11-12", to: "2026-11-14" } };
     expect(auditCandidate(draft, { ...ctx, capabilities: { "pricelabs.write": true } }).rules.find((r) => r.code === "CAPABILITY")!.outcome).toBe("PASS");
     const v = auditCandidate(draft, { ...ctx, capabilities: { "pricelabs.write": false } });
     expect(v.rules.find((r) => r.code === "CAPABILITY")!.outcome).toBe("FAIL");

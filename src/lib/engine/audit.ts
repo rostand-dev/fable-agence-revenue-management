@@ -1,6 +1,8 @@
-import type { AuditRule, AuditVerdict, Candidate, Channel, EconomicModel, Strategy } from "./types";
+import type { AuditRule, AuditVerdict, Candidate, Channel, EconomicModel, Promo, Strategy } from "./types";
 import { hardFloorCents, strategyFloorCents } from "./economics";
 import { euro } from "../format";
+import type { ISODate } from "../dates";
+import { evaluateStacking, overlapsWindow, promoKind, STACK_STATUS, type InPlayPromo } from "../stacking/rules";
 
 export type AuditContext = {
   model: EconomicModel; strategy: Strategy;
@@ -10,9 +12,54 @@ export type AuditContext = {
   conflict: boolean;
   capabilities: Record<string, boolean>;
   demo: boolean;
+  /** Registre des promotions du logement (US-003) : sert à contrôler les règles de cumul du canal */
+  promos: Promo[];
+  /** Nuits visées par l'option, [from, to[ : seules les promotions qui les recoupent entrent en jeu */
+  window: { from: ISODate; to: ISODate };
 };
 
 type Draft = Omit<Candidate, "audit">;
+
+/**
+ * Une règle de cumul inconnue n'est critique que pour une option qui ajoute une remise ou baisse le prix : c'est là que le prix vendu
+ * réel pourrait passer sous celui qui a été simulé. Relever un prix, retirer une promotion, changer un séjour minimum ou ne rien faire
+ * ne peuvent pas creuser la remise ; le cumul déjà en place est signalé par le playbook PB-05 et par le registre.
+ */
+const lowersPrice = (c: Draft) => c.type === "CHANNEL_PROMO" || (c.priceChangePct !== null && c.priceChangePct < 0);
+const CH_NAME: Record<string, string> = { AIRBNB: "Airbnb", BOOKING: "Booking.com" };
+
+/**
+ * Règles de cumul (US-003, blueprint §10.4). Le plancher est simulé en supposant que les promotions en jeu se cumulent ;
+ * si le registre ne dit pas qu'elles le font, ou ne les connaît pas, la décision revient à un humain. Aucun cumul n'est deviné.
+ */
+function stackRulesOn(c: Draft, ctx: AuditContext, channel: Channel): { ok: boolean; detail: string } {
+  const inPlay: InPlayPromo[] = ctx.promos
+    .filter((p) => p.channel === channel && overlapsWindow(p, ctx.window.from, ctx.window.to))
+    .map((p) => ({ id: p.id, kind: p.kind, label: p.label }));
+  if (c.type === "CHANNEL_PROMO") inPlay.push({ id: "candidate", kind: String(c.parameters.kind ?? ""), label: String(c.parameters.label ?? c.label) });
+  const ch = CH_NAME[channel];
+  // un registre non vérifié depuis plus de 7 jours (ou jamais) ne dit pas quelles promotions sont réellement actives
+  if (ctx.stalePromoChannels.includes(channel)) return { ok: false, detail: `Registre des promotions ${ch} non vérifié récemment : les promotions en jeu et leur cumul sont incertains.` };
+  const ev = evaluateStacking(channel, inPlay);
+  if (ev.count < 2) return { ok: true, detail: `Aucune autre promotion enregistrée au registre ${ch} sur ces dates : aucun cumul à contrôler.` };
+  const name = (p: InPlayPromo) => `« ${promoKind(channel, p.kind)?.label ?? p.label} »`;
+  if (ev.needsHuman) {
+    const list = ev.unknown.map((u) => `${name(u.first)} et ${name(u.second)}`).join(" ; ");
+    return { ok: false, detail: `Règle de cumul inconnue sur ${ch} entre ${list}. Le prix vendu simulé suppose un cumul non établi : confirmez le cumul dans l'extranet avant d'approuver.` };
+  }
+  const known = ev.pairs.map((p) => STACK_STATUS[p.status].label.toLowerCase()).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+  return { ok: true, detail: `${ev.pairs.length} combinaison${ev.pairs.length > 1 ? "s" : ""} de promotions ${ch} documentée${ev.pairs.length > 1 ? "s" : ""} (${known}).` };
+}
+
+function stackRulesCheck(c: Draft, ctx: AuditContext, state: { channel: Channel } | null): AuditRule | null {
+  if (!lowersPrice(c)) return null;
+  // une promotion vise son canal ; un prix PriceLabs s'applique à tous les canaux du logement : chacun est contrôlé
+  const channels: Channel[] = c.target.channel ? [c.target.channel] : c.target.system === "PRICELABS" ? (Object.keys(ctx.model.channels) as Channel[]) : state ? [state.channel] : [];
+  if (!channels.length) return null;
+  const res = channels.map((ch) => stackRulesOn(c, ctx, ch));
+  const bad = res.filter((r) => !r.ok);
+  return { code: "STACK_RULES", label: "Règles de cumul du canal", outcome: bad.length ? "WARN" : "PASS", detail: (bad.length ? bad : res).map((r) => r.detail).join(" ") };
+}
 
 /**
  * Revenue Auditor : contrôle déterministe. Réponse strictement APPROVE, REJECT ou NEEDS_HUMAN,
@@ -64,6 +111,8 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     add("PROMO_FRESHNESS", "Fraîcheur du registre des promotions", stale ? "WARN" : "PASS",
       stale ? "Registre non vérifié depuis plus de 7 jours : les règles de cumul sont incertaines." : "Registre vérifié depuis moins de 7 jours.");
   }
+  const stack = stackRulesCheck(c, ctx, state);
+  if (stack) rules.push(stack);
   if (c.type !== "NO_ACTION") {
     add("CONFLICT", "Conflit avec une action en cours", ctx.conflict ? "FAIL" : "PASS",
       ctx.conflict ? "Une action en période d'observation couvre déjà ces dates." : "Aucune action active sur ces dates.");
