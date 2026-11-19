@@ -124,12 +124,17 @@ export const providerOfTarget = (system: string | undefined | null): Provider | 
  */
 export function executionBlock(mode: string | undefined, ctx: { provider: Provider | null; isDemo: boolean; killSwitch: boolean }): string | null {
   if (ctx.provider && ctx.killSwitch) return "Coupe-circuit actif sur cette intégration : aucune exécution possible.";
+  // liste blanche : tout mode inconnu ou toute future écriture « API_* » est refusé tant qu'il n'a pas de capacité
+  if (mode === "INTERNAL" || mode === "MANUAL_RUNBOOK") return null;
   if (mode === "API_PRICELABS") {
     const w = checkWrite("pricelabs.write", { isDemo: ctx.isDemo, killSwitch: ctx.killSwitch });
-    if (!w.ok) return w.reason;
+    return w.ok ? null : w.reason;
   }
-  return null;
+  return "Mode d'exécution inconnu : aucune exécution possible.";
 }
+
+/** Fournisseurs qui peuvent être la cible d'une action : seuls ceux-là ont un coupe-circuit utile (SuperHote n'est jamais écrit) */
+export const KILL_SWITCH_PROVIDERS: Provider[] = ["pricelabs", "booking", "airbnb"];
 
 /** Statut d'ensemble d'un fournisseur, déduit des logements : jamais lu dans une ligne de base qui pourrait être périmée */
 export type ProviderStatus = "DEMO" | "CONNECTED" | "NOT_CONNECTED" | "DEGRADED";

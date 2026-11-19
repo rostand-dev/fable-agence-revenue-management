@@ -289,8 +289,8 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 ]} />
                 {action.status === "APPROVED" && blocked && (
                   <>
-                    <Banner role="veto" title="Exécution impossible">{blocked}</Banner>
-                    <div><button type="button" className="btn btn-primary" disabled aria-disabled="true"><Icon name="ban" />{mode === "API_PRICELABS" ? "Recontrôler puis écrire" : "Déclarer la réalisation"}</button></div>
+                    <div id="exec-blocked"><Banner role="veto" title="Exécution impossible">{blocked}</Banner></div>
+                    <div><button type="button" className="btn btn-primary" disabled aria-describedby="exec-blocked"><Icon name="ban" />{mode === "API_PRICELABS" ? "Recontrôler puis écrire" : "Déclarer la réalisation"}</button></div>
                   </>
                 )}
                 {action.status === "APPROVED" && !blocked && mode === "API_PRICELABS" && (

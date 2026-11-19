@@ -107,6 +107,11 @@ describe("blocage d'exécution (API et fiche du dossier)", () => {
     expect(executionBlock("API_PRICELABS", { ...ok, killSwitch: true })).toContain("Coupe-circuit");
     expect(executionBlock("MANUAL_RUNBOOK", { provider: "booking", isDemo: false, killSwitch: true })).toContain("Coupe-circuit");
   });
+  it("refuse un mode inconnu ou une future écriture API sans capacité", () => {
+    expect(executionBlock("NONE", ok)).toContain("inconnu");
+    expect(executionBlock("API_BOOKING", ok)).toContain("inconnu");
+    expect(executionBlock(undefined, ok)).toContain("inconnu");
+  });
   it("une tâche interne n'est pas concernée par un coupe-circuit", () => {
     expect(executionBlock("INTERNAL", { provider: null, isDemo: false, killSwitch: true })).toBeNull();
   });

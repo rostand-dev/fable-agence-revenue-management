@@ -42,6 +42,13 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
     return null;
   }
   const [p] = await db.select().from(properties).where(eq(properties.id, o.propertyId));
+  // US-002 : on n'approuve pas une option que l'on saurait ne pas pouvoir exécuter (coupe-circuit activé depuis la détection, par exemple) ; en observation, l'approbation reste un jugement hypothétique
+  if (p?.status !== "SHADOW") {
+    const prov = providerOfTarget(c.target.system);
+    const [ig] = prov ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, prov))) : [];
+    const blocked = executionBlock(c.executionMode, { provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch });
+    if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée.");
+  }
   const id = newId("act");
   await db.insert(revenueActions).values({
     id, tenantId: actor.tenantId, propertyId: o.propertyId, opportunityId: o.id, type: c.type, label: c.label, target: c.target, parameters: c.parameters,

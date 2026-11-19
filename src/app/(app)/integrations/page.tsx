@@ -6,7 +6,7 @@ import { LlmKeyPanel } from "@/components/LlmKeyPanel";
 import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
-import { AVAILABILITY, capabilitiesOf, PROVIDER_INFO, PROVIDERS, providerStatus, resolveProvider, type ProviderStatus } from "@/lib/integrations/capabilities";
+import { AVAILABILITY, capabilitiesOf, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, PROVIDERS, providerStatus, resolveProvider, type ProviderStatus } from "@/lib/integrations/capabilities";
 import { loadProviderFacts } from "@/lib/services/capabilities";
 
 export const metadata = { title: "Intégrations" };
@@ -51,10 +51,12 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
                     : "Aucun : procédure manuelle uniquement"],
                   ["Dernière synchronisation", f.lastSyncAt ? fmtDateTime(f.lastSyncAt) : <Vq>aucune</Vq>, true], ["Suite", info.next],
                 ]} />
+                {KILL_SWITCH_PROVIDERS.includes(k) && (
                 <ActionForm action={killSwitchAction} hidden={{ provider: k, on: f.killSwitch ? "0" : "1" }}>
                   <Submit className={f.killSwitch ? "btn btn-ghost btn-sm" : "btn btn-danger btn-sm"} icon={f.killSwitch ? "check" : "ban"}>{f.killSwitch ? "Lever le coupe-circuit" : "Activer le coupe-circuit"}</Submit>
                   <span className="metric-source" style={{ marginLeft: 10 }}>Bloque toute exécution vers {info.name}, immédiatement.</span>
                 </ActionForm>
+                )}
               </div>
             </article>
           );

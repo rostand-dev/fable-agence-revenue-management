@@ -6,7 +6,7 @@ import { db, newId, schema } from "@/db";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
-import { capabilitiesOf, capabilityFlags, isProvider, PROVIDER_INFO, type Provider } from "@/lib/integrations/capabilities";
+import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, type Provider } from "@/lib/integrations/capabilities";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { parseMarkupList } from "@/lib/pricing/published";
@@ -88,7 +88,7 @@ export async function killSwitchAction(_: FormState, fd: FormData): Promise<Form
   const u = await requireUser();
   const provider = txt(fd, "provider"), on = txt(fd, "on") === "1";
   // seuls les fournisseurs du catalogue ont un coupe-circuit : aucune ligne ni audit pour un nom inventé
-  if (!isProvider(provider)) return { error: "Intégration inconnue." };
+  if (!isProvider(provider) || !KILL_SWITCH_PROVIDERS.includes(provider)) return { error: "Intégration inconnue." };
   // une ligne est créée au besoin (un compte réel n'en a pas encore) : le coupe-circuit agit toujours, jamais en silence ; rejouable sans erreur
   await db.insert(schema.integrations).values({
     id: newId("int"), tenantId: u.tenantId, provider, status: "NOT_CONNECTED", killSwitch: on,
