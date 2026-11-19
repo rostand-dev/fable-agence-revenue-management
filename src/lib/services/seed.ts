@@ -4,16 +4,14 @@ import { addDays, todayISO } from "../dates";
 import { buildDemo } from "../engine/demo";
 import { reviewProperty } from "../engine/detect";
 import type { DetectedOpportunity } from "../engine/types";
+import { capabilitiesOf, capabilityFlags, PROVIDERS } from "../integrations/capabilities";
 import { deterministicNarrative } from "./narrative";
 import { dedupeKey, oppRow, runDailyReview } from "./review";
 
 const s = schema;
-const DEFAULT_CAPS = {
-  pricelabs: { "pricelabs.read": true, "pricelabs.write": true },
-  superhote: { "superhote.webhooks": true, "superhote.reconcile": true },
-  booking: { "booking.promotions.read": false, "booking.promotions.write": false },
-  airbnb: { "airbnb.promotions.read": false, "airbnb.promotions.write": false },
-};
+/** Capacités de démonstration, dérivées du catalogue du code (US-002) : jamais écrites à la main. */
+const DEMO_FLAGS = capabilityFlags({ isDemo: true, killSwitch: {} });
+const DEFAULT_CAPS = Object.fromEntries(PROVIDERS.map((p) => [p, Object.fromEntries(capabilitiesOf(p).map((c) => [c.id, DEMO_FLAGS[c.id]]))]));
 
 /** Installe (ou réinstalle) les deux logements de démonstration d'un propriétaire, ancrés à aujourd'hui. */
 export async function seedDemo(tenantId: string): Promise<void> {
@@ -55,7 +53,7 @@ export async function seedDemo(tenantId: string): Promise<void> {
     const p = demoPast.find((x) => x.key === h.key)!;
     const res = reviewProperty({
       today: past, now: pastNow, property: { id: ids[h.key], name: p.name, isDemo: true }, model: p.economics, strategy: p.strategy, days: p.days,
-      resas: p.reservations.map((r) => ({ ...r, status: "CONFIRMED" })), capabilities: DEFAULT_CAPS.pricelabs, activeRanges: [],
+      resas: p.reservations.map((r) => ({ ...r, status: "CONFIRMED" })), capabilities: DEMO_FLAGS, activeRanges: [],
       promos: p.promos.map((x, i) => ({ id: "h" + i, channel: x.channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.fromOffset === null ? null : addDays(past, x.fromOffset), stayTo: x.toOffset === null ? null : addDays(past, x.toOffset), verifiedAt: new Date(+pastNow - x.verifiedDaysAgo * 86400000) })),
     });
     const o = res.opportunities.find(h.pick);

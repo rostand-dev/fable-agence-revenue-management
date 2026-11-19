@@ -68,10 +68,13 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     add("CONFLICT", "Conflit avec une action en cours", ctx.conflict ? "FAIL" : "PASS",
       ctx.conflict ? "Une action en période d'observation couvre déjà ces dates." : "Aucune action active sur ces dates.");
     add("ROLLBACK", "Retour arrière", c.rollbackPlan ? "PASS" : "FAIL", c.rollbackPlan || "Aucun plan de retour arrière.");
-    const mode = c.executionMode === "API_PRICELABS"
-      ? (ctx.demo ? "Écriture PriceLabs simulée — mode démonstration." : ctx.capabilities["pricelabs.write"] ? "Écriture PriceLabs par API après approbation." : "Écriture PriceLabs indisponible : procédure guidée manuelle.")
-      : c.executionMode === "MANUAL_RUNBOOK" ? "Procédure manuelle guidée dans l'extranet officiel, avec preuve." : "Tâche interne, sans écriture externe.";
-    add("CAPABILITY", "Capacité d'exécution", "PASS", mode);
+    if (c.executionMode === "API_PRICELABS") {
+      // un write non supporté est impossible (US-002) : l'option est rejetée, jamais proposée comme exécutable
+      if (!ctx.capabilities["pricelabs.write"]) add("CAPABILITY", "Capacité d'exécution", "FAIL", "Écriture PriceLabs impossible : capacité absente ou coupe-circuit actif. Procédure manuelle guidée seulement.");
+      else add("CAPABILITY", "Capacité d'exécution", "PASS", ctx.demo ? "Écriture PriceLabs simulée — mode démonstration." : "Écriture PriceLabs par API après approbation.");
+    } else {
+      add("CAPABILITY", "Capacité d'exécution", "PASS", c.executionMode === "MANUAL_RUNBOOK" ? "Procédure manuelle guidée dans l'extranet officiel, avec preuve." : "Tâche interne, sans écriture externe.");
+    }
   }
 
   const verdict = rules.some((r) => r.outcome === "FAIL") ? "REJECT" : rules.some((r) => r.outcome === "WARN") ? "NEEDS_HUMAN" : "APPROVE";

@@ -4,6 +4,7 @@ import { addDays, todayISO, type ISODate } from "../dates";
 import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveLlm } from "../agents/llm-config";
+import { capabilityFlags } from "../integrations/capabilities";
 import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
@@ -30,8 +31,8 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     const k = m.get(c.date);
     return { date: c.date, state: c.state as Day["state"], priceCents: c.priceCents, recommendedPriceCents: c.recommendedPriceCents, sentPriceCents: c.sentPriceCents, minStay: c.minStay, rule: c.rule, marketOccupancy: k?.marketOccupancy ?? null, marketAdrCents: k?.marketAdrCents ?? null, pricePercentile: k?.pricePercentile ?? null, event: k?.event ?? null };
   });
-  const capabilities: Record<string, boolean> = {};
-  for (const i of ints) if (!i.killSwitch) Object.assign(capabilities, i.capabilities);
+  // capacités de CE logement, déduites du catalogue du code (US-002) et non d'une ligne de base ; le coupe-circuit coupe les écritures du fournisseur
+  const capabilities = capabilityFlags({ isDemo: p.isDemo, killSwitch: Object.fromEntries(ints.map((i) => [i.provider, i.killSwitch])) });
   return {
     today, now, property: { id: p.id, name: p.name, isDemo: p.isDemo }, model: p.economics as EconomicModel, strategy: p.strategy as Strategy, days,
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),

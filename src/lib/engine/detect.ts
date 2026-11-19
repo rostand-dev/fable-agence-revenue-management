@@ -61,7 +61,8 @@ function expected(ctx: Ctx, dates: ISODate[], channel: Channel, priceFactor: num
 function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: ISODate): Candidate {
   return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, conflict: draft.type !== "NO_ACTION" && overlaps(ctx, from, to) }) };
 }
-const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.property.isDemo ? "API_PRICELABS" : "MANUAL_RUNBOOK");
+/** Écriture PriceLabs par API seulement si la capacité existe pour ce logement (US-002) ; sinon procédure manuelle guidée. */
+const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.capabilities["pricelabs.write"] ? "API_PRICELABS" : "MANUAL_RUNBOOK");
 
 function noAction(ctx: Ctx, from: ISODate, to: ISODate, current: StackResult | null, why: string, reviewInDays = 7): Candidate {
   return finalize(ctx, {
