@@ -129,6 +129,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     related: ["promotion-canal", "sejour-long", "prix-vendu"],
   },
   {
+    id: "regle-de-cumul", term: "Règle de cumul", aka: ["Cumul des promotions", "Stacking"], category: "canaux",
+    plain: "Ce que décide une plateforme quand plusieurs promotions s'appliquent à la même nuit : elles se cumulent, ou une seule est retenue. Chaque canal a ses règles, et NuitSignal ne les devine pas : tant qu'une règle n'est pas établie par l'aide officielle du canal, l'option est soumise à votre validation.",
+    example: "Sur Airbnb, une remise de dernière minute et une remise mensuelle ne se cumulent pas : une seule s'applique. Sur Booking.com, la règle entre un tarif Genius et un tarif mobile dépend d'un réglage du compte que l'application ne peut pas lire : elle reste inconnue.",
+    seeIn: { label: "Méthode de travail", href: "/methode" },
+    related: ["remise", "promotion-canal", "veto"],
+  },
+  {
     id: "promotion-canal", term: "Promotion de canal", category: "prix",
     plain: "Une offre proposée sur une plateforme précise (Airbnb ou Booking.com), le plus souvent un pourcentage de réduction sur une période. Elle se paramètre sur le site de la plateforme, d'où la procédure manuelle guidée de l'agence.",
     example: "Une promotion de 8 % sur Booking.com pour les séjours de janvier : un prix de 115 € passe à 105,80 € sur ce canal seulement.",

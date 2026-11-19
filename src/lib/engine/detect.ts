@@ -59,7 +59,7 @@ function expected(ctx: Ctx, dates: ISODate[], channel: Channel, priceFactor: num
   return Math.round(total);
 }
 function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: ISODate): Candidate {
-  return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, conflict: draft.type !== "NO_ACTION" && overlaps(ctx, from, to) }) };
+  return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && overlaps(ctx, from, to) }) };
 }
 /** Écriture PriceLabs par API seulement si la capacité existe pour ce logement (US-002) ; sinon procédure manuelle guidée. */
 const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.capabilities["pricelabs.write"] ? "API_PRICELABS" : "MANUAL_RUNBOOK");
@@ -579,7 +579,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
   const ctx: Ctx = {
     ...input, byDate: new Map(input.days.map((d) => [d.date, d])), channels, refChannel, refLos: medianLos(input.resas) ?? Math.max(input.strategy.minStay ?? 2, 2),
     lead: leadTimes(input.resas), share, claimed: new Set(), stale,
-    audit: { model: input.model, strategy: input.strategy, stalePromoChannels: stale, conflict: false, capabilities: input.capabilities, demo: input.property.isDemo },
+    audit: { model: input.model, strategy: input.strategy, stalePromoChannels: stale, conflict: false, capabilities: input.capabilities, demo: input.property.isDemo, promos: input.promos, window: { from: input.today, to: input.today } },
   };
   const opportunities = [...floorBreach(ctx), ...stackRisk(ctx), ...orphanGaps(ctx), ...eventUplift(ctx), ...paceHigh(ctx, stats), ...paceLow(ctx, stats), ...dataDrift(ctx)];
   return { opportunities, stats, blocked: [] };
