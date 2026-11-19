@@ -6,6 +6,7 @@ import { db, newId, schema } from "@/db";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
+import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, type Provider } from "@/lib/integrations/capabilities";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { parseMarkupList } from "@/lib/pricing/published";
@@ -80,11 +81,20 @@ export async function renameAgentsAction(_: FormState, fd: FormData): Promise<Fo
   return { ok: "Prénoms enregistrés. Les rôles ne changent pas." };
 }
 
+/** Capacités d'un fournisseur sur un logement réel, pour la ligne créée par le coupe-circuit */
+const realFlags = (provider: Provider) => { const f = capabilityFlags({ isDemo: false, killSwitch: {} }); return Object.fromEntries(capabilitiesOf(provider).map((c) => [c.id, f[c.id]])); };
+
 export async function killSwitchAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
   const provider = txt(fd, "provider"), on = txt(fd, "on") === "1";
-  await db.update(schema.integrations).set({ killSwitch: on }).where(and(eq(schema.integrations.tenantId, u.tenantId), eq(schema.integrations.provider, provider)));
-  await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: on ? "integration.kill_switch_on" : "integration.kill_switch_off", entity: "Integration", entityId: provider, summary: `${u.name} ${on ? "active" : "lève"} le coupe-circuit ${provider}.` });
-  revalidatePath("/integrations");
+  // seuls les fournisseurs du catalogue ont un coupe-circuit : aucune ligne ni audit pour un nom inventé
+  if (!isProvider(provider) || !KILL_SWITCH_PROVIDERS.includes(provider)) return { error: "Intégration inconnue." };
+  // une ligne est créée au besoin (un compte réel n'en a pas encore) : le coupe-circuit agit toujours, jamais en silence ; rejouable sans erreur
+  await db.insert(schema.integrations).values({
+    id: newId("int"), tenantId: u.tenantId, provider, status: "NOT_CONNECTED", killSwitch: on,
+    capabilities: realFlags(provider),
+  }).onConflictDoUpdate({ target: [schema.integrations.tenantId, schema.integrations.provider], set: { killSwitch: on } });
+  await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: on ? "integration.kill_switch_on" : "integration.kill_switch_off", entity: "Integration", entityId: provider, summary: `${u.name} ${on ? "active" : "lève"} le coupe-circuit ${PROVIDER_INFO[provider].name}.` });
+  revalidatePath("/", "layout");
   return null;
 }

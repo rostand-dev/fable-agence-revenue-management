@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays } from "../dates";
+import { capabilityFlags } from "../integrations/capabilities";
 import { auditCandidate } from "./audit";
 import { buildDemo } from "./demo";
 import { priorityScore, reviewProperty, type EngineInput } from "./detect";
@@ -70,7 +71,7 @@ function inputFor(key: string, today = "2026-11-12"): EngineInput {
     today, now, property: { id: key, name: p.name, isDemo: true }, model: p.economics, strategy: p.strategy,
     days: p.days, resas: p.reservations.map((r) => ({ ...r, status: "CONFIRMED" })),
     promos: p.promos.map((x, i) => ({ id: "p" + i, channel: x.channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.fromOffset === null ? null : addDays(today, x.fromOffset), stayTo: x.toOffset === null ? null : addDays(today, x.toOffset), verifiedAt: new Date(+now - x.verifiedDaysAgo * 86400000) })),
-    capabilities: {}, activeRanges: [],
+    capabilities: capabilityFlags({ isDemo: true, killSwitch: {} }), activeRanges: [],
   };
 }
 
@@ -177,5 +178,28 @@ describe("occupation", () => {
     const r = (status: string, ci: string, co: string, g = 0) => ({ channel: "AIRBNB", checkIn: ci, checkOut: co, nights: 0, grossRoomCents: g, commissionCents: 0, paymentFeeCents: 0, bookedAt: ci, status });
     const [k] = monthlyKpis([{ ...r("CONFIRMED", "2026-04-01", "2026-04-19", 180000), nights: 18 }, r("BLOCKED", "2026-04-25", "2026-05-11")], ["2026-04"]);
     expect(k.blockedNights).toBe(6); expect(k.available).toBe(24); expect(k.occupancy).toBeCloseTo(0.75);
+  });
+});
+
+describe("capacités d'exécution (US-002)", () => {
+  const modes = (i: EngineInput) => reviewProperty(i).opportunities.flatMap((o) => o.candidates.map((c) => c.executionMode));
+  it("logement de démonstration : l'écriture PriceLabs est proposée, simulée", () => {
+    expect(modes(inputFor("chatillon"))).toContain("API_PRICELABS");
+  });
+  it("sans capacité d'écriture (logement réel ou coupe-circuit), aucune option n'est proposée en écriture par API", () => {
+    const real = { ...inputFor("chatillon"), capabilities: capabilityFlags({ isDemo: false, killSwitch: {} }) };
+    expect(modes(real)).not.toContain("API_PRICELABS");
+    expect(modes(real)).toContain("MANUAL_RUNBOOK");
+    const killed = { ...inputFor("chatillon"), capabilities: capabilityFlags({ isDemo: true, killSwitch: { pricelabs: true } }) };
+    expect(modes(killed)).not.toContain("API_PRICELABS");
+  });
+  it("l'auditeur rejette une écriture par API sans capacité, quelle que soit la simulation", () => {
+    const o = reviewProperty(inputFor("chatillon")).opportunities.flatMap((x) => x.candidates).find((c) => c.executionMode === "API_PRICELABS")!;
+    const { audit: _, ...draft } = o;
+    const ctx = { model: inputFor("chatillon").model, strategy: inputFor("chatillon").strategy, stalePromoChannels: [], conflict: false, demo: true };
+    expect(auditCandidate(draft, { ...ctx, capabilities: { "pricelabs.write": true } }).rules.find((r) => r.code === "CAPABILITY")!.outcome).toBe("PASS");
+    const v = auditCandidate(draft, { ...ctx, capabilities: { "pricelabs.write": false } });
+    expect(v.rules.find((r) => r.code === "CAPABILITY")!.outcome).toBe("FAIL");
+    expect(v.verdict).toBe("REJECT");
   });
 });

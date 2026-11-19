@@ -17,6 +17,7 @@ import { hardFloorCents, strategyFloorCents } from "@/lib/engine/economics";
 import { CYCLE, cycleProgress, STATE_LABEL, type ActionState } from "@/lib/engine/stateMachine";
 import { CHANNEL_LABEL, type Candidate, type EconomicModel } from "@/lib/engine/types";
 import { euro, signedEuro } from "@/lib/format";
+import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilities";
 
 const RUNBOOK: Record<string, (c: Candidate) => string[]> = {
   CHANNEL_PROMO: (c) => [
@@ -54,11 +55,12 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const { code } = await params;
   const [o] = await db.select().from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), eq(schema.opportunities.code, decodeURIComponent(code))));
   if (!o) notFound();
-  const [[p], acts, runs, talk] = await Promise.all([
+  const [[p], acts, runs, talk, ints] = await Promise.all([
     db.select().from(schema.properties).where(eq(schema.properties.id, o.propertyId)),
     db.select().from(schema.revenueActions).where(eq(schema.revenueActions.opportunityId, o.id)),
     db.select().from(schema.agentRuns).where(eq(schema.agentRuns.opportunityId, o.id)).orderBy(asc(schema.agentRuns.createdAt)),
     db.select().from(schema.chatMessages).where(and(eq(schema.chatMessages.opportunityId, o.id), eq(schema.chatMessages.tenantId, user.tenantId))).orderBy(asc(schema.chatMessages.createdAt)),
+    db.select().from(schema.integrations).where(eq(schema.integrations.tenantId, user.tenantId)),
   ]);
   const names = user.settings.agentNames ?? null;
   const cands = o.candidates as Candidate[];
@@ -76,6 +78,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const kinds = [["fait", "Faits relevés", "block-faits"], ["comparaison", "Comparaisons", "block-comparaisons"], ["interpretation", "Interprétations", "block-interpretations"]] as const;
   const mode: string | undefined = action?.simulation?.executionMode;
   const exec = action?.execution, meas = action?.measurement;
+  // US-002 : même règle que le serveur (`execute()`), pour ne jamais offrir un bouton qui sera refusé
+  const target = providerOfTarget(action?.target?.system);
+  const blocked = action ? executionBlock(mode, { provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch }) : null;
 
   return (
     <Page title={`Dossier ${o.code} · ${p.name}`} sub={`${o.playbook} · ouvert le ${fmtDateTime(o.createdAt)} · ${fmtPeriod(o.stayFrom, o.stayTo)}`}
@@ -282,13 +287,19 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   ["Mode d'exécution", mode === "API_PRICELABS" ? (p.isDemo ? "Écriture simulée (démonstration)" : "API PriceLabs") : mode === "MANUAL_RUNBOOK" ? "Procédure manuelle guidée" : "Tâche interne"],
                   ["Retour arrière", action.rollbackPlan],
                 ]} />
-                {action.status === "APPROVED" && mode === "API_PRICELABS" && (
+                {action.status === "APPROVED" && blocked && (
+                  <>
+                    <div id="exec-blocked"><Banner role="veto" title="Exécution impossible">{blocked}</Banner></div>
+                    <div><button type="button" className="btn btn-primary" disabled aria-describedby="exec-blocked"><Icon name="ban" />{mode === "API_PRICELABS" ? "Recontrôler puis écrire" : "Déclarer la réalisation"}</button></div>
+                  </>
+                )}
+                {action.status === "APPROVED" && !blocked && mode === "API_PRICELABS" && (
                   <>
                     <Banner role="attention" title="Recontrôle avant écriture">La grille est relue au moment de l'envoi : si une nuit a été réservée depuis la simulation, l'écriture est abandonnée.</Banner>
                     <ActionForm action={executeAction} hidden={{ actionId: action.id }}><Submit icon="search" pendingLabel="Recontrôle…">Recontrôler puis écrire</Submit></ActionForm>
                   </>
                 )}
-                {action.status === "APPROVED" && mode !== "API_PRICELABS" && (
+                {action.status === "APPROVED" && !blocked && mode !== "API_PRICELABS" && (
                   <>
                     <div>
                       <p className="gauge-label" style={{ marginBottom: 8 }}>Procédure pas à pas — {agentName(mode === "INTERNAL" ? "annonce" : "distribution", names)}</p>

@@ -3,6 +3,7 @@ import { db, newId, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { assertTransition, type ActionState } from "../engine/stateMachine";
 import type { Candidate } from "../engine/types";
+import { executionBlock, providerOfTarget } from "../integrations/capabilities";
 
 const { opportunities, revenueActions, auditEvents, calendarDays, promotions, properties, integrations, agentRuns } = schema;
 type Actor = { id: string; name: string; tenantId: string };
@@ -41,6 +42,13 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
     return null;
   }
   const [p] = await db.select().from(properties).where(eq(properties.id, o.propertyId));
+  // US-002 : on n'approuve pas une option que l'on saurait ne pas pouvoir exécuter (coupe-circuit activé depuis la détection, par exemple) ; en observation, l'approbation reste un jugement hypothétique
+  if (p?.status !== "SHADOW") {
+    const prov = providerOfTarget(c.target.system);
+    const [ig] = prov ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, prov))) : [];
+    const blocked = executionBlock(c.executionMode, { provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch });
+    if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée.");
+  }
   const id = newId("act");
   await db.insert(revenueActions).values({
     id, tenantId: actor.tenantId, propertyId: o.propertyId, opportunityId: o.id, type: c.type, label: c.label, target: c.target, parameters: c.parameters,
@@ -95,18 +103,21 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
   if (a.status !== "APPROVED") throw new DecisionError("Seule une action approuvée peut être exécutée.");
   if (p.status === "SHADOW") throw new DecisionError("Logement en période d'observation : l'approbation est enregistrée comme jugement hypothétique, aucune écriture n'est faite.");
   const mode: string = a.simulation.executionMode;
-  const provider = a.target.system === "PRICELABS" ? "pricelabs" : a.target.system === "BOOKING" ? "booking" : a.target.system === "AIRBNB" ? "airbnb" : null;
+  const provider = providerOfTarget(a.target.system);
+  let killSwitch = false;
   if (provider) {
     const [i] = await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, provider)));
-    if (i?.killSwitch) throw new DecisionError("Coupe-circuit actif sur cette intégration : aucune exécution possible.");
+    killSwitch = !!i?.killSwitch;
   }
+  // US-002 : un write non supporté est impossible. Refus avant tout changement d'état (l'action reste APPROVED), même règle que le bouton de la fiche.
+  const blocked = executionBlock(mode, { provider, isDemo: p.isDemo, killSwitch });
+  if (blocked) throw new DecisionError(blocked);
   const dates: ISODate[] = a.parameters.dates ?? [];
   const baseline = await bookedCount(a.propertyId, o.stayFrom, o.stayTo);
   await move(a.id, actor.tenantId, "APPROVED", "EXECUTING");
   let execution: any;
   try {
     if (mode === "API_PRICELABS") {
-      if (!p.isDemo) throw new DecisionError("L'écriture PriceLabs par API n'est pas encore connectée pour ce logement : utilisez la procédure manuelle.");
       const before = dates.length ? await db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), inArray(calendarDays.date, dates))) : [];
       // précondition : l'état relu doit être celui sur lequel la simulation a été faite
       if (before.some((d) => d.state !== "FREE")) throw new DecisionError("Recontrôle : une des nuits a été réservée depuis la simulation. Écriture abandonnée, relancez la revue.");
