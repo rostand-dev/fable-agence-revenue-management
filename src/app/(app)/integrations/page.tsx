@@ -54,7 +54,7 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
                 {KILL_SWITCH_PROVIDERS.includes(k) && (
                 <ActionForm action={killSwitchAction} hidden={{ provider: k, on: f.killSwitch ? "0" : "1" }}>
                   <Submit className={f.killSwitch ? "btn btn-ghost btn-sm" : "btn btn-danger btn-sm"} icon={f.killSwitch ? "check" : "ban"}>{f.killSwitch ? "Lever le coupe-circuit" : "Activer le coupe-circuit"}</Submit>
-                  <span className="metric-source" style={{ marginLeft: 10 }}>Bloque toute exécution vers {info.name}, immédiatement.</span>
+                  <span className="metric-source" style={{ marginLeft: 10 }}>Bloque l'écriture automatique par API vers {info.name}, immédiatement. Les procédures manuelles restent possibles.</span>
                 </ActionForm>
                 )}
               </div>
