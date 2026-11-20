@@ -12,7 +12,9 @@
     "db:idempotent": "tsx scripts/idempotent-migrations.ts",
     "docs:money": "tsx scripts/generate-money-doc.ts",
     "docs:capabilities": "tsx scripts/generate-capabilities-doc.ts",
-    "docs:stacking": "tsx scripts/generate-stacking-doc.ts"
+    "docs:stacking": "tsx scripts/generate-stacking-doc.ts",
+    "test:db": "vitest run -c vitest.db.config.mts",
+    "test:all": "npm test && npm run test:db"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

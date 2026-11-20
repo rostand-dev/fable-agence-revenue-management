@@ -68,8 +68,29 @@
     {
       "idx": 9,
       "version": "7",
-      "when": 1795206451773,
-      "tag": "0009_remember_tokens",
+      "when": 1795206398040,
+      "tag": "0009_audit_append_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795207253541,
+      "tag": "0010_feature_flags",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795207731391,
+      "tag": "0011_tenant_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795217839740,
+      "tag": "0012_remember_tokens",
       "breakpoints": true
     }
   ]

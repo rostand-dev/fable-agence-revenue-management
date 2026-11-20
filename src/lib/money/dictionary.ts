@@ -149,16 +149,16 @@ export const MONEY_DICTIONARY: MoneyField[] = [
     location: "ShNight.priceCents (superhote-map.ts) · fetchPublishedPriceCents (interface non branchée)", sources: ["SUPERHOTE"], derivation: "OBSERVED",
     definition: "Prix de la nuitée dans le calendrier SuperHote, converti d'unités majeures en centimes. Doit permettre de contrôler le prix publié estimé.",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", signNote: "D'après https://docs.superhote.com/api-v2 (consultée le 19/11/2026), la valeur doit être ≥ 0 à l'écriture.", nullable: true,
-    caveats: ["`fetchPublishedPriceCents` appartient à une interface de vérification NON BRANCHÉE (superhote-check.ts) : seul `ShNight.priceCents` est lu aujourd'hui.", "La documentation relie la devise au logement (`Rental.currency`), pas au prix.", "Une comparaison avec `user_price` PriceLabs (écart ≤ 1 €) indique si ce prix est avant ou après majoration de canal."],
+    caveats: ["`fetchPublishedPriceCents` appartient à une interface de vérification NON BRANCHÉE (superhote-check.ts) : seul `ShNight.priceCents` est lu aujourd'hui.", "La documentation relie la devise au logement (`Rental.currency`), pas au prix.", "Une comparaison avec le prix recommandé `price` de PriceLabs (écart ≤ 1 €) indique si ce prix est avant ou après majoration de canal ; relevé réel : identique, donc avant majoration."],
     toVerify: "Taxe, TVA, ménage : non précisés par SuperHote. Comparer à ce qu'affiche chaque canal pour la même nuit.",
   }),
   // ───────────── Prix et calendrier (PriceLabs) ─────────────
   f({
     id: "price.engine", label: "Prix retenu par le moteur (nuit)", names: ["priceCents", "price_cents"], group: "PRICE",  // rattache aussi ShNight.priceCents, voir superhote.calendar_price
     location: "calendar_days.price_cents · type Day · CalendarPatch.priceCents (`ShNight.priceCents` est le prix de calendrier SuperHote : voir superhote.calendar_price)", sources: ["PRICELABS", "SUPERHOTE", "DEMO"], derivation: "DERIVED",
-    definition: "Prix par nuit utilisé par les calculs. Lecture PriceLabs : `user_price` s'il est > 0, sinon `price` si la nuit est libre. Entre deux lectures, le calendrier est complété par `priceCents ?? sentPriceCents ?? recommendedPriceCents` quand SuperHote libère une nuit. Démo : posé égal au prix envoyé.",
+    definition: "Prix par nuit utilisé par les calculs, AVANT majoration de canal. SuperHote fait foi : prix de calendrier SuperHote quand il est rattaché et lisible ; sinon `price` (prix recommandé) PriceLabs si la nuit est libre. `user_price` n'est jamais retenu (relevé réel : 127 € contre 77 € affichés par SuperHote). Le prix vendu d'un canal = ce prix × (1 + majoration du canal), puis remises, commission, coûts. Entre deux lectures, le calendrier est complété par `priceCents ?? recommendedPriceCents` quand SuperHote libère une nuit. Démo : posé égal au prix envoyé.",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", signNote: "−1 chez PriceLabs = indisponible → null.", nullable: true,
-    caveats: ["Une nuit réservée peut garder un prix (`user_price` > 0 conservé, ou prix conservé lors d'un recalage SuperHote).", "Prix catalogue : jamais net de commission, jamais après majoration de canal SuperHote."], toVerify: PRICE_TO_VERIFY,
+    caveats: ["Une nuit réservée peut garder un prix conservé lors d'un recalage SuperHote.", "Prix catalogue : jamais net de commission, jamais après majoration de canal SuperHote."], toVerify: PRICE_TO_VERIFY,
   }),
   f({
     id: "price.recommended", label: "Prix recommandé PriceLabs (`price`)", names: ["recommendedPriceCents", "recommended_price_cents", "recommendedCents"], group: "PRICE",
@@ -184,7 +184,7 @@ export const MONEY_DICTIONARY: MoneyField[] = [
   f({
     id: "price.shown_in_calendar", label: "Prix affiché dans le calendrier du logement", names: ["shownCents"], group: "PRICE",
     location: "page du logement (calendrier D+90)", sources: ["PRICELABS", "COMPUTED"], derivation: "DERIVED",
-    definition: "Prix d'une nuit libre montré à l'écran : le prix publié estimé du canal choisi (arrondi à l'euro ; inconnu si la majoration l'est), ou, sans canal choisi, le prix envoyé à SuperHote.",
+    definition: "Prix d'une nuit libre montré à l'écran : le prix publié estimé du canal choisi (arrondi à l'euro ; inconnu si la majoration l'est), ou, sans canal choisi, le prix du calendrier (SuperHote, avant majoration).",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: true, toVerify: PRICE_TO_VERIFY,
   }),
   f({
@@ -208,9 +208,9 @@ export const MONEY_DICTIONARY: MoneyField[] = [
     caveats: ["PriceLabs renvoie un prix calculé quand aucun n'est fixé explicitement (changelog https://developers.pricelabs.co/customer-api/changelog/changelog/2024/7/9)."], toVerify: PRICE_TO_VERIFY,
   }),
   f({
-    id: "strategy.min_price", label: "Prix minimum", names: ["minPriceCents", "minCents"], group: "STRATEGY",
-    location: "properties.strategy.minPriceCents · PlListing.minCents", sources: ["PRICELABS"], derivation: "OBSERVED",
-    definition: "Min Price PriceLabs : prix catalogue plancher, avant commission. Ne dit rien du net : le plancher économique est un autre montant.",
+    id: "strategy.min_price", label: "Prix minimum", names: ["minPriceCents", "minCents", "previousMinPriceCents", "proposedMinCents"], group: "STRATEGY",
+    location: "properties.strategy.minPriceCents · PlListing.minCents · paramètres de l'option PB-11 (previousMinPriceCents, proposedMinCents)", sources: ["PRICELABS", "COMPUTED"], derivation: "OBSERVED",
+    definition: "Min Price PriceLabs : prix catalogue plancher, avant majoration de canal et avant commission. Ne dit rien du net : le plancher économique est un autre montant. PB-11 compare ce minimum × (1 + majoration du canal) au plancher absolu et propose, si besoin, le plus petit minimum entier qui le respecte (previousMinPriceCents = minimum actuel, proposedMinCents = minimum proposé).",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: true, toVerify: PRICE_TO_VERIFY,
   }),
   f({
@@ -309,7 +309,7 @@ export const MONEY_DICTIONARY: MoneyField[] = [
     caveats: ["Comparable à un prix d'hébergement brut, pas au prix catalogue PriceLabs tant que ses inclusions restent inconnues."], toVerify: VAT_DECLARED_TO_VERIFY,
   }),
   f({
-    id: "sim.sold_nightly", label: "Prix vendu par nuit (simulation)", names: ["soldNightlyCents", "publishedNightlyCents"], group: "FLOOR_SIMULATION",
+    id: "sim.sold_nightly", label: "Prix vendu par nuit (simulation)", names: ["soldNightlyCents", "publishedNightlyCents", "soldAtMinCents"], group: "FLOOR_SIMULATION",
     location: "StackResult.soldNightlyCents · StackInput.publishedNightlyCents", sources: ["PRICELABS", "COMPUTED"], derivation: "DERIVED",
     definition: "Prix publié par nuit en entrée de la cascade ; prix vendu par nuit après remises en sortie, avant commission.",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: false, toVerify: PRICE_TO_VERIFY,

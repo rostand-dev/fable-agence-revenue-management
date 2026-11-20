@@ -1,5 +1,6 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "../audit/log";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
 import { getNeighborhood, getPrices, getReservations, horizon, listListings, PriceLabsError } from "../integrations/pricelabs";
@@ -10,7 +11,7 @@ import { shReservations } from "../integrations/superhote-reservations";
 import { replaceReservations } from "./reservations-store";
 import { snapshotSuperhote } from "./superhote-read";
 
-const { properties, calendarDays, marketDays, reservations, agentRuns, auditEvents } = schema;
+const { properties, calendarDays, marketDays, reservations, agentRuns } = schema;
 export class SyncError extends Error {}
 
 async function getProp(tenantId: string, id: string) {
@@ -41,7 +42,7 @@ export async function connectPriceLabs(tenantId: string, propertyId: string, api
   await db.update(properties).set({
     pricelabs: { apiKeyEnc: encryptSecret(apiKey), keyHint: secretHint(apiKey), connectedAt: new Date().toISOString(), candidates: listings.map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })), listingId: null, pms: null, listingName: null },
   }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_connected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs enregistrée pour ${p.name} (${secretHint(apiKey)}), ${listings.length} annonce${listings.length > 1 ? "s" : ""} sur le compte. Rattachement à confirmer.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_connected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs enregistrée pour ${p.name} (${secretHint(apiKey)}), ${listings.length} annonce${listings.length > 1 ? "s" : ""} sur le compte. Rattachement à confirmer.`, payload: { keyHint: secretHint(apiKey), listings: listings.length } });
   return { listings: listings.length };
 }
 
@@ -53,7 +54,7 @@ export async function selectListing(tenantId: string, propertyId: string, listin
   const taken = (await linkedElsewhere(tenantId, p.id)).get(`${c.id}|${c.pms}`);
   if (taken) throw new SyncError(`Cette annonce PriceLabs est déjà rattachée à votre logement « ${taken} ». Une annonce ne peut alimenter qu'un seul logement.`);
   await db.update(properties).set({ pricelabs: { ...p.pricelabs, listingId: c.id, pms: c.pms, listingName: c.name } }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_listing_linked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs « ${c.name} » (${c.id} · ${c.pms}) rattachée à ${p.name}.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_listing_linked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs « ${c.name} » (${c.id} · ${c.pms}) rattachée à ${p.name}.`, payload: { listingId: c.id, pms: c.pms, listingName: c.name } });
   await syncPriceLabs(tenantId, p.id);
 }
 
@@ -65,20 +66,21 @@ export async function detachListing(tenantId: string, propertyId: string, actor:
   try { candidates = (await listListings(decryptSecret(p.pricelabs.apiKeyEnc))).map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })); } catch { /* liste précédente conservée */ }
   const { lastSync, ...rest } = p.pricelabs;
   await db.update(properties).set({ pricelabs: { ...rest, candidates, listingId: null, pms: null, listingName: null } }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_listing_unlinked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs détachée de ${p.name}.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_listing_unlinked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs détachée de ${p.name}.`, payload: { listingId: p.pricelabs?.listingId ?? null } });
 }
 
 export async function disconnectPriceLabs(tenantId: string, propertyId: string, actor: string): Promise<void> {
   const p = await getProp(tenantId, propertyId);
   await db.update(properties).set({ pricelabs: null }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_disconnected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs supprimée pour ${p.name}. Les données déjà lues sont conservées.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_disconnected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs supprimée pour ${p.name}. Les données déjà lues sont conservées.` });
 }
 
 /**
  * Lecture PriceLabs d'un logement : grille J+0 à J+90, marché, réservations relayées par le PMS, réglages de prix.
  * Lecture seule. En cas d'échec, les données précédentes sont conservées et l'erreur est consignée.
  */
-export async function syncPriceLabs(tenantId: string, propertyId: string): Promise<{ days: number; reservations: number }> {
+/** `skipSuperhote` : lecture SuperHote coupée (US-013) ; PriceLabs se lit seul, les réservations déjà enregistrées sont conservées. */
+export async function syncPriceLabs(tenantId: string, propertyId: string, opts: { skipSuperhote?: boolean } = {}): Promise<{ days: number; reservations: number }> {
   const p = await getProp(tenantId, propertyId);
   const pl = p.pricelabs;
   if (!pl?.apiKeyEnc || !pl.listingId || !pl.pms) throw new SyncError("Aucune annonce PriceLabs n'est rattachée à ce logement.");
@@ -102,7 +104,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   try { market = await getNeighborhood(apiKey, pl.listingId, pl.pms); } catch (e) { marketError = wrap(e); }
 
   // SuperHote (facultatif, lecture seule, jamais bloquant) : canal des réservations transmises sans canal + comparaison des prix
-  const sh = await snapshotSuperhote(p.superhote, now);
+  const sh = opts.skipSuperhote ? null : await snapshotSuperhote(p.superhote, now);
   const hints = sh?.ok ? channelHints(resaRows as any[], sh.reservations, (c) => mapChannel(c) !== "INCONNU") : {};
   const model = p.economics as EconomicModel;
   const plResas = mapReservations(resaRows, model, { ...hints, ...(pl.overrides ?? {}) });
@@ -119,8 +121,22 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   const blocked = new Set<string>();
   for (const r of resas) if (r.status === "BLOCKED") for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) blocked.add(d);
   days = days.map((d) => (blocked.has(d.date) ? { ...d, state: "BLOCKED" as const, priceCents: null, sentPriceCents: null } : d));
+  // SuperHote fait foi pour le prix : son prix de calendrier (avant majoration par canal) remplace le prix recommandé PriceLabs sur les nuits libres.
+  // Rattaché mais illisible, ou nuit sans prix chez SuperHote : on garde `price` PriceLabs (recommandé), jamais `user_price`.
+  let pricesFromSuperhote = 0;
+  if (shLinked && sh?.ok) {
+    const shByDate = new Map(sh.calendar.map((n) => [n.date, n]));
+    days = days.map((d) => {
+      const n = shByDate.get(d.date);
+      if (d.state !== "FREE" || !n || !n.available || n.reservationId || n.priceCents === null || n.priceCents <= 0) return d;
+      pricesFromSuperhote++;
+      return { ...d, priceCents: n.priceCents };
+    });
+  }
+  const freeNights = days.filter((d) => d.state === "FREE").length;
+  const priceSource: "SUPERHOTE" | "PRICELABS" = pricesFromSuperhote > 0 && pricesFromSuperhote >= freeNights / 2 ? "SUPERHOTE" : "PRICELABS";
   const shLastSync = !sh ? null : sh.ok
-    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[], { from: h.histFrom, to: h.histTo }) }
+    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days.map((d) => ({ date: d.date, state: d.state, sentPriceCents: d.recommendedPriceCents ?? null }))), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[], { from: h.histFrom, to: h.histTo }) }
     : { ok: false, at: sh.at, error: sh.error };
   const bedrooms = p.bedrooms ?? listing.bedrooms;
   const mk = mapMarket(market, bedrooms, days);
@@ -136,7 +152,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
     if (rows.length) observedCommission[ch] = { pct: Math.round((rows.reduce((a, x) => a + x.c, 0) / rows.reduce((a, x) => a + x.g, 0)) * 1000) / 10, n: rows.length };
   }
   const lastSync = {
-    ok: true, at: now.toISOString(), reservationsSource: toWrite ? source : "CONSERVEES", observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
+    ok: true, at: now.toISOString(), reservationsSource: toWrite ? source : "CONSERVEES", priceSource, pricesFromSuperhote, observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
     reservations: confirmed.length, cancelled: resas.filter((r) => r.status === "CANCELLED").length, ownerBlocks: resas.filter((r) => r.status === "BLOCKED").length, duplicates: resas.filter((r) => r.status === "DUPLICATE").length,
     historyFrom: confirmed.map((r) => r.checkIn).sort()[0] ?? null,
     touristTaxPct: model?.touristTaxPct ?? null,
@@ -153,6 +169,11 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
     await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
     if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
     await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync } } : {}) }).where(eq(properties.id, p.id));
+    // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une modification, tracée avec son avant/après
+    if (changed) {
+      const cents = (s: Strategy) => ({ basePriceCents: s.basePriceCents ?? null, minPriceCents: s.minPriceCents ?? null, maxPriceCents: s.maxPriceCents ?? null });
+      await recordAudit(tx, { tenantId, actor: "system", type: "property.strategy_synced", entity: "Property", entityId: p.id, summary: `Prix de base, minimum ou maximum de ${p.name} relus depuis PriceLabs (stratégie version ${p.strategyVersion + 1}).`, payload: { from: cents(strat), to: cents(strategy), strategyVersion: p.strategyVersion + 1 } });
+    }
   });
   await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}${shLastSync?.ok ? `, SuperHote lu (${(shLastSync as any).autoChannels} canaux relevés)` : shLastSync ? ` ; SuperHote non lu : ${(shLastSync as any).error}` : ""}.` });
   return { days: days.length, reservations: confirmed.length };
@@ -181,7 +202,7 @@ export async function setChannelOverrides(tenantId: string, propertyId: string, 
   for (const [id, v] of Object.entries(choices)) if (["AIRBNB", "BOOKING", "DIRECT", "EXCLUDE"].includes(v)) overrides[id] = v as ChannelOverride;
   await db.update(properties).set({ pricelabs: { ...p.pricelabs, overrides } }).where(eq(properties.id, p.id));
   const n = Object.keys(overrides).length;
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "reservations.channel_overrides", entity: "Property", entityId: p.id, summary: `Canal précisé à la main pour ${n} réservation${n > 1 ? "s" : ""} de ${p.name} transmise${n > 1 ? "s" : ""} sans canal.`, payload: overrides });
+  await recordAudit(db, { tenantId, actor, type: "reservations.channel_overrides", entity: "Property", entityId: p.id, summary: `Canal précisé à la main pour ${n} réservation${n > 1 ? "s" : ""} de ${p.name} transmise${n > 1 ? "s" : ""} sans canal.`, payload: overrides });
   await syncPriceLabs(tenantId, p.id);
   return n;
 }

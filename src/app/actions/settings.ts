@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "@/lib/audit/log";
+import { userActor } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
@@ -11,6 +13,7 @@ import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PRO
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { parseMarkupList } from "@/lib/pricing/published";
+import { FlagError, setFlag } from "@/lib/services/flags";
 import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
 import { connectSuperhote } from "@/lib/services/superhote-sync";
 
@@ -65,7 +68,11 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   await db.update(schema.properties).set({
     name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, strategy, channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
   }).where(eq(schema.properties.id, p.id));
-  await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.` });
+  const next: Record<string, unknown> = { name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity };
+  const changed: string[] = Object.keys(next).filter((k) => ((p as Record<string, unknown>)[k] ?? null) !== (next[k] ?? null));
+  if (old.minStay !== strategy.minStay) changed.push("minStay");
+  if (JSON.stringify(p.channelMarkups) !== JSON.stringify(mk.markups)) changed.push("channelMarkups");
+  await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.`, payload: { changed } });
   // Une clé déjà enregistrée ne se remplace pas ici : elle se gère dans l'onglet de l'intégration.
   const { plError, shError } = await connectKeys(u.tenantId, p.id, "user:" + u.id, plKey, shKey);
   revalidatePath("/", "layout");
@@ -79,7 +86,10 @@ export async function renameAgentsAction(_: FormState, fd: FormData): Promise<Fo
   const u = await requireUser();
   const names: Record<string, string> = {};
   for (const a of AGENTS) { const v = txt(fd, "agent-" + a.id).slice(0, 24); if (v && v !== a.name) names[a.id] = v; }
-  await db.update(schema.tenants).set({ settings: { ...u.settings, agentNames: names } }).where(eq(schema.tenants.id, u.tenantId));
+  await db.transaction(async (tx) => {
+  await tx.update(schema.tenants).set({ settings: { ...u.settings, agentNames: names } }).where(eq(schema.tenants.id, u.tenantId));
+  await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "settings.agents_renamed", entity: "Tenant", entityId: u.tenantId, summary: `${u.name} modifie les prénoms de l'équipe${Object.keys(names).length ? "" : " (retour aux prénoms d'origine)"}.`, payload: { from: u.settings.agentNames ?? {}, to: names } });
+  });
   revalidatePath("/", "layout");
   return { ok: "Prénoms enregistrés. Les rôles ne changent pas." };
 }
@@ -93,11 +103,28 @@ export async function killSwitchAction(_: FormState, fd: FormData): Promise<Form
   // seuls les fournisseurs du catalogue ont un coupe-circuit : aucune ligne ni audit pour un nom inventé
   if (!isProvider(provider) || (on && !KILL_SWITCH_PROVIDERS.includes(provider))) return { error: "Intégration inconnue." };
   // une ligne est créée au besoin (un compte réel n'en a pas encore) : le coupe-circuit agit toujours, jamais en silence ; rejouable sans erreur
-  await db.insert(schema.integrations).values({
+  await db.transaction(async (tx) => {
+  await tx.insert(schema.integrations).values({
     id: newId("int"), tenantId: u.tenantId, provider, status: "NOT_CONNECTED", killSwitch: on,
     capabilities: realFlags(provider),
   }).onConflictDoUpdate({ target: [schema.integrations.tenantId, schema.integrations.provider], set: { killSwitch: on } });
-  await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: on ? "integration.kill_switch_on" : "integration.kill_switch_off", entity: "Integration", entityId: provider, summary: `${u.name} ${on ? "active" : "lève"} le coupe-circuit ${PROVIDER_INFO[provider].name}.` });
+  await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: on ? "integration.kill_switch_on" : "integration.kill_switch_off", entity: "Integration", entityId: provider, summary: `${u.name} ${on ? "active" : "lève"} le coupe-circuit ${PROVIDER_INFO[provider].name}.`, payload: { provider, on } });
+  });
   revalidatePath("/", "layout");
   return null;
+}
+
+/** Active ou désactive une fonction à un niveau (propriétaire, logement, intégration) : US-013, journalisé dans la même transaction. */
+export async function setFlagAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  const en = txt(fd, "enabled"), flag = txt(fd, "flag"), scope = txt(fd, "scope"), scopeId = txt(fd, "scopeId");
+  if ((en !== "0" && en !== "1") || flag.length > 40 || scope.length > 20 || scopeId.length > 80) return { error: "Demande invalide." };
+  try {
+    const r = await setFlag(u, { flag, scope, scopeId, enabled: en === "1" });
+    revalidatePath("/", "layout");
+    return { ok: r === "changed" ? "Réglage enregistré." : "Déjà dans cet état." };
+  } catch (e) {
+    if (e instanceof FlagError) return { error: e.message };
+    throw e;
+  }
 }

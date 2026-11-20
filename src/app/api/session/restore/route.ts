@@ -1,6 +1,9 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { ensureMigrated } from "@/db";
+import { eq } from "drizzle-orm";
+import { db, ensureMigrated, schema } from "@/db";
+import { recordAudit } from "@/lib/audit/log";
+import { userActor } from "@/lib/audit/types";
 import { createSession, getUser } from "@/lib/auth";
 import { clientIp, rateKey } from "@/lib/password-reset";
 import { allowAttempt } from "@/lib/rate-limit";
@@ -23,6 +26,10 @@ export async function GET(req: Request) {
   if (!(await allowAttempt("remember-restore", rateKey("ip", clientIp(await headers())), 300))) redirect(failed);
   const who = await restoreFromRemember();
   if (!who) redirect(failed);
+  const [u] = await db.select({ id: schema.users.id, name: schema.users.name, tenantId: schema.users.tenantId }).from(schema.users).where(eq(schema.users.id, who.userId));
+  if (!u) redirect(failed);
+  // comme pour la connexion : pas de session ouverte sans événement dans le journal
+  await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "account.login_remembered", entity: "User", entityId: u.id, summary: `${u.name} est reconnecté(e) automatiquement (appareil reconnu).` });
   await createSession(who.userId); // session sans « mot de passe vérifié » : les clés API le redemanderont
   redirect(next);
 }

@@ -1,16 +1,29 @@
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "../audit/log";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveLlm } from "../agents/llm-config";
-import { capabilityFlags } from "../integrations/capabilities";
+import { capabilityFlags, capability } from "../integrations/capabilities";
+import { loadFlags } from "./flags";
+import { resolveFlag } from "../flags/catalog";
 import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
 
-const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, auditEvents, integrations, reviewRuns } = schema;
+const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, integrations, reviewRuns } = schema;
 const ACTIVE_ACTION = ["APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING"];
+
+/**
+ * Majorations saisies par le propriétaire (clé « airbnb », « booking »…) → canaux du moteur. Une majoration non renseignée est `null` (inconnue),
+ * jamais 0 % : le moteur exclut alors ce canal de la revue au lieu de calculer un prix vendu faux.
+ */
+export function channelMarkupsOf(list: { key: string; pct: number | null }[] | null | undefined): Partial<Record<Channel, number | null>> {
+  const find = (prefix: string) => (list ?? []).find((m) => m.key === prefix || m.key.startsWith(prefix + "-"));
+  const pct = (m: { pct: number | null } | undefined) => (m && typeof m.pct === "number" && Number.isFinite(m.pct) && m.pct >= 0 && m.pct <= 100 ? m.pct : null);
+  return { AIRBNB: pct(find("airbnb")), BOOKING: pct(find("booking")) };
+}
 
 export async function loadEngineInput(tenantId: string, propertyId: string, today: ISODate, now = new Date()): Promise<EngineInput | null> {
   const [p] = await db.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.tenantId, tenantId)));
@@ -22,7 +35,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     db.select().from(reservations).where(eq(reservations.propertyId, p.id)),
     db.select().from(promotions).where(and(eq(promotions.propertyId, p.id), eq(promotions.status, "ACTIVE"))),
     db.select().from(integrations).where(eq(integrations.tenantId, tenantId)),
-    db.select({ from: opportunities.stayFrom, to: opportunities.stayTo, params: revenueActions.parameters }).from(revenueActions)
+    db.select({ from: opportunities.stayFrom, to: opportunities.stayTo, params: revenueActions.parameters, type: revenueActions.type }).from(revenueActions)
       .innerJoin(opportunities, eq(opportunities.id, revenueActions.opportunityId))
       .where(and(eq(revenueActions.propertyId, p.id), inArray(revenueActions.status, ACTIVE_ACTION))),
   ]);
@@ -33,12 +46,20 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   });
   // capacités de CE logement, déduites du catalogue du code (US-002) et non d'une ligne de base ; le coupe-circuit coupe les écritures du fournisseur
   const capabilities = capabilityFlags({ isDemo: p.isDemo, killSwitch: Object.fromEntries(ints.map((i) => [i.provider, i.killSwitch])) });
+  // US-013 : un drapeau « écriture automatique » coupé retire la capacité d'écriture : la règle d'audit CAPABILITY n'en propose plus
+  const flagRows = await loadFlags(tenantId);
+  for (const id of Object.keys(capabilities)) {
+    const def = capability(id);
+    if (def?.kind === "write" && !resolveFlag("write.api", flagRows, { propertyId: p.id, provider: def.provider }).enabled) capabilities[id] = false;
+  }
   return {
     today, now, property: { id: p.id, name: p.name, isDemo: p.isDemo }, model: p.economics as EconomicModel, strategy: p.strategy as Strategy, days,
+    markups: p.isDemo ? undefined : channelMarkupsOf(p.channelMarkups),
+    priceSource: p.pricelabs?.lastSync?.priceSource === "SUPERHOTE" ? "SUPERHOTE" : "PRICELABS",
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),
     promos: promos.map((x) => ({ id: x.id, channel: x.channel as Channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.stayFrom, stayTo: x.stayTo, verifiedAt: x.verifiedAt }) satisfies Promo),
     capabilities,
-    activeRanges: acts.map((a) => { const ds: string[] | undefined = a.params?.dates; return ds?.length ? { from: ds[0], to: addDays(ds[ds.length - 1], 1) } : { from: a.from, to: a.to }; }),
+    activeRanges: acts.filter((a) => a.type !== "MIN_PRICE_CHANGE").map((a) => { const ds: string[] | undefined = a.params?.dates; return ds?.length ? { from: ds[0], to: addDays(ds[ds.length - 1], 1) } : { from: a.from, to: a.to }; }),
   };
 }
 
@@ -110,6 +131,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       blocked++; blockedIds.add(p.id); log("onboarding", "quality", `${p.name} : modèle économique incomplet (${res.blocked.join(", ")}). Aucune opportunité financière n'est ouverte tant que ces valeurs sont inconnues.`);
       continue;
     }
+    if (res.missingMarkups.length) log("onboarding", "quality", `${p.name} : majoration ${res.missingMarkups.map((c) => (c === "AIRBNB" ? "Airbnb" : "Booking.com")).join(" et ")} non renseignée : ce canal est exclu de la revue (aucun prix vendu n'est calculé sans majoration). Saisissez-la dans les réglages du logement.`);
     const gaps = res.stats.filter((s) => s.gap !== null).map((s) => `${s.label} ${s.gap! >= 0 ? "+" : "−"}${Math.abs(Math.round(s.gap! * 100))} pts`).join(" · ");
     log("marche", "analyzeMarket", `${p.name} : écart d'occupation au marché — ${gaps || "données de marché inconnues"}.`, { output: res.stats.map(({ freeDates, ...s }) => s) });
 
@@ -158,7 +180,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   // les revues planifiées sont fréquentes (jusqu'à quatre par jour et par logement) : seules celles qui changent quelque chose entrent au journal
   if (!(trigger === "SCHEDULED" && opened === 0 && expired === 0)) {
     const how = trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : trigger === "EVENT" ? "après un changement de réservation" : "planifiée";
-    await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue ${scope ? "de " + scope : "de tous les logements"} (${how}) : ${opened} ouverts, ${expired} expirés.` });
+    await recordAudit(db, { tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue ${scope ? "de " + scope : "de tous les logements"} (${how}) : ${opened} ouverts, ${expired} expirés.`, payload: { trigger, opened, refreshed, expired, blocked } });
   }
   // rythme de suivi : recalculé après chaque revue, qui fixe aussi l'échéance de la suivante
   const { refreshCadence } = await import("./cadence");

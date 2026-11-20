@@ -695,6 +695,7 @@ details.proof > summary .summary-meta { margin-left: auto; font-size: 12px; colo
 .tl-dot.is-attention { border-color: rgb(251 191 36 / 50%); color: var(--amber-ink); }
 .tl-dot.is-violation { border-color: rgb(251 191 36 / 50%); color: var(--amber-ink); }
 .tl-dot.is-veto { border-color: rgb(251 113 133 / 55%); color: var(--attention-ink); }
+.tl-when, .tl-what, .tl-who { overflow-wrap: anywhere; }
 .tl-when { display: block; font-family: var(--mono); font-size: 11.5px; color: var(--faint); }
 .tl-what { margin: 2px 0 0; font-size: 14px; }
 .tl-who { margin: 2px 0 0; font-size: 12.5px; color: var(--quiet); }
@@ -1022,7 +1023,10 @@ td .vq, th .vq { font-size: 12.5px; }
 .block dl { margin: 0; display: grid; gap: 8px; }
 .block dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
 .block dt { font-size: 13px; color: var(--quiet); }
-.block dd { margin: 0; font-family: var(--mono); font-size: 13.5px; text-align: right; }
+.block dd { margin: 0; font-family: var(--mono); font-size: 13.5px; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+/* valeur longue (formule, phrase) : sous son libellé, lisible, jamais superposée au libellé */
+.block dl > div.is-long { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.block dl > div.is-long dd { text-align: left; font-family: inherit; font-size: 13px; line-height: 1.45; color: var(--text, inherit); }
 
 /* ============================================================
    DOSSIER — frise, registre, preuves, cascade, décision
@@ -1791,3 +1795,17 @@ table.cascade .delta-neu { color: var(--quiet); }
 .remember label { min-height: 44px; display: flex; align-items: center; margin: 0; cursor: pointer; }
 .remember .help { grid-column: 2; margin-top: -6px; }
 .reauth-field input { width: 100%; }
+
+/* Fonctions activées (US-013) : une carte par fonction, une ligne par niveau ; s'empile sur mobile */
+.flag-list { display: grid; gap: 16px; margin-top: 14px; }
+.flag-card { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 16px; min-width: 0; }
+.flag-card h3 { margin: 0 0 4px; font-size: 16px; }
+.flag-rows { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.flag-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-width: 0; }
+.flag-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; overflow-wrap: anywhere; }
+.flag-state { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.flag-state.is-on { color: var(--emerald); }
+.flag-state.is-off { color: var(--amber-ink); }
+.flag-state.is-held { white-space: normal; }
+.flag-note { font-size: 12.5px; }
+.flag-form .btn { min-height: 44px; }

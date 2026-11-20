@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { Term } from "@/components/Term";
-import { desc, eq } from "drizzle-orm";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { Metric, OppStatus, State, Vq } from "@/components/ui";
-import { db, schema } from "@/db";
 import { agentName } from "@/lib/agents/registry";
+import { withTenant } from "@/db/tenant";
+import { listAuditEvents } from "@/lib/audit/query";
+import { AUDIT_CATEGORIES, AUDIT_CATEGORY_ORDER, auditLabel, isAuditCategory } from "@/lib/audit/types";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime, fmtDay } from "@/lib/dates";
 import { STATE_LABEL, type ActionState } from "@/lib/engine/stateMachine";
@@ -15,10 +16,15 @@ import { listOpportunities, listProperties } from "@/lib/queries";
 export const metadata = { title: "Historique" };
 const OUT: Record<string, [string, "sain" | "neutre" | "attention" | "tech"]> = { POSITIVE: ["Positif · corrélation", "sain"], NEUTRAL: ["Neutre", "neutre"], NEGATIVE: ["Négatif", "attention"], INCONCLUSIVE: ["Non concluant", "tech"] };
 
-export default async function Historique() {
+const PAGE = 30;
+export default async function Historique({ searchParams }: { searchParams: Promise<{ cat?: string; apres?: string }> }) {
   const user = await requireUser();
+  const sp = await searchParams;
+  const cat = isAuditCategory(sp.cat) ? sp.cat : undefined;
   const names = user.settings.agentNames ?? null;
-  const [props, opps, events] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), db.select().from(schema.auditEvents).where(eq(schema.auditEvents.tenantId, user.tenantId)).orderBy(desc(schema.auditEvents.createdAt)).limit(60)]);
+  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, limit: PAGE, cursor: sp.apres ?? null }, tx))]);
+  const events = journal.events;
+  const href = (c?: string, apres?: string | null) => `/historique?${[c ? `cat=${c}` : "", apres ? `apres=${apres}` : ""].filter(Boolean).join("&")}#journal`;
   const pname = new Map(props.map((p) => [p.id, p.name]));
   const acts = opps.filter((o) => o.action).sort((a, b) => +b.action!.createdAt - +a.action!.createdAt);
   const measured = acts.filter((o) => o.action!.measurement);
@@ -57,13 +63,23 @@ export default async function Historique() {
           <li key={o.id}><span className="tl-dot is-tech"><Icon name="dot" /></span><div><span className="tl-when">{o.code} · {fmtDateTime(o.createdAt)} · {pname.get(o.propertyId)}</span><p className="tl-what"><Link href={`/dossier/${o.code}`}>{o.title}</Link></p><p className="tl-who"><OppStatus status={o.status} decision={o.decision} /></p></div></li>
         ))}{opps.filter((o) => !o.action).length === 0 && <li><div><p className="tl-who">Aucune.</p></div></li>}</ul>
       </section>
-      <section className="section">
+      <section className="section" id="journal">
         <h2>Journal d'audit</h2>
-        <p className="section-note">Journal en ajout seul des approbations, exécutions, vérifications et revues. Soixante dernières entrées.</p>
-        <ul className="timeline">{events.map((e) => (
-          <li key={e.id}><span className={`tl-dot ${e.type.includes("fail") || e.type.includes("rolled") ? "is-attention" : e.type.startsWith("action") ? "is-sain" : "is-tech"}`}><Icon name={e.type.startsWith("action") ? "check" : "dot"} /></span>
-            <div><span className="tl-when">{fmtDateTime(e.createdAt)} · {e.type}</span><p className="tl-what">{e.summary}</p><p className="tl-who">{who(e.actor)}</p></div></li>
-        ))}</ul>
+        <p className="section-note">Journal en ajout seul : chaque approbation, exécution, vérification et changement de réglage y est inscrit au moment où il a lieu, et personne ne peut le modifier ni l'effacer, pas même l'application.</p>
+        <div className="filters filters-scroll" role="group" aria-label="Filtrer le journal par famille">
+          <Link className="chip" href={href()} aria-current={!cat ? "true" : undefined} scroll={false}>Tout</Link>
+          {AUDIT_CATEGORY_ORDER.map((c) => <Link key={c} className="chip" href={href(c)} aria-current={cat === c ? "true" : undefined} scroll={false} title={AUDIT_CATEGORIES[c].hint}>{AUDIT_CATEGORIES[c].label}</Link>)}
+        </div>
+        {events.length === 0 ? <div className="empty" style={{ marginTop: 14 }}><h3>Aucun événement</h3><p>{cat ? "Rien dans cette famille pour l'instant." : "Les événements apparaîtront ici dès la première action."}</p></div> : (
+          <ul className="timeline" style={{ marginTop: 14 }}>{events.map((e) => (
+            <li key={e.id}><span className={`tl-dot ${e.type.includes("fail") || e.type.includes("rolled") ? "is-attention" : e.type.startsWith("action") ? "is-sain" : "is-tech"}`}><Icon name={e.type.startsWith("action") ? "check" : "dot"} /></span>
+              <div><span className="tl-when" title={e.type}>{fmtDateTime(e.createdAt)} · {auditLabel(e.type)}</span><p className="tl-what">{e.summary}</p><p className="tl-who">{who(e.actor)}</p></div></li>
+          ))}</ul>
+        )}
+        <div className="journal-nav">
+          {sp.apres && <Link className="btn btn-ghost btn-sm" href={href(cat)} scroll={false}>Revenir aux plus récents</Link>}
+          {journal.nextCursor && <Link className="btn btn-ghost btn-sm" href={href(cat, journal.nextCursor)} scroll={false}>Événements plus anciens</Link>}
+        </div>
       </section>
     </Page>
   );

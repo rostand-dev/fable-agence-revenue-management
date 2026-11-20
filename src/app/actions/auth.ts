@@ -6,6 +6,8 @@ import { z } from "zod";
 import { db, ensureMigrated, newId, schema } from "@/db";
 import { createSession, destroySession, getUser, hashPassword, verifyPassword } from "@/lib/auth";
 import { forgetAllDevices, forgetThisDevice, issueRememberToken } from "@/lib/remember";
+import { recordAudit } from "@/lib/audit/log";
+import { userActor } from "@/lib/audit/types";
 import { clientIp, generateToken, hashToken, isPwned, looksLikeToken, padTo, passwordProblem, rateKey, resetLink, resetMinutesFromEnv } from "@/lib/password-reset";
 import { allowAttempt, purgeOldAttempts } from "@/lib/rate-limit";
 import { emailConfigured, sendEmail } from "@/lib/email/resend";
@@ -32,8 +34,11 @@ export async function signupAction(_: AuthState, fd: FormData): Promise<AuthStat
     const [exists] = await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, p.data.email));
     if (exists) return { error: "Un compte existe déjà avec cette adresse. Connectez-vous.", values: { name: raw.name, email: raw.email } };
     const tenantId = newId("tn"), userId = newId("usr");
-    await db.insert(schema.tenants).values({ id: tenantId, name: p.data.name });
-    await db.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.tenants).values({ id: tenantId, name: p.data.name });
+      await tx.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
+      await recordAudit(tx, { tenantId, actor: userActor(userId), type: "account.created", entity: "Tenant", entityId: tenantId, summary: `${p.data.name} crée son espace.`, payload: { confirmation: "none" } });
+    });
     await createSession(userId, { passwordVerified: true });
     redirect("/");
   }
@@ -85,6 +90,7 @@ export async function confirmSignupAction(_: ConfirmState, fd: FormData): Promis
     if (taken) return false;
     await tx.insert(schema.tenants).values({ id: tenantId, name: c.name });
     await tx.insert(schema.users).values({ id: userId, tenantId, email: c.email, name: c.name, passwordHash: c.passwordHash });
+    await recordAudit(tx, { tenantId, actor: userActor(userId), type: "account.created", entity: "Tenant", entityId: tenantId, summary: `${c.name} active son espace après confirmation de son adresse.`, payload: { confirmation: "email" } });
     return true;
   });
   if (!created) return { error: BAD_SIGNUP_LINK, invalidLink: true };
@@ -98,6 +104,8 @@ export async function loginAction(_: AuthState, fd: FormData): Promise<AuthState
   const email = String(fd.get("email") ?? "").trim().toLowerCase(), password = String(fd.get("password") ?? "");
   const [u] = await db.select().from(schema.users).where(eq(schema.users.email, email));
   if (!u || !verifyPassword(password, u.passwordHash)) return { error: "Adresse ou mot de passe incorrect.", values: { email } };
+  // la trace d'abord : pas de session ouverte sans événement de connexion
+  await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "account.login", entity: "User", entityId: u.id, summary: `${u.name} se connecte.` });
   await createSession(u.id, { passwordVerified: true });
   if (fd.get("remember") === "on") await issueRememberToken(u.id); // case « Rester connecté », décochée par défaut
   redirect("/");
@@ -113,6 +121,7 @@ export async function logoutAction(): Promise<void> {
 export async function logoutEverywhereAction(): Promise<null> {
   const u = await getUser();
   if (u) {
+    await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "account.logout_everywhere", entity: "User", entityId: u.id, summary: `${u.name} se déconnecte de tous ses appareils.` });
     await db.delete(schema.sessions).where(eq(schema.sessions.userId, u.id));
     await forgetAllDevices(u.id);
   }
@@ -193,6 +202,8 @@ export async function resetPasswordAction(_: ResetState, fd: FormData): Promise<
       .returning({ userId: schema.passwordResets.userId });
     if (used.length !== 1) return false;
     await tx.update(schema.users).set({ passwordHash: newHash }).where(eq(schema.users.id, used[0].userId));
+    // toutes les sessions sont fermées : l'événement l'indique, sans jamais contenir le mot de passe ni le jeton
+    await recordAudit(tx, { tenantId: user.tenantId, actor: userActor(user.id), type: "account.password_changed", entity: "User", entityId: user.id, summary: `${user.name} change son mot de passe (lien reçu par e-mail) ; toutes les sessions sont fermées.`, payload: { via: "reset_link" } });
     await tx.delete(schema.sessions).where(eq(schema.sessions.userId, used[0].userId));
     await tx.delete(schema.rememberTokens).where(eq(schema.rememberTokens.userId, used[0].userId));
     await tx.delete(schema.passwordResets).where(and(eq(schema.passwordResets.userId, used[0].userId), ne(schema.passwordResets.tokenHash, hash)));

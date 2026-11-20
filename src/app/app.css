@@ -304,3 +304,7 @@ a.fn-st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
   .stack-rules > li { grid-template-columns: 190px minmax(0, 1fr); gap: 14px; }
 }
 .stack-rules a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Journal d'audit : navigation entre pages d'événements */
+.journal-nav { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+.journal-nav .btn { min-height: 44px; }

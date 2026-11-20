@@ -44,7 +44,7 @@ export type Day = {
   date: ISODate;
   state: "FREE" | "BOOKED" | "BLOCKED";
   priceCents: number | null;
-  /** Prix recommandé par PriceLabs (`price`) et prix envoyé à SuperHote (`user_price`), pour l'affichage uniquement */
+  /** Prix recommandé par PriceLabs (`price`) et `user_price` PriceLabs (PAS le prix publié), pour l'affichage et le contrôle croisé uniquement */
   recommendedPriceCents?: number | null;
   sentPriceCents?: number | null;
   minStay: number | null;
@@ -76,7 +76,7 @@ export type AuditRule = { code: string; label: string; outcome: "PASS" | "WARN" 
 export type AuditVerdict = { verdict: "APPROVE" | "REJECT" | "NEEDS_HUMAN"; rules: AuditRule[] };
 
 export type CandidateType =
-  | "MIN_STAY_OVERRIDE" | "PRICE_OVERRIDE" | "RULE_EXCLUSION" | "BASE_PRICE_CHANGE" | "CHANNEL_PROMO"
+  | "MIN_STAY_OVERRIDE" | "PRICE_OVERRIDE" | "RULE_EXCLUSION" | "BASE_PRICE_CHANGE" | "MIN_PRICE_CHANGE" | "CHANNEL_PROMO"
   | "PROMO_REMOVAL" | "LISTING_AUDIT" | "INVESTIGATION" | "NO_ACTION";
 
 export type Candidate = {
