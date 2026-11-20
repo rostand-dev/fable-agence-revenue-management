@@ -62,6 +62,8 @@ export const AUDIT_TYPES = {
   "account.created": { category: "ACCESS", label: "Compte créé" },
   "account.login": { category: "ACCESS", label: "Connexion" },
   "account.password_changed": { category: "ACCESS", label: "Mot de passe modifié" },
+  "account.login_remembered": { category: "ACCESS", label: "Connexion automatique (appareil reconnu)" },
+  "account.logout_everywhere": { category: "ACCESS", label: "Déconnexion de tous les appareils" },
   // système
   "review.completed": { category: "SYSTEM", label: "Revue terminée" },
   "demo.seeded": { category: "SYSTEM", label: "Démonstration installée" },

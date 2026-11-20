@@ -14,6 +14,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   signupAction: { events: ["account.created"] },
   confirmSignupAction: { events: ["account.created"] },
   loginAction: { events: ["account.login"] },
+  logoutEverywhereAction: { events: ["account.logout_everywhere"] },
   logoutAction: { exempt: "Ferme une session ; aucune donnée du propriétaire n'est modifiée." },
   requestPasswordResetAction: { exempt: "Crée un lien à usage unique sans changer le compte ; réponse identique que l'adresse existe ou non, donc rien à consigner par propriétaire." },
   resetPasswordAction: { events: ["account.password_changed"] },
@@ -67,5 +68,6 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
 export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/chat": { exempt: "Conversation avec un agent (flux) : aucune décision ni réglage n'est modifié." },
   "api/session/touch": { exempt: "Repousse l'échéance d'inactivité de la session ; aucune donnée métier." },
+  "api/session/restore": { events: ["account.login_remembered"] },
   "api/session/end": { exempt: "Ferme la session après inactivité ; aucune donnée métier." },
 };

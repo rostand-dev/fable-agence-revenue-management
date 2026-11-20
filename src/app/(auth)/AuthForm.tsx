@@ -9,7 +9,7 @@ function Go({ label, pending }: { label: string; pending: string }) {
   const s = useFormStatus();
   return <button type="submit" className="btn btn-primary" disabled={s.pending} style={{ width: "100%", minHeight: 48 }}>{s.pending ? pending : label}</button>;
 }
-export function AuthForm({ mode, action, expired, idleMinutes, reset, confirmation }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean; idleMinutes?: number; reset?: boolean; confirmation?: boolean }) {
+export function AuthForm({ mode, action, expired, idleMinutes, reset, confirmation, rememberDays }: { mode: "login" | "signup"; action: (s: AuthState, fd: FormData) => Promise<AuthState>; expired?: boolean; idleMinutes?: number; reset?: boolean; confirmation?: boolean; rememberDays?: number }) {
   const [state, formAction] = useActionState(action, {});
   const signup = mode === "signup";
   if (signup && state.ok) return (
@@ -36,6 +36,13 @@ export function AuthForm({ mode, action, expired, idleMinutes, reset, confirmati
           {signup && <span className="help" id="pw-help">Au moins 10 caractères.</span>}
           {!signup && <span className="help"><Link href="/mot-de-passe-oublie" style={{ display: "inline-block", padding: "10px 0" }}>Mot de passe oublié ?</Link></span>}
         </div>
+        {!signup && !!rememberDays && (
+          <div className="remember">
+            <input id="remember" name="remember" type="checkbox" aria-describedby="remember-help" />
+            <label htmlFor="remember">Rester connecté sur cet appareil</label>
+            <span className="help" id="remember-help">Pendant {rememberDays} jour{rememberDays > 1 ? "s" : ""}, sans ressaisir votre mot de passe, sauf pour modifier une clé API. À réserver à vos appareils personnels.</span>
+          </div>
+        )}
         {state.error && <div className="banner banner-attention" role="alert"><Icon name="alert" /><div><p className="banner-title">{state.error}</p></div></div>}
         <Go label={signup ? "Créer mon espace" : "Se connecter"} pending={signup ? (confirmation ? "Envoi…" : "Installation de la démonstration…") : "Connexion…"} />
       </form>

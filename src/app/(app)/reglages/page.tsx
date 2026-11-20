@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { logoutEverywhereAction } from "@/app/actions/auth";
 import { resetDemoAction } from "@/app/actions/decisions";
 import { saveAgentModelsAction } from "@/app/actions/llm";
 import { renameAgentsAction } from "@/app/actions/settings";
@@ -16,6 +17,7 @@ import { getLlmStatus } from "@/lib/agents/llm-config";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/dates";
+import { rememberDaysFromEnv } from "@/lib/remember-policy";
 
 export const metadata = { title: "Réglages" };
 export default async function Reglages() {
@@ -35,6 +37,11 @@ export default async function Reglages() {
         <h2>Fonctions activées</h2>
         <p className="section-note">Chaque fonction est active par défaut. Vous pouvez la couper pour tout votre espace, pour un logement ou pour une intégration. Couper n'ouvre jamais rien de plus : un niveau coupé ne peut pas être rétabli par un niveau plus fin, et chaque changement est inscrit au journal.</p>
         <FlagsPanel rows={flagRows} properties={props} />
+      </section>
+      <section className="section">
+        <h2>Sécurité</h2>
+        <p className="section-note">Si vous avez coché « Rester connecté » sur un appareil, il reste reconnu jusqu'à {rememberDaysFromEnv()} jours. « Se déconnecter partout » ferme toutes vos sessions et fait oublier tous vos appareils, celui-ci compris.</p>
+        <ActionForm action={logoutEverywhereAction}><Submit className="btn btn-danger" icon="cross" pendingLabel="Déconnexion…">Se déconnecter partout</Submit></ActionForm>
       </section>
       <section className="section">
         <h2>Prénoms de l'équipe</h2>

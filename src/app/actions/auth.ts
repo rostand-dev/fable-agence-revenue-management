@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, ensureMigrated, newId, schema } from "@/db";
-import { createSession, destroySession, hashPassword, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getUser, hashPassword, verifyPassword } from "@/lib/auth";
+import { forgetAllDevices, forgetThisDevice, issueRememberToken } from "@/lib/remember";
 import { recordAudit } from "@/lib/audit/log";
 import { userActor } from "@/lib/audit/types";
 import { clientIp, generateToken, hashToken, isPwned, looksLikeToken, padTo, passwordProblem, rateKey, resetLink, resetMinutesFromEnv } from "@/lib/password-reset";
@@ -38,7 +39,7 @@ export async function signupAction(_: AuthState, fd: FormData): Promise<AuthStat
       await tx.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
       await recordAudit(tx, { tenantId, actor: userActor(userId), type: "account.created", entity: "Tenant", entityId: tenantId, summary: `${p.data.name} crée son espace.`, payload: { confirmation: "none" } });
     });
-    await createSession(userId);
+    await createSession(userId, { passwordVerified: true });
     redirect("/");
   }
 
@@ -93,7 +94,7 @@ export async function confirmSignupAction(_: ConfirmState, fd: FormData): Promis
     return true;
   });
   if (!created) return { error: BAD_SIGNUP_LINK, invalidLink: true };
-  await createSession(userId);
+  await createSession(userId, { passwordVerified: true });
   redirect("/");
 }
 const BAD_SIGNUP_LINK = "Ce lien n'est plus valable : il a expiré, a déjà été utilisé ou est incorrect. Recommencez votre inscription.";
@@ -105,12 +106,27 @@ export async function loginAction(_: AuthState, fd: FormData): Promise<AuthState
   if (!u || !verifyPassword(password, u.passwordHash)) return { error: "Adresse ou mot de passe incorrect.", values: { email } };
   // la trace d'abord : pas de session ouverte sans événement de connexion
   await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "account.login", entity: "User", entityId: u.id, summary: `${u.name} se connecte.` });
-  await createSession(u.id);
+  await createSession(u.id, { passwordVerified: true });
+  if (fd.get("remember") === "on") await issueRememberToken(u.id); // case « Rester connecté », décochée par défaut
   redirect("/");
 }
 
 export async function logoutAction(): Promise<void> {
   await destroySession();
+  await forgetThisDevice();
+  redirect("/connexion");
+}
+
+/** « Se déconnecter partout » : ferme toutes les sessions et oublie tous les appareils de cet utilisateur. */
+export async function logoutEverywhereAction(): Promise<null> {
+  const u = await getUser();
+  if (u) {
+    await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "account.logout_everywhere", entity: "User", entityId: u.id, summary: `${u.name} se déconnecte de tous ses appareils.` });
+    await db.delete(schema.sessions).where(eq(schema.sessions.userId, u.id));
+    await forgetAllDevices(u.id);
+  }
+  await destroySession();
+  await forgetThisDevice();
   redirect("/connexion");
 }
 
@@ -189,6 +205,7 @@ export async function resetPasswordAction(_: ResetState, fd: FormData): Promise<
     // toutes les sessions sont fermées : l'événement l'indique, sans jamais contenir le mot de passe ni le jeton
     await recordAudit(tx, { tenantId: user.tenantId, actor: userActor(user.id), type: "account.password_changed", entity: "User", entityId: user.id, summary: `${user.name} change son mot de passe (lien reçu par e-mail) ; toutes les sessions sont fermées.`, payload: { via: "reset_link" } });
     await tx.delete(schema.sessions).where(eq(schema.sessions.userId, used[0].userId));
+    await tx.delete(schema.rememberTokens).where(eq(schema.rememberTokens.userId, used[0].userId));
     await tx.delete(schema.passwordResets).where(and(eq(schema.passwordResets.userId, used[0].userId), ne(schema.passwordResets.tokenHash, hash)));
     return true;
   });

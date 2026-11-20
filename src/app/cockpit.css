@@ -1789,6 +1789,13 @@ table.cascade .delta-neu { color: var(--quiet); }
   box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
 }
 
+/* Case « Rester connecté » (connexion) : cible tactile d'au moins 44 px, l'aide passe à la ligne sous le libellé */
+.remember { display: grid; grid-template-columns: auto 1fr; column-gap: 12px; row-gap: 2px; align-items: center; }
+.remember input[type="checkbox"] { width: 22px; height: 22px; margin: 0; accent-color: var(--blue); }
+.remember label { min-height: 44px; display: flex; align-items: center; margin: 0; cursor: pointer; }
+.remember .help { grid-column: 2; margin-top: -6px; }
+.reauth-field input { width: 100%; }
+
 /* Fonctions activées (US-013) : une carte par fonction, une ligne par niveau ; s'empile sur mobile */
 .flag-list { display: grid; gap: 16px; margin-top: 14px; }
 .flag-card { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 16px; min-width: 0; }
