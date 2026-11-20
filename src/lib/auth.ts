@@ -4,6 +4,7 @@ import { cache } from "react";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 import { db, ensureMigrated, schema } from "@/db";
+import { forgetThisDevice } from "@/lib/remember";
 import { idleMsFromEnv, isExpired, newExpiry, refreshedExpiry } from "@/lib/session-policy";
 
 const COOKIE = "ns_session";
@@ -21,6 +22,8 @@ export function verifyPassword(pw: string, stored: string): boolean {
 
 /** `passwordVerified` : la personne vient de saisir son mot de passe (connexion, inscription). Faux pour une session rétablie par « Rester connecté » ou la démo. */
 export async function createSession(userId: string, opts: { passwordVerified?: boolean } = {}): Promise<void> {
+  // connexion par mot de passe : un jeton « Rester connecté » laissé par quelqu'un d'autre sur ce navigateur ne doit pas rouvrir sa session plus tard
+  if (opts.passwordVerified) await forgetThisDevice();
   const id = randomBytes(32).toString("hex");
   const expiresAt = newExpiry(idleMsFromEnv());
   // ménage au passage : les sessions échues ne servent plus à rien

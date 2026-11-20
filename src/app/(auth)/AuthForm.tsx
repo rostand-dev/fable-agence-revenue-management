@@ -40,7 +40,7 @@ export function AuthForm({ mode, action, expired, idleMinutes, reset, confirmati
           <div className="remember">
             <input id="remember" name="remember" type="checkbox" aria-describedby="remember-help" />
             <label htmlFor="remember">Rester connecté sur cet appareil</label>
-            <span className="help" id="remember-help">Pendant {rememberDays} jour{rememberDays > 1 ? "s" : ""}, sans ressaisir votre mot de passe. À réserver à vos appareils personnels.</span>
+            <span className="help" id="remember-help">Pendant {rememberDays} jour{rememberDays > 1 ? "s" : ""}, sans ressaisir votre mot de passe, sauf pour modifier une clé API. À réserver à vos appareils personnels.</span>
           </div>
         )}
         {state.error && <div className="banner banner-attention" role="alert"><Icon name="alert" /><div><p className="banner-title">{state.error}</p></div></div>}

@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   await ensureMigrated();
   if (await getUser()) redirect(next);
   if (!(await readRememberCookie())) redirect(failed);
-  if (!(await allowAttempt("remember-restore", rateKey("ip", clientIp(await headers())), 100))) redirect(failed);
+  if (!(await allowAttempt("remember-restore", rateKey("ip", clientIp(await headers())), 300))) redirect(failed);
   const who = await restoreFromRemember();
   if (!who) redirect(failed);
   await createSession(who.userId); // session sans « mot de passe vérifié » : les clés API le redemanderont
