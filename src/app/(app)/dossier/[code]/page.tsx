@@ -150,7 +150,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 return (
                   <div className={`block ${cls}`} key={k} style={{ marginBottom: 10 }}>
                     <h3>{title}</h3>
-                    <dl>{ev.map((e: any, i: number) => <div key={i}><dt>{e.label}<br /><span className="metric-source">{e.source}</span></dt><dd>{e.value}</dd></div>)}</dl>
+                    <dl>{ev.map((e: any, i: number) => <div key={i} className={String(e.value).length > 44 ? "is-long" : undefined}><dt>{e.label}<br /><span className="metric-source">{e.source}</span></dt><dd>{e.value}</dd></div>)}</dl>
                   </div>
                 );
               })}

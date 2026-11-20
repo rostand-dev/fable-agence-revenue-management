@@ -1023,7 +1023,10 @@ td .vq, th .vq { font-size: 12.5px; }
 .block dl { margin: 0; display: grid; gap: 8px; }
 .block dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
 .block dt { font-size: 13px; color: var(--quiet); }
-.block dd { margin: 0; font-family: var(--mono); font-size: 13.5px; text-align: right; }
+.block dd { margin: 0; font-family: var(--mono); font-size: 13.5px; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+/* valeur longue (formule, phrase) : sous son libellé, lisible, jamais superposée au libellé */
+.block dl > div.is-long { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.block dl > div.is-long dd { text-align: left; font-family: inherit; font-size: 13px; line-height: 1.45; color: var(--text, inherit); }
 
 /* ============================================================
    DOSSIER — frise, registre, preuves, cascade, décision
