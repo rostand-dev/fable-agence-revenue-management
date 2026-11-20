@@ -1,5 +1,6 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "../audit/log";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
 import { getNeighborhood, getPrices, getReservations, horizon, listListings, PriceLabsError } from "../integrations/pricelabs";
@@ -10,7 +11,7 @@ import { shReservations } from "../integrations/superhote-reservations";
 import { replaceReservations } from "./reservations-store";
 import { snapshotSuperhote } from "./superhote-read";
 
-const { properties, calendarDays, marketDays, reservations, agentRuns, auditEvents } = schema;
+const { properties, calendarDays, marketDays, reservations, agentRuns } = schema;
 export class SyncError extends Error {}
 
 async function getProp(tenantId: string, id: string) {
@@ -41,7 +42,7 @@ export async function connectPriceLabs(tenantId: string, propertyId: string, api
   await db.update(properties).set({
     pricelabs: { apiKeyEnc: encryptSecret(apiKey), keyHint: secretHint(apiKey), connectedAt: new Date().toISOString(), candidates: listings.map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })), listingId: null, pms: null, listingName: null },
   }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_connected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs enregistrée pour ${p.name} (${secretHint(apiKey)}), ${listings.length} annonce${listings.length > 1 ? "s" : ""} sur le compte. Rattachement à confirmer.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_connected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs enregistrée pour ${p.name} (${secretHint(apiKey)}), ${listings.length} annonce${listings.length > 1 ? "s" : ""} sur le compte. Rattachement à confirmer.`, payload: { keyHint: secretHint(apiKey), listings: listings.length } });
   return { listings: listings.length };
 }
 
@@ -53,7 +54,7 @@ export async function selectListing(tenantId: string, propertyId: string, listin
   const taken = (await linkedElsewhere(tenantId, p.id)).get(`${c.id}|${c.pms}`);
   if (taken) throw new SyncError(`Cette annonce PriceLabs est déjà rattachée à votre logement « ${taken} ». Une annonce ne peut alimenter qu'un seul logement.`);
   await db.update(properties).set({ pricelabs: { ...p.pricelabs, listingId: c.id, pms: c.pms, listingName: c.name } }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_listing_linked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs « ${c.name} » (${c.id} · ${c.pms}) rattachée à ${p.name}.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_listing_linked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs « ${c.name} » (${c.id} · ${c.pms}) rattachée à ${p.name}.`, payload: { listingId: c.id, pms: c.pms, listingName: c.name } });
   await syncPriceLabs(tenantId, p.id);
 }
 
@@ -65,13 +66,13 @@ export async function detachListing(tenantId: string, propertyId: string, actor:
   try { candidates = (await listListings(decryptSecret(p.pricelabs.apiKeyEnc))).map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })); } catch { /* liste précédente conservée */ }
   const { lastSync, ...rest } = p.pricelabs;
   await db.update(properties).set({ pricelabs: { ...rest, candidates, listingId: null, pms: null, listingName: null } }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_listing_unlinked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs détachée de ${p.name}.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_listing_unlinked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs détachée de ${p.name}.`, payload: { listingId: p.pricelabs?.listingId ?? null } });
 }
 
 export async function disconnectPriceLabs(tenantId: string, propertyId: string, actor: string): Promise<void> {
   const p = await getProp(tenantId, propertyId);
   await db.update(properties).set({ pricelabs: null }).where(eq(properties.id, p.id));
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "integration.pricelabs_disconnected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs supprimée pour ${p.name}. Les données déjà lues sont conservées.` });
+  await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_disconnected", entity: "Property", entityId: p.id, summary: `Clé API PriceLabs supprimée pour ${p.name}. Les données déjà lues sont conservées.` });
 }
 
 /**
@@ -153,6 +154,11 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
     await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
     if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
     await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync } } : {}) }).where(eq(properties.id, p.id));
+    // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une modification, tracée avec son avant/après
+    if (changed) {
+      const cents = (s: Strategy) => ({ basePriceCents: s.basePriceCents ?? null, minPriceCents: s.minPriceCents ?? null, maxPriceCents: s.maxPriceCents ?? null });
+      await recordAudit(tx, { tenantId, actor: "system", type: "property.strategy_synced", entity: "Property", entityId: p.id, summary: `Prix de base, minimum ou maximum de ${p.name} relus depuis PriceLabs (stratégie version ${p.strategyVersion + 1}).`, payload: { from: cents(strat), to: cents(strategy), strategyVersion: p.strategyVersion + 1 } });
+    }
   });
   await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}${shLastSync?.ok ? `, SuperHote lu (${(shLastSync as any).autoChannels} canaux relevés)` : shLastSync ? ` ; SuperHote non lu : ${(shLastSync as any).error}` : ""}.` });
   return { days: days.length, reservations: confirmed.length };
@@ -181,7 +187,7 @@ export async function setChannelOverrides(tenantId: string, propertyId: string, 
   for (const [id, v] of Object.entries(choices)) if (["AIRBNB", "BOOKING", "DIRECT", "EXCLUDE"].includes(v)) overrides[id] = v as ChannelOverride;
   await db.update(properties).set({ pricelabs: { ...p.pricelabs, overrides } }).where(eq(properties.id, p.id));
   const n = Object.keys(overrides).length;
-  await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type: "reservations.channel_overrides", entity: "Property", entityId: p.id, summary: `Canal précisé à la main pour ${n} réservation${n > 1 ? "s" : ""} de ${p.name} transmise${n > 1 ? "s" : ""} sans canal.`, payload: overrides });
+  await recordAudit(db, { tenantId, actor, type: "reservations.channel_overrides", entity: "Property", entityId: p.id, summary: `Canal précisé à la main pour ${n} réservation${n > 1 ? "s" : ""} de ${p.name} transmise${n > 1 ? "s" : ""} sans canal.`, payload: overrides });
   await syncPriceLabs(tenantId, p.id);
   return n;
 }

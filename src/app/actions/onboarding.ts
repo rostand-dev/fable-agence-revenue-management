@@ -3,6 +3,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "@/lib/audit/log";
+import { userActor } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
@@ -66,7 +68,7 @@ export async function saveLogementAction(_: FormState, fd: FormData): Promise<Fo
       const strategy: Strategy = { basePriceCents: null, minPriceCents: null, maxPriceCents: null, minStay: null, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: 20, maxPriceChangePct: 5 };
       await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, status: "ONBOARDING", isDemo: false, profile: { positioning: v.positioning ?? null }, economics: EMPTY, strategy, channelMarkups: [], onboarding: advance(null, "logement", how) });
       await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: `${name} : création du logement commencée.` });
-      await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: "property.created", entity: "Property", entityId: id, summary: `${u.name} commence la création du logement ${name}.` });
+      await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.created", entity: "Property", entityId: id, summary: `${u.name} commence la création du logement ${name}.`, payload: { name, city: v.city, kind: v.kind } });
       return quit ? QUIT : creation(id, "superhote");
     }
     const p = await load(u.tenantId, id0);
@@ -89,7 +91,12 @@ export async function saveReglesAction(_: FormState, fd: FormData): Promise<Form
     const mk = parseMarkupList(fd.getAll("markupLabel").map(String), fd.getAll("markupPct").map(String));
     if (!mk.ok) throw new SyncError(mk.error);
     const next = advance(p.onboarding, "regles", quit ? "stay" : "next");
-    await db.update(schema.properties).set({ strategy: { ...(p.strategy as Strategy), minStay: num(fd, "minStay") }, channelMarkups: mk.markups, onboarding: next }).where(eq(schema.properties.id, p.id));
+    const minStay = num(fd, "minStay"), oldStrategy = p.strategy as Strategy;
+    await db.update(schema.properties).set({ strategy: { ...oldStrategy, minStay }, channelMarkups: mk.markups, onboarding: next }).where(eq(schema.properties.id, p.id));
+    // les règles de vente pilotent le prix publié estimé : tout changement est tracé, un simple passage d'étape ne l'est pas
+    if (oldStrategy.minStay !== minStay || JSON.stringify(p.channelMarkups) !== JSON.stringify(mk.markups)) {
+      await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.rules_saved", entity: "Property", entityId: p.id, summary: `${u.name} enregistre les règles de vente de ${p.name} (séjour minimum, majorations par canal).`, payload: { minStay: { from: oldStrategy.minStay ?? null, to: minStay }, markups: { from: p.channelMarkups, to: mk.markups } } });
+    }
     return quit ? QUIT : creation(p.id, next.step as StepKey);
   });
 }
@@ -147,7 +154,7 @@ export async function launchAction(_: FormState, fd: FormData): Promise<FormStat
     const now = new Date();
     await db.update(schema.properties).set({ status: "SHADOW", onboarding: { ...advance(p.onboarding, "verification", "stay", now), completedAt: now.toISOString() } }).where(eq(schema.properties.id, p.id));
     await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: `${p.name} : dossier complet, observation lancée${p.superhote?.rentalId ? "" : " (SuperHote à connecter : réservations lues via PriceLabs)"}.` });
-    await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: "property.launched", entity: "Property", entityId: p.id, summary: `${u.name} lance l'observation de ${p.name}.` });
+    await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.launched", entity: "Property", entityId: p.id, summary: `${u.name} lance l'observation de ${p.name}.`, payload: { superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId } });
     // les commissions estimées et la taxe de séjour dépendent du modèle : PriceLabs est relu avant la première revue
     try { await syncPriceLabs(u.tenantId, p.id); } catch { /* consigné par la lecture */ }
     try { await runDailyReview(u.tenantId, "MANUAL", { propertyIds: [p.id] }); } catch (e) { console.error("[revue]", e); }

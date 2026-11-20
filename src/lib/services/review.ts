@@ -1,5 +1,6 @@
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "../audit/log";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
@@ -9,7 +10,7 @@ import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
 
-const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, auditEvents, integrations, reviewRuns } = schema;
+const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, integrations, reviewRuns } = schema;
 const ACTIVE_ACTION = ["APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING"];
 
 export async function loadEngineInput(tenantId: string, propertyId: string, today: ISODate, now = new Date()): Promise<EngineInput | null> {
@@ -158,7 +159,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   // les revues planifiées sont fréquentes (jusqu'à quatre par jour et par logement) : seules celles qui changent quelque chose entrent au journal
   if (!(trigger === "SCHEDULED" && opened === 0 && expired === 0)) {
     const how = trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : trigger === "EVENT" ? "après un changement de réservation" : "planifiée";
-    await db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue ${scope ? "de " + scope : "de tous les logements"} (${how}) : ${opened} ouverts, ${expired} expirés.` });
+    await recordAudit(db, { tenantId, actor: "agent:direction", type: "review.completed", entity: "ReviewRun", entityId: runId, summary: `Revue ${scope ? "de " + scope : "de tous les logements"} (${how}) : ${opened} ouverts, ${expired} expirés.`, payload: { trigger, opened, refreshed, expired, blocked } });
   }
   // rythme de suivi : recalculé après chaque revue, qui fixe aussi l'échéance de la suivante
   const { refreshCadence } = await import("./cadence");

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "../audit/log";
 import { addDays, todayISO } from "../dates";
 import { buildDemo } from "../engine/demo";
 import { reviewProperty } from "../engine/detect";
@@ -66,7 +67,7 @@ export async function seedDemo(tenantId: string): Promise<void> {
       ...oppRow(o), narrative: deterministicNarrative(o), status: "DECIDED", decision: c.type === "NO_ACTION" ? "NO_ACTION" : "APPROVED", createdAt: created,
     });
     if (c.type === "NO_ACTION") {
-      await db.insert(s.auditEvents).values({ id: newId("evt"), tenantId, actor: "demo", type: "opportunity.no_action", entity: "Opportunity", entityId: oppId, summary: `Inaction retenue sur le dossier (historique de démonstration).`, createdAt: created });
+      await recordAudit(db, { tenantId, actor: "demo", type: "opportunity.no_action", entity: "Opportunity", entityId: oppId, summary: `Inaction retenue sur le dossier (historique de démonstration).`, at: created });
       continue;
     }
     const approvedAt = new Date(+created + 2 * 3600000), executedAt = new Date(+approvedAt + 3600000), measuredAt = new Date(+executedAt + (c.measurementWindowDays || 7) * 86400000);
@@ -80,12 +81,10 @@ export async function seedDemo(tenantId: string): Promise<void> {
       measurement: { outcome: h.outcome, observed: h.observed, interpretation: h.interpretation, incrementalCents: null, confidence: "faible", measuredAt: measuredAt.toISOString() },
       createdAt: created, updatedAt: measuredAt,
     });
-    await db.insert(s.auditEvents).values([
-      { id: newId("evt"), tenantId, actor: "demo", type: "action.approved", entity: "RevenueAction", entityId: actId, summary: `« ${c.label} » approuvée (historique de démonstration).`, createdAt: approvedAt },
-      { id: newId("evt"), tenantId, actor: "demo", type: "action.executed", entity: "RevenueAction", entityId: actId, summary: `« ${c.label} » exécutée puis vérifiée (historique de démonstration).`, createdAt: executedAt },
-      { id: newId("evt"), tenantId, actor: "agent:reporting", type: "experiment.measured", entity: "RevenueAction", entityId: actId, summary: `Mesure de « ${c.label} » : ${h.outcome === "POSITIVE" ? "positif (corrélation)" : h.outcome === "NEUTRAL" ? "neutre" : "non concluant"}.`, createdAt: measuredAt },
-    ]);
+    await recordAudit(db, { tenantId, actor: "demo", type: "action.approved", entity: "RevenueAction", entityId: actId, summary: `« ${c.label} » approuvée (historique de démonstration).`, at: approvedAt });
+    await recordAudit(db, { tenantId, actor: "demo", type: "action.executed", entity: "RevenueAction", entityId: actId, summary: `« ${c.label} » exécutée puis vérifiée (historique de démonstration).`, at: executedAt });
+    await recordAudit(db, { tenantId, actor: "agent:reporting", type: "experiment.measured", entity: "RevenueAction", entityId: actId, summary: `Mesure de « ${c.label} » : ${h.outcome === "POSITIVE" ? "positif (corrélation)" : h.outcome === "NEUTRAL" ? "neutre" : "non concluant"}.`, at: measuredAt });
   }
-  await db.insert(s.auditEvents).values({ id: newId("evt"), tenantId, actor: "system", type: "demo.seeded", entity: "Tenant", entityId: tenantId, summary: `Logements de démonstration installés, ancrés au ${today.split("-").reverse().join("/")}.` });
+  await recordAudit(db, { tenantId, actor: "system", type: "demo.seeded", entity: "Tenant", entityId: tenantId, summary: `Logements de démonstration installés, ancrés au ${today.split("-").reverse().join("/")}.`, payload: { anchor: today } });
   await runDailyReview(tenantId, "SIGNUP");
 }

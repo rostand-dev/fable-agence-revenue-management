@@ -1,5 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "../audit/log";
+import type { AuditType } from "../audit/types";
 import { listRentals } from "../integrations/superhote";
 import type { EconomicModel } from "../engine/types";
 import { observedCommission, observedPaymentFee } from "../integrations/superhote-map";
@@ -10,7 +12,7 @@ import { encryptSecret, secretHint } from "../secret";
 import { shErrorText, snapshotSuperhote } from "./superhote-read";
 import { SyncError, syncPriceLabs } from "./pricelabs-sync";
 
-const { properties, auditEvents, calendarDays } = schema;
+const { properties, calendarDays } = schema;
 
 async function getProp(tenantId: string, id: string) {
   const [p] = await db.select().from(properties).where(and(eq(properties.id, id), eq(properties.tenantId, tenantId)));
@@ -18,7 +20,7 @@ async function getProp(tenantId: string, id: string) {
   if (p.isDemo) throw new SyncError("Un logement de démonstration ne se connecte pas à SuperHote.");
   return p;
 }
-const audit = (tenantId: string, actor: string, type: string, id: string, summary: string) => db.insert(auditEvents).values({ id: newId("evt"), tenantId, actor, type, entity: "Property", entityId: id, summary });
+const audit = (tenantId: string, actor: string, type: AuditType, id: string, summary: string, payload?: unknown) => recordAudit(db, { tenantId, actor, type, entity: "Property", entityId: id, summary, payload });
 
 /** Logements SuperHote déjà rattachés à un autre logement du même propriétaire : identifiant → nom du logement. */
 export async function rentalLinkedElsewhere(tenantId: string, propertyId: string): Promise<Map<string, string>> {
