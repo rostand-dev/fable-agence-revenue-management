@@ -71,6 +71,13 @@
       "when": 1795206398040,
       "tag": "0009_audit_append_only",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795207253541,
+      "tag": "0010_feature_flags",
+      "breakpoints": true
     }
   ]
 }

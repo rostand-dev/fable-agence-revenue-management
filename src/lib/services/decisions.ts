@@ -4,6 +4,7 @@ import { addDays, todayISO, type ISODate } from "../dates";
 import { assertTransition, type ActionState } from "../engine/stateMachine";
 import type { Candidate } from "../engine/types";
 import { executionBlock, providerOfTarget } from "../integrations/capabilities";
+import { flagFor } from "./flags";
 import { recordAudit } from "../audit/log";
 import { agentActor, userActor, type AuditType } from "../audit/types";
 
@@ -61,7 +62,7 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
   if (p?.status !== "SHADOW") {
     const prov = providerOfTarget(c.target.system);
     const [ig] = prov ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, prov))) : [];
-    const blocked = executionBlock(c.executionMode, { provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch });
+    const blocked = executionBlock(c.executionMode, { provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: o.propertyId, provider: prov })).reason });
     if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée, ou utilisez la procédure manuelle.");
   }
   const id = newId("act");
@@ -137,7 +138,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
     killSwitch = !!i?.killSwitch;
   }
   // US-002 : un write non supporté est impossible. Refus avant tout changement d'état (l'action reste APPROVED), même règle que le bouton de la fiche.
-  const blocked = executionBlock(mode, { provider, isDemo: p.isDemo, killSwitch });
+  const blocked = executionBlock(mode, { provider, isDemo: p.isDemo, killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: p.id, provider })).reason });
   if (blocked) throw new DecisionError(blocked);
   const dates: ISODate[] = a.parameters.dates ?? [];
   // les erreurs de saisie sont refusées avant tout changement d'état : une faute de frappe ne fait pas échouer l'action

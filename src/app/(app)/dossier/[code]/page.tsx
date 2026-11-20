@@ -18,6 +18,7 @@ import { CYCLE, cycleProgress, STATE_LABEL, type ActionState } from "@/lib/engin
 import { CHANNEL_LABEL, type Candidate, type EconomicModel } from "@/lib/engine/types";
 import { euro, signedEuro } from "@/lib/format";
 import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilities";
+import { flagFor } from "@/lib/services/flags";
 
 const RUNBOOK: Record<string, (c: Candidate) => string[]> = {
   CHANNEL_PROMO: (c) => [
@@ -80,7 +81,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const exec = action?.execution, meas = action?.measurement;
   // US-002 : même règle que le serveur (`execute()`), pour ne jamais offrir un bouton qui sera refusé
   const target = providerOfTarget(action?.target?.system);
-  const blocked = action ? executionBlock(mode, { provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch }) : null;
+  const blocked = action ? executionBlock(mode, { provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch, flagOff: (await flagFor(user.tenantId, "write.api", { propertyId: p.id, provider: target })).reason }) : null;
 
   return (
     <Page title={`Dossier ${o.code} · ${p.name}`} sub={`${o.playbook} · ouvert le ${fmtDateTime(o.createdAt)} · ${fmtPeriod(o.stayFrom, o.stayTo)}`}

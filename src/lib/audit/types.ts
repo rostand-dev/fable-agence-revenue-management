@@ -39,6 +39,7 @@ export const AUDIT_TYPES = {
   "property.costs_validated": { category: "CONFIGURATION", label: "Coûts et seuils validés" },
   "property.strategy_synced": { category: "CONFIGURATION", label: "Stratégie relue depuis PriceLabs" },
   "property.launched": { category: "CONFIGURATION", label: "Observation lancée" },
+  "flag.changed": { category: "CONFIGURATION", label: "Fonction activée ou désactivée" },
   "settings.agents_renamed": { category: "CONFIGURATION", label: "Prénoms de l'équipe modifiés" },
   "llm.key_saved": { category: "CONFIGURATION", label: "Clé Anthropic enregistrée" },
   "llm.key_removed": { category: "CONFIGURATION", label: "Clé Anthropic supprimée" },

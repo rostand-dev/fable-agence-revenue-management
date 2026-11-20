@@ -5,6 +5,7 @@ import { reservationChanges } from "../engine/cadence";
 import { refreshCadence } from "./cadence";
 import { syncPriceLabs } from "./pricelabs-sync";
 import { runDailyReview } from "./review";
+import { resolveFlag, type FlagRow } from "../flags/catalog";
 import { refreshSuperhoteReservations } from "./superhote-sync";
 
 const { properties, reservations, agentRuns } = schema;
@@ -31,9 +32,12 @@ const due = (d: Date | null, now: Date) => !d || +d <= +now;
 const plural = (n: number, one: string, many: string) => `${n} ${n > 1 ? many : one}`;
 
 /** Un logement : lectures arrivées à échéance, puis revue si elle est due ou si une réservation a changé. */
-async function processProperty(p: Prop, now: Date): Promise<{ read: boolean; reviewed: boolean }> {
-  const hasPl = !p.isDemo && !!p.pricelabs?.listingId && !!p.pricelabs?.apiKeyEnc;
-  const hasSh = !p.isDemo && !!p.superhote?.rentalId && !!p.superhote?.apiKeyEnc;
+async function processProperty(p: Prop, now: Date, flags: FlagRow[]): Promise<{ read: boolean; reviewed: boolean }> {
+  // US-013 : un drapeau coupé (propriétaire, logement ou intégration) arrête la lecture ou la revue automatique ; l'échéance reste due, rien n'est perdu
+  const syncOn = (provider: string) => resolveFlag("sync.scheduled", flags, { propertyId: p.id, provider }).enabled;
+  const hasPl = !p.isDemo && !!p.pricelabs?.listingId && !!p.pricelabs?.apiKeyEnc && syncOn("pricelabs");
+  const hasSh = !p.isDemo && !!p.superhote?.rentalId && !!p.superhote?.apiKeyEnc && syncOn("superhote");
+  const reviewOn = resolveFlag("review.scheduled", flags, { propertyId: p.id }).enabled;
   const today = todayISO(now);
   let read = false, change: { added: number; cancelled: number } | null = null;
 
@@ -44,7 +48,7 @@ async function processProperty(p: Prop, now: Date): Promise<{ read: boolean; rev
       // la lecture PriceLabs relit aussi SuperHote (contrôle croisé) : elle vaut pour les deux échéances
       if (await claim("nextPricesAt", p.id, now)) {
         if (hasSh) await db.update(properties).set({ nextReservationsAt: new Date(+now + LEASE_MS) }).where(eq(properties.id, p.id));
-        try { await syncPriceLabs(p.tenantId, p.id); } catch { /* consigné dans la dernière lecture ; nouvelle tentative selon le délai croissant */ }
+        try { await syncPriceLabs(p.tenantId, p.id, { skipSuperhote: !syncOn("superhote") }); } catch { /* consigné dans la dernière lecture ; nouvelle tentative selon le délai croissant */ }
         read = true;
       }
     } else if (await claim("nextReservationsAt", p.id, now)) {
@@ -59,6 +63,8 @@ async function processProperty(p: Prop, now: Date): Promise<{ read: boolean; rev
     }
   }
 
+  // revue coupée : l'échéance reste due et reprend à la réactivation (un changement de réservation survenu entre-temps n'a plus son motif « événement »)
+  if (!reviewOn) return { read, reviewed: false };
   const [cur] = await db.select({ next: properties.nextReviewAt }).from(properties).where(eq(properties.id, p.id));
   if (!cur) return { read, reviewed: false };
   let reviewed = false;
@@ -88,8 +94,12 @@ export async function runDue(now = new Date()): Promise<{ read: number; reviewed
   let read = 0, reviewed = 0;
   try {
     const props = await db.select().from(properties);
+    // un seul chargement des drapeaux coupés pour tout le passage
+    const off = await db.select().from(schema.featureFlags).where(eq(schema.featureFlags.enabled, false));
+    const byTenant = new Map<string, FlagRow[]>();
+    for (const r of off) byTenant.set(r.tenantId, [...(byTenant.get(r.tenantId) ?? []), { flag: r.flag, scope: r.scope as FlagRow["scope"], scopeId: r.scopeId, enabled: r.enabled }]);
     for (const p of props) {
-      try { const r = await processProperty(p, now); if (r.read) read++; if (r.reviewed) reviewed++; }
+      try { const r = await processProperty(p, now, byTenant.get(p.tenantId) ?? []); if (r.read) read++; if (r.reviewed) reviewed++; }
       catch (e) { console.error("[planificateur]", p.id, e instanceof Error ? e.message : e); }
     }
   } finally { g.__nsSchedulerBusy = false; }
