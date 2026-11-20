@@ -216,7 +216,7 @@ export const auditEvents = pgTable("audit_events", {
   summary: text("summary").notNull(),
   payload: jsonb("payload").$type<any>(),
   createdAt: created(),
-}, (t) => [index("audit_tenant").on(t.tenantId, t.createdAt)]);
+}, (t) => [index("audit_tenant").on(t.tenantId, t.createdAt), index("audit_entity").on(t.tenantId, t.entity, t.entityId, t.createdAt)]);
 
 export const integrations = pgTable("integrations", {
   id: id(),

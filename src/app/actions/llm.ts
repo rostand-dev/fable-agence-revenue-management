@@ -2,7 +2,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
-import { db, newId, schema } from "@/db";
+import { db, schema } from "@/db";
+import { recordAudit } from "@/lib/audit/log";
+import { userActor, type AuditType } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { LlmError, listAnthropicModels } from "@/lib/agents/llm";
@@ -27,8 +29,8 @@ async function patchSettings(tenantId: string, patch: (s: Record<string, any>) =
   const [t] = await db.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, tenantId));
   await db.update(schema.tenants).set({ settings: patch({ ...(t?.settings ?? {}) }) }).where(eq(schema.tenants.id, tenantId));
 }
-const audit = (tenantId: string, userId: string, type: string, summary: string) =>
-  db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId, actor: "user:" + userId, type, entity: "LlmCredentials", entityId: tenantId, summary });
+const audit = (tenantId: string, userId: string, type: AuditType, summary: string, payload?: unknown) =>
+  recordAudit(db, { tenantId, actor: userActor(userId), type, entity: "LlmCredentials", entityId: tenantId, summary, payload });
 
 /** Enregistre la clé après l'avoir vérifiée : elle doit pouvoir lister des modèles. Jamais réaffichée en entier. */
 export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<FormState> {
@@ -44,7 +46,7 @@ export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<Form
     // un choix de modèle que la nouvelle clé ne peut pas utiliser est retiré, pour ne jamais envoyer un modèle inaccessible
     const ids = new Set(models.map((m) => m.id));
     await patchSettings(u.tenantId, (s) => ({ ...s, agentModels: Object.fromEntries(Object.entries((s.agentModels ?? {}) as Record<string, string>).filter(([, v]) => ids.has(v))) }));
-    await audit(u.tenantId, u.id, "llm.key_saved", `${u.name} enregistre sa clé API Anthropic (${secretHint(key)}), ${models.length} modèle${models.length > 1 ? "s" : ""} disponible${models.length > 1 ? "s" : ""}.`);
+    await audit(u.tenantId, u.id, "llm.key_saved", `${u.name} enregistre sa clé API Anthropic (${secretHint(key)}), ${models.length} modèle${models.length > 1 ? "s" : ""} disponible${models.length > 1 ? "s" : ""}.`, { keyHint: secretHint(key), models: models.length });
     revalidatePath("/", "layout");
     return { ok: `Clé vérifiée : ${models.length} modèle${models.length > 1 ? "s" : ""} disponible${models.length > 1 ? "s" : ""}.` };
   });
@@ -78,6 +80,7 @@ export async function refreshModelsAction(_: FormState, __: FormData): Promise<F
   const u = await requireUser();
   return run(async () => {
     const models = await userKeyAndRefresh(u.tenantId);
+    await audit(u.tenantId, u.id, "llm.models_refreshed", `${u.name} actualise la liste des modèles Anthropic (${models.length} disponible${models.length > 1 ? "s" : ""}).`, { models: models.length });
     revalidatePath("/", "layout");
     return { ok: `Liste actualisée : ${models.length} modèle${models.length > 1 ? "s" : ""} disponible${models.length > 1 ? "s" : ""}.` };
   });
@@ -97,7 +100,7 @@ export async function saveAgentModelsAction(_: FormState, fd: FormData): Promise
     const bad = AGENTS.filter((a) => asked[a.id] && !ids.has(asked[a.id]));
     if (bad.length) return { error: `Modèle indisponible avec votre clé pour : ${bad.map((a) => a.title).join(", ")}. Choisissez-en un dans la liste.` };
     await patchSettings(u.tenantId, (s) => ({ ...s, agentModels: asked }));
-    await audit(u.tenantId, u.id, "llm.models_saved", `${u.name} choisit le modèle de ${Object.keys(asked).length} agent${Object.keys(asked).length > 1 ? "s" : ""}.`);
+    await audit(u.tenantId, u.id, "llm.models_saved", `${u.name} choisit le modèle de ${Object.keys(asked).length} agent${Object.keys(asked).length > 1 ? "s" : ""}.`, { models: asked });
     revalidatePath("/", "layout");
     return { ok: "Modèles enregistrés." };
   });
@@ -122,7 +125,7 @@ export async function saveAgentModelAction(_: FormState, fd: FormData): Promise<
       if (model) cur[agentId] = model; else delete cur[agentId];
       return { ...s, agentModels: cur };
     });
-    await audit(u.tenantId, u.id, "llm.model_saved", `${u.name} change le modèle de ${agent.title}.`);
+    await audit(u.tenantId, u.id, "llm.model_saved", `${u.name} change le modèle de ${agent.title}.`, { agentId, model: model || null });
     revalidatePath("/", "layout");
     return { ok: model ? "Modèle enregistré." : "Cet agent reprend le modèle par défaut." };
   });

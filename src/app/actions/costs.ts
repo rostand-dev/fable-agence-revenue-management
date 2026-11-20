@@ -2,6 +2,8 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { recordAudit } from "@/lib/audit/log";
+import { userActor } from "@/lib/audit/types";
 import { requireUser } from "@/lib/auth";
 import { modelFromAnswers, type CostAnswers } from "@/lib/engine/costs";
 import { missingEconomics } from "@/lib/engine/economics";
@@ -37,7 +39,7 @@ export async function saveCostsAction(propertyId: string, raw: CostAnswers, fina
   if (final) {
     const prov = model.provisional ?? [];
     await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "costs", mode: "DETERMINISTIC", summary: `${p.name} : coûts et seuils validés, planchers calculés${prov.length ? `. ${prov.length} valeur${prov.length > 1 ? "s" : ""} provisoire${prov.length > 1 ? "s" : ""} à confirmer : ${prov.join(", ")}` : ""}.` });
-    await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: "property.costs_validated", entity: "Property", entityId: p.id, summary: `${u.name} valide les coûts et seuils de ${p.name}${prov.length ? ` (${prov.length} provisoire${prov.length > 1 ? "s" : ""})` : ""}.` });
+    await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.costs_validated", entity: "Property", entityId: p.id, summary: `${u.name} valide les coûts et seuils de ${p.name}${prov.length ? ` (${prov.length} provisoire${prov.length > 1 ? "s" : ""})` : ""}.`, payload: { provisional: prov, changed, strategyVersion: changed && p.status !== "ONBOARDING" ? p.strategyVersion + 1 : p.strategyVersion } });
     // les commissions estimées et la taxe de séjour dépendent du modèle : PriceLabs est relu avant la revue
     if (funnel) { revalidatePath("/", "layout"); return { done: true }; }
     if (p.pricelabs?.listingId) { try { await syncPriceLabs(u.tenantId, p.id); } catch { /* consigné par la lecture */ } }
