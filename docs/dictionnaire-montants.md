@@ -135,7 +135,7 @@ Signe : D'après https://docs.superhote.com/api-v2 (consultée le 19/11/2026), l
 
 - Réserve : `fetchPublishedPriceCents` appartient à une interface de vérification NON BRANCHÉE (superhote-check.ts) : seul `ShNight.priceCents` est lu aujourd'hui.
 - Réserve : La documentation relie la devise au logement (`Rental.currency`), pas au prix.
-- Réserve : Une comparaison avec `user_price` PriceLabs (écart ≤ 1 €) indique si ce prix est avant ou après majoration de canal.
+- Réserve : Une comparaison avec le prix recommandé `price` de PriceLabs (écart ≤ 1 €) indique si ce prix est avant ou après majoration de canal ; relevé réel : identique, donc avant majoration.
 
 ### Ligne de retenue à l'hôte
 
@@ -162,13 +162,13 @@ Signe : Signe non fixé par SuperHote : positif observé, négatif d'après la d
 
 `price.engine` · calendar_days.price_cents · type Day · CalendarPatch.priceCents (`ShNight.priceCents` est le prix de calendrier SuperHote : voir superhote.calendar_price)
 
-Prix par nuit utilisé par les calculs. Lecture PriceLabs : `user_price` s'il est > 0, sinon `price` si la nuit est libre. Entre deux lectures, le calendrier est complété par `priceCents ?? sentPriceCents ?? recommendedPriceCents` quand SuperHote libère une nuit. Démo : posé égal au prix envoyé.
+Prix par nuit utilisé par les calculs, AVANT majoration de canal. SuperHote fait foi : prix de calendrier SuperHote quand il est rattaché et lisible ; sinon `price` (prix recommandé) PriceLabs si la nuit est libre. `user_price` n'est jamais retenu (relevé réel : 127 € contre 77 € affichés par SuperHote). Le prix vendu d'un canal = ce prix × (1 + majoration du canal), puis remises, commission, coûts. Entre deux lectures, le calendrier est complété par `priceCents ?? recommendedPriceCents` quand SuperHote libère une nuit. Démo : posé égal au prix envoyé.
 
 Signe : −1 chez PriceLabs = indisponible → null.
 
 `null` = inconnu.
 
-- Réserve : Une nuit réservée peut garder un prix (`user_price` > 0 conservé, ou prix conservé lors d'un recalage SuperHote).
+- Réserve : Une nuit réservée peut garder un prix conservé lors d'un recalage SuperHote.
 - Réserve : Prix catalogue : jamais net de commission, jamais après majoration de canal SuperHote.
 
 ### Prix recommandé PriceLabs (`price`)
@@ -207,7 +207,7 @@ Unité : centimes non arrondis.
 
 `price.shown_in_calendar` · page du logement (calendrier D+90)
 
-Prix d'une nuit libre montré à l'écran : le prix publié estimé du canal choisi (arrondi à l'euro ; inconnu si la majoration l'est), ou, sans canal choisi, le prix envoyé à SuperHote.
+Prix d'une nuit libre montré à l'écran : le prix publié estimé du canal choisi (arrondi à l'euro ; inconnu si la majoration l'est), ou, sans canal choisi, le prix du calendrier (SuperHote, avant majoration).
 
 `null` = inconnu.
 
@@ -238,7 +238,7 @@ Unité : euros (pas des centimes).
 | Montant | Noms dans le code | Source | Nature | Taxe de séjour | TVA | Ménage | Commission | Frais de paiement | Signe | Statut |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Prix de base | `basePriceCents`, `baseCents`, `previousBasePriceCents` | PriceLabs | lu | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
-| Prix minimum | `minPriceCents`, `minCents` | PriceLabs | lu | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
+| Prix minimum | `minPriceCents`, `minCents`, `previousMinPriceCents`, `proposedMinCents` | PriceLabs / Calcul | lu | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 | Prix maximum | `maxPriceCents`, `maxCents` | PriceLabs | lu | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 
 ### Prix de base
@@ -253,9 +253,9 @@ Base Price PriceLabs du logement. `previousBasePriceCents` conserve l'ancienne v
 
 ### Prix minimum
 
-`strategy.min_price` · properties.strategy.minPriceCents · PlListing.minCents
+`strategy.min_price` · properties.strategy.minPriceCents · PlListing.minCents · paramètres de l'option PB-11 (previousMinPriceCents, proposedMinCents)
 
-Min Price PriceLabs : prix catalogue plancher, avant commission. Ne dit rien du net : le plancher économique est un autre montant.
+Min Price PriceLabs : prix catalogue plancher, avant majoration de canal et avant commission. Ne dit rien du net : le plancher économique est un autre montant. PB-11 compare ce minimum × (1 + majoration du canal) au plancher absolu et propose, si besoin, le plus petit minimum entier qui le respecte (previousMinPriceCents = minimum actuel, proposedMinCents = minimum proposé).
 
 `null` = inconnu.
 
@@ -383,7 +383,7 @@ Pourcentage retiré du total des réservations PriceLabs pour obtenir l'héberge
 |---|---|---|---|---|---|---|---|---|---|---|
 | Coût de séjour non récupéré | `unrecoveredStayCostCents` | Calcul | calculé | — | **inconnu** | inclus | exclu | exclu | signé | à confirmer |
 | Plancher brut par nuit (dur, stratégique) | `floorGrossNightlyCents`, `hardFloorCents`, `strategyFloorCents`, `hardCents`, `strategyCents` | Calcul | calculé | exclu | **inconnu** | exclu | inclus | inclus | ≥ 0 | à confirmer |
-| Prix vendu par nuit (simulation) | `soldNightlyCents`, `publishedNightlyCents` | PriceLabs / Calcul | calculé | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
+| Prix vendu par nuit (simulation) | `soldNightlyCents`, `publishedNightlyCents`, `soldAtMinCents` | PriceLabs / Calcul | calculé | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 | Revenu net d'hébergement (simulation) | `netRoomCents` | Calcul | calculé | exclu | **inconnu** | exclu | exclu | exclu | ≥ 0 | à confirmer |
 | Contribution (simulation) | `contributionCents`, `contributionPerNightCents` | Calcul | calculé | exclu | **inconnu** | inclus | exclu | exclu | signé | à confirmer |
 | Étape de la cascade de prix | `WaterfallStep.cents` | Calcul | calculé | **inconnu** | **inconnu** | **inconnu** | **inconnu** | **inconnu** | signé | à confirmer |

@@ -19,7 +19,7 @@ const market = {
 describe("PriceLabs → modèle interne", () => {
   it("lit la grille : prix publié, nuit réservée, nuit bloquée", () => {
     const d = mapPrices(prices);
-    expect(d[0]).toMatchObject({ date: "2026-11-13", state: "FREE", priceCents: 13000, minStay: 2 });
+    expect(d[0]).toMatchObject({ date: "2026-11-13", state: "FREE", priceCents: 12800, minStay: 2 }); // price (recommandé), pas user_price (130)
     expect(d[1]).toMatchObject({ state: "BOOKED", priceCents: null });
     expect(d[2]).toMatchObject({ state: "BLOCKED", priceCents: null });
   });
@@ -32,6 +32,10 @@ describe("PriceLabs → modèle interne", () => {
   it("nuit libre sans user_price : prix envoyé inconnu (pas de repli sur price), statut libre", () => {
     const [d] = mapPrices({ data: [{ date: "2026-11-20", price: 100, booking_status: "", unbookable: 0 }] });
     expect(d).toMatchObject({ state: "FREE", sentPriceCents: null, recommendedPriceCents: 10000, priceCents: 10000 });
+  });
+  it("le prix retenu est `price`, jamais `user_price` : relevé réel du 21 nov. 2026 (SuperHote affiche 77 €, user_price vaut 127 €)", () => {
+    const [d] = mapPrices({ data: [{ date: "2026-11-21", price: 77, user_price: 127, booking_status: "", unbookable: 0 }] });
+    expect(d).toMatchObject({ state: "FREE", priceCents: 7700, sentPriceCents: 12700, recommendedPriceCents: 7700 });
   });
   it("une nuit réservée dont user_price n'est pas −1 reste réservée", () => {
     const [d] = mapPrices({ data: [{ date: "2026-11-21", price: 100, user_price: 120, booking_status: "Booked", unbookable: 0 }] });

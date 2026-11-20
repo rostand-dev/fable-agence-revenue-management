@@ -71,7 +71,7 @@ export function simulateStack(i: StackInput): StackResult {
   const n = i.nights;
   const steps: WaterfallStep[] = [];
   let running = i.publishedNightlyCents * n;
-  steps.push({ key: "published", label: "Prix publié", cents: running, source: `PriceLabs · ${n} nuit${n > 1 ? "s" : ""}` });
+  steps.push({ key: "published", label: "Prix publié", cents: running, source: `prix du calendrier × majoration du canal · ${n} nuit${n > 1 ? "s" : ""}` });
   const all = [...(i.losDiscountPct ? [{ label: "Remise durée de séjour", discountPct: i.losDiscountPct }] : []), ...(i.promos ?? [])];
   for (const p of all) {
     const cut = Math.round(running * p.discountPct / 100);

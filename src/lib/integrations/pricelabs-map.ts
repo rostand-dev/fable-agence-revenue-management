@@ -25,7 +25,9 @@ export function mapListing(l: any): PlListing {
 /**
  * Grille. `price` = prix recommandé par PriceLabs ; `user_price` = prix envoyé à SuperHote (−1 sur une nuit réservée ou bloquée).
  * Le statut vient de `booking_status` (réservé) et `unbookable` (bloqué), jamais du −1.
- * `priceCents` (prix retenu par le moteur) est inchangé ; les deux prix ci-dessus ne servent qu'à l'affichage.
+ * `priceCents` (prix retenu par le moteur) = `price` : c'est lui que SuperHote affiche sur le compte relevé (77 € contre 127 € pour `user_price`).
+ * `user_price` n'est donc JAMAIS retenu comme prix publié ; il reste lisible (`sentPriceCents`) pour l'affichage et le contrôle croisé.
+ * Quand SuperHote est rattaché, son prix de calendrier remplace `priceCents` à la synchronisation (SuperHote fait foi).
  */
 export function mapPrices(item: any): PlDay[] {
   if (!item || !Array.isArray(item.data)) return [];
@@ -33,7 +35,7 @@ export function mapPrices(item: any): PlDay[] {
     const booked = typeof d.booking_status === "string" && d.booking_status.trim() !== "";
     const state: PlDay["state"] = booked ? "BOOKED" : num(d.unbookable) === 1 ? "BLOCKED" : "FREE";
     const demand = typeof d.demand_desc === "string" && d.demand_desc !== "Unavailable" ? d.demand_desc : null;
-    return { date: d.date.slice(0, 10), state, priceCents: cents(pos(d.user_price) ?? (state === "FREE" ? pos(d.price) : null)), recommendedPriceCents: cents(pos(d.price)), sentPriceCents: cents(pos(d.user_price)), minStay: pos(d.min_stay), rule: demand };
+    return { date: d.date.slice(0, 10), state, priceCents: state === "FREE" ? cents(pos(d.price)) : null, recommendedPriceCents: cents(pos(d.price)), sentPriceCents: cents(pos(d.user_price)), minStay: pos(d.min_stay), rule: demand };
   });
 }
 

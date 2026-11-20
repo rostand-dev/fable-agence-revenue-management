@@ -165,7 +165,10 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
         if (a.type === "BASE_PRICE_CHANGE" && a.parameters.basePriceCents) {
           await tx.update(properties).set({ strategy: { ...p.strategy, basePriceCents: a.parameters.basePriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
         }
-        execution = { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: p.strategy?.basePriceCents ?? null, baseline };
+        if (a.type === "MIN_PRICE_CHANGE" && a.parameters.minPriceCents) {
+          await tx.update(properties).set({ strategy: { ...p.strategy, minPriceCents: a.parameters.minPriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
+        }
+        execution = { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: p.strategy?.basePriceCents ?? null, previousMinPriceCents: p.strategy?.minPriceCents ?? null, baseline };
       } else if (mode === "MANUAL_RUNBOOK") {
         if (!decl) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
         const ch = a.target.channel ?? a.parameters.channel;
@@ -207,7 +210,7 @@ export async function verify(actor: Actor, actionId: string) {
   if (a.execution?.mode === "DEMO_SIMULATED") {
     const dates: ISODate[] = a.parameters.dates ?? [];
     const now = dates.length ? await db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, a.propertyId), inArray(calendarDays.date, dates))) : [];
-    const ok = a.type === "MIN_STAY_OVERRIDE" ? now.every((d) => d.minStay === a.parameters.minStay) : a.type === "RULE_EXCLUSION" ? now.every((d) => d.rule === null) : true;
+    const ok = a.type === "MIN_STAY_OVERRIDE" ? now.every((d) => d.minStay === a.parameters.minStay) : a.type === "RULE_EXCLUSION" ? now.every((d) => d.rule === null) : a.type === "MIN_PRICE_CHANGE" ? ((await db.select().from(properties).where(eq(properties.id, a.propertyId)))[0]?.strategy?.minPriceCents === a.parameters.minPriceCents) : true;
     if (!ok) {
       await audit(db, actor.tenantId, agentActor("audit"), "action.verification_failed", "RevenueAction", a.id, `Vérification en échec pour « ${a.label} » : l'état relu diffère de l'action approuvée.`, { actionType: a.type });
       throw new DecisionError("L'état relu diffère de l'action approuvée. Aucune correction n'est improvisée : lancez un retour arrière.");
@@ -232,6 +235,10 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
       if (a.type === "BASE_PRICE_CHANGE" && a.execution.previousBasePriceCents) {
         const [p] = await tx.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
         await tx.update(properties).set({ strategy: { ...p.strategy, basePriceCents: a.execution.previousBasePriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
+      }
+      if (a.type === "MIN_PRICE_CHANGE" && a.execution.previousMinPriceCents) {
+        const [p] = await tx.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
+        await tx.update(properties).set({ strategy: { ...p.strategy, minPriceCents: a.execution.previousMinPriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
       }
     } else if (a.execution?.mode === "MANUAL_DECLARED") {
       if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED" }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));
