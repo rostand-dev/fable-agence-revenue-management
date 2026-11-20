@@ -11,6 +11,9 @@ services:
       - APP_URL=${SERVICE_URL_APP:-http://localhost:3000}
       # Chaîne de connexion à la base du service db ci-dessous ; le mot de passe est généré par Coolify.
       - DATABASE_URL=postgresql://nuitsignal:${SERVICE_PASSWORD_POSTGRES:-nuitsignal_local}@db:5432/nuitsignal
+      # Isolation entre propriétaires par la base (RLS, US-011) : off par défaut ; on = lectures sensibles sous le rôle restreint nuitsignal_app, et /api/health en erreur si l'isolation manque.
+      # Passer à on une fois /api/health affiché avec "tenantIsolation":"available" (la migration crée le rôle au démarrage). Facultatif.
+      - TENANT_RLS=${TENANT_RLS:-off}
       # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, Anthropic). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
       - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
       # Facultatif : clé Anthropic de repli, utilisée quand le propriétaire n'a saisi aucune clé. Vide = agents en repli déterministe.

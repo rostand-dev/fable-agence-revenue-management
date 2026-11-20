@@ -4,6 +4,7 @@ import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { Metric, OppStatus, State, Vq } from "@/components/ui";
 import { agentName } from "@/lib/agents/registry";
+import { withTenant } from "@/db/tenant";
 import { listAuditEvents } from "@/lib/audit/query";
 import { AUDIT_CATEGORIES, AUDIT_CATEGORY_ORDER, auditLabel, isAuditCategory } from "@/lib/audit/types";
 import { requireUser } from "@/lib/auth";
@@ -21,7 +22,7 @@ export default async function Historique({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const cat = isAuditCategory(sp.cat) ? sp.cat : undefined;
   const names = user.settings.agentNames ?? null;
-  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), listAuditEvents(user.tenantId, { category: cat, limit: PAGE, cursor: sp.apres ?? null })]);
+  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, limit: PAGE, cursor: sp.apres ?? null }, tx))]);
   const events = journal.events;
   const href = (c?: string, apres?: string | null) => `/historique?${[c ? `cat=${c}` : "", apres ? `apres=${apres}` : ""].filter(Boolean).join("&")}#journal`;
   const pname = new Map(props.map((p) => [p.id, p.name]));

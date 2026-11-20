@@ -1,3 +1,4 @@
+import { withTenant } from "@/db/tenant";
 import { getUser } from "@/lib/auth";
 import { listAuditEvents } from "@/lib/audit/query";
 import { auditCategoryOf, auditLabel, isAuditCategory } from "@/lib/audit/types";
@@ -23,7 +24,8 @@ export async function GET(req: Request) {
   const category = q.get("category");
   if (category !== null && !isAuditCategory(category)) return Response.json({ error: "category inconnue." }, { status: 400, headers: NO_STORE });
   const short = (v: string | null) => (v && v.length <= 120 ? v : undefined);
-  const page = await listAuditEvents(user.tenantId, { limit, cursor: short(q.get("cursor")) ?? null, category: category ?? undefined, entity: short(q.get("entity")), entityId: short(q.get("entityId")) });
+  // lecture sous isolation de la base (US-011) : même sans le filtre applicatif, la base ne montrerait que ce propriétaire
+  const page = await withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { limit, cursor: short(q.get("cursor")) ?? null, category: category ?? undefined, entity: short(q.get("entity")), entityId: short(q.get("entityId")) }, tx));
   return Response.json({
     events: page.events.map((e) => ({ id: e.id, at: e.createdAt.toISOString(), actor: e.actor, type: e.type, label: auditLabel(e.type), category: auditCategoryOf(e.type), entity: e.entity, entityId: e.entityId, summary: e.summary, payload: e.payload ?? null })),
     nextCursor: page.nextCursor,

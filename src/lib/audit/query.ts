@@ -22,7 +22,7 @@ function decode(c: string): [string, string] | null {
 const TS = sql<string>`to_char(${t.createdAt} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 
 /** Journal d'un seul propriétaire, du plus récent au plus ancien, paginé par curseur (blueprint §13.1, GET /v1/audit-events). */
-export async function listAuditEvents(tenantId: string, opts: AuditFilter & { limit?: number; cursor?: string | null } = {}): Promise<AuditPage> {
+export async function listAuditEvents(tenantId: string, opts: AuditFilter & { limit?: number; cursor?: string | null } = {}, ex: Pick<typeof db, "select"> = db): Promise<AuditPage> {
   const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 50), 1), 200);
   const where = [eq(t.tenantId, tenantId)];
   if (opts.category) where.push(inArray(t.type, typesOfCategory(opts.category)));
@@ -30,7 +30,7 @@ export async function listAuditEvents(tenantId: string, opts: AuditFilter & { li
   if (opts.entityId) where.push(eq(t.entityId, opts.entityId));
   const cur = opts.cursor ? decode(opts.cursor) : null;
   if (cur) where.push(sql`(${t.createdAt}, ${t.id}) < (${cur[0]}::timestamptz, ${cur[1]})`);
-  const rows = await db.select({ e: t, ts: TS }).from(t).where(and(...where)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit + 1);
+  const rows = await ex.select({ e: t, ts: TS }).from(t).where(and(...where)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit + 1);
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return { events: page.map((r) => r.e), nextCursor: rows.length > limit && last ? encode(last.ts, last.e.id) : null };
