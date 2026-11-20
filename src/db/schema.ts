@@ -230,6 +230,20 @@ export const integrations = pgTable("integrations", {
   note: text("note"),
 }, (t) => [uniqueIndex("integrations_provider").on(t.tenantId, t.provider)]);
 
+/** Drapeaux de fonctionnalité (US-013) : une ligne par drapeau coupé ou rétabli, à un niveau (propriétaire, logement, intégration). Voir lib/flags/catalog.ts */
+export const featureFlags = pgTable("feature_flags", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  flag: text("flag").notNull(),
+  /** TENANT | PROPERTY | INTEGRATION */
+  scope: text("scope").notNull(),
+  /** Vide pour le propriétaire, identifiant du logement, ou fournisseur */
+  scopeId: text("scope_id").notNull().default(""),
+  enabled: boolean("enabled").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("feature_flags_key").on(t.tenantId, t.flag, t.scope, t.scopeId)]);
+
 /** Clé API LLM propre à chaque propriétaire (chiffrée) + cache de la liste des modèles que cette clé peut utiliser */
 export const llmCredentials = pgTable("llm_credentials", {
   tenantId: text("tenant_id").primaryKey().references(() => tenants.id, { onDelete: "cascade" }),

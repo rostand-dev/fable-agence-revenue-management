@@ -1785,3 +1785,17 @@ table.cascade .delta-neu { color: var(--quiet); }
   background: #1a1633; color: var(--ink); font-size: 13.5px;
   box-shadow: 0 8px 28px rgb(0 0 0 / 45%);
 }
+
+/* Fonctions activées (US-013) : une carte par fonction, une ligne par niveau ; s'empile sur mobile */
+.flag-list { display: grid; gap: 16px; margin-top: 14px; }
+.flag-card { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 12px; padding: 16px; min-width: 0; }
+.flag-card h3 { margin: 0 0 4px; font-size: 16px; }
+.flag-rows { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 10px; }
+.flag-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; min-width: 0; }
+.flag-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; overflow-wrap: anywhere; }
+.flag-state { font-size: 12.5px; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.flag-state.is-on { color: var(--emerald); }
+.flag-state.is-off { color: var(--amber-ink); }
+.flag-state.is-held { white-space: normal; }
+.flag-note { font-size: 12.5px; }
+.flag-form .btn { min-height: 44px; }

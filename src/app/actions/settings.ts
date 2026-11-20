@@ -12,6 +12,7 @@ import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PRO
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { parseMarkupList } from "@/lib/pricing/published";
+import { FlagError, setFlag } from "@/lib/services/flags";
 import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
 import { connectSuperhote } from "@/lib/services/superhote-sync";
 
@@ -108,4 +109,19 @@ export async function killSwitchAction(_: FormState, fd: FormData): Promise<Form
   });
   revalidatePath("/", "layout");
   return null;
+}
+
+/** Active ou désactive une fonction à un niveau (propriétaire, logement, intégration) : US-013, journalisé dans la même transaction. */
+export async function setFlagAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  const en = txt(fd, "enabled"), flag = txt(fd, "flag"), scope = txt(fd, "scope"), scopeId = txt(fd, "scopeId");
+  if ((en !== "0" && en !== "1") || flag.length > 40 || scope.length > 20 || scopeId.length > 80) return { error: "Demande invalide." };
+  try {
+    const r = await setFlag(u, { flag, scope, scopeId, enabled: en === "1" });
+    revalidatePath("/", "layout");
+    return { ok: r === "changed" ? "Réglage enregistré." : "Déjà dans cet état." };
+  } catch (e) {
+    if (e instanceof FlagError) return { error: e.message };
+    throw e;
+  }
 }

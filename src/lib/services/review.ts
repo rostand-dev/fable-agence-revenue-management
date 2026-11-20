@@ -5,7 +5,9 @@ import { addDays, todayISO, type ISODate } from "../dates";
 import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveLlm } from "../agents/llm-config";
-import { capabilityFlags } from "../integrations/capabilities";
+import { capabilityFlags, capability } from "../integrations/capabilities";
+import { loadFlags } from "./flags";
+import { resolveFlag } from "../flags/catalog";
 import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
@@ -34,6 +36,12 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   });
   // capacités de CE logement, déduites du catalogue du code (US-002) et non d'une ligne de base ; le coupe-circuit coupe les écritures du fournisseur
   const capabilities = capabilityFlags({ isDemo: p.isDemo, killSwitch: Object.fromEntries(ints.map((i) => [i.provider, i.killSwitch])) });
+  // US-013 : un drapeau « écriture automatique » coupé retire la capacité d'écriture : la règle d'audit CAPABILITY n'en propose plus
+  const flagRows = await loadFlags(tenantId);
+  for (const id of Object.keys(capabilities)) {
+    const def = capability(id);
+    if (def?.kind === "write" && !resolveFlag("write.api", flagRows, { propertyId: p.id, provider: def.provider }).enabled) capabilities[id] = false;
+  }
   return {
     today, now, property: { id: p.id, name: p.name, isDemo: p.isDemo }, model: p.economics as EconomicModel, strategy: p.strategy as Strategy, days,
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),

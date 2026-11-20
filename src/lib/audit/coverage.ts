@@ -53,6 +53,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   // actions/settings.ts
   updatePropertyAction: { events: ["property.updated", "property.draft_saved"] },
   renameAgentsAction: { events: ["settings.agents_renamed"] },
+  setFlagAction: { events: ["flag.changed"] },
   killSwitchAction: { events: ["integration.kill_switch_on", "integration.kill_switch_off"] },
   // actions/superhote.ts
   connectSuperhoteAction: { events: ["integration.superhote_connected"] },

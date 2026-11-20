@@ -3,6 +3,10 @@ import { resetDemoAction } from "@/app/actions/decisions";
 import { saveAgentModelsAction } from "@/app/actions/llm";
 import { renameAgentsAction } from "@/app/actions/settings";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
+import { FlagsPanel } from "@/components/FlagsPanel";
+import { loadFlags } from "@/lib/services/flags";
+import { db, schema } from "@/db";
+import { eq } from "drizzle-orm";
 import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
@@ -19,12 +23,18 @@ export default async function Reglages() {
   const names: Record<string, string> = user.settings.agentNames ?? {};
   const models: Record<string, string> = user.settings.agentModels ?? {};
   const llm = await getLlmStatus(user.tenantId);
+  const [flagRows, props] = await Promise.all([loadFlags(user.tenantId), db.select({ id: schema.properties.id, name: schema.properties.name }).from(schema.properties).where(eq(schema.properties.tenantId, user.tenantId)).orderBy(schema.properties.name)]);
   return (
     <Page title="Réglages" sub="Compte, équipe et démonstration" crumbs={[{ label: "Configuration" }, { label: "Réglages" }]}>
       <div className="page-head"><h1>Réglages</h1><p>Votre espace est isolé : vos logements, vos décisions et votre journal ne sont visibles que de vous.</p></div>
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Compte</h2>
         <Recap rows={[["Nom", user.name], ["Adresse e-mail", user.email, true], ["Rôle", "Propriétaire — seule autorité d'approbation"]]} />
+      </section>
+      <section className="section" id="fonctions">
+        <h2>Fonctions activées</h2>
+        <p className="section-note">Chaque fonction est active par défaut. Vous pouvez la couper pour tout votre espace, pour un logement ou pour une intégration. Couper n'ouvre jamais rien de plus : un niveau coupé ne peut pas être rétabli par un niveau plus fin, et chaque changement est inscrit au journal.</p>
+        <FlagsPanel rows={flagRows} properties={props} />
       </section>
       <section className="section">
         <h2>Prénoms de l'équipe</h2>

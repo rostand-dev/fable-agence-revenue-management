@@ -122,13 +122,14 @@ export const providerOfTarget = (system: string | undefined | null): Provider | 
  * Raison pour laquelle une action approuvée ne peut PAS être exécutée maintenant, ou null si elle le peut.
  * Appelée par `execute()` (refus côté API, avant tout changement d'état) et par la fiche du dossier (bouton désactivé) : une seule règle.
  */
-export function executionBlock(mode: string | undefined, ctx: { provider: Provider | null; isDemo: boolean; killSwitch: boolean }): string | null {
+export function executionBlock(mode: string | undefined, ctx: { provider: Provider | null; isDemo: boolean; killSwitch: boolean; /** raison d'un drapeau « écriture automatique » coupé (US-013), null s'il est actif */ flagOff?: string | null }): string | null {
   // le coupe-circuit ne coupe que l'écriture automatique par API ; la procédure manuelle (geste humain, avec preuve) reste possible
   // liste blanche : tout mode inconnu ou toute future écriture « API_* » est refusé tant qu'il n'a pas de capacité
   if (mode === "INTERNAL" || mode === "MANUAL_RUNBOOK") return null;
   if (mode === "API_PRICELABS") {
     // le coupe-circuit consulté est celui de la cible : une écriture PriceLabs visant un autre fournisseur est incohérente, donc refusée
     if (ctx.provider !== "pricelabs") return "Écriture par API incohérente avec la cible de l'action : aucune exécution possible.";
+    if (ctx.flagOff) return ctx.flagOff;
     const w = checkWrite("pricelabs.write", { isDemo: ctx.isDemo, killSwitch: ctx.killSwitch });
     return w.ok ? null : w.reason;
   }

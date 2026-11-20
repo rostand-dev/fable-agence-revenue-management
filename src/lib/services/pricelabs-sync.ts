@@ -79,7 +79,8 @@ export async function disconnectPriceLabs(tenantId: string, propertyId: string, 
  * Lecture PriceLabs d'un logement : grille J+0 à J+90, marché, réservations relayées par le PMS, réglages de prix.
  * Lecture seule. En cas d'échec, les données précédentes sont conservées et l'erreur est consignée.
  */
-export async function syncPriceLabs(tenantId: string, propertyId: string): Promise<{ days: number; reservations: number }> {
+/** `skipSuperhote` : lecture SuperHote coupée (US-013) ; PriceLabs se lit seul, les réservations déjà enregistrées sont conservées. */
+export async function syncPriceLabs(tenantId: string, propertyId: string, opts: { skipSuperhote?: boolean } = {}): Promise<{ days: number; reservations: number }> {
   const p = await getProp(tenantId, propertyId);
   const pl = p.pricelabs;
   if (!pl?.apiKeyEnc || !pl.listingId || !pl.pms) throw new SyncError("Aucune annonce PriceLabs n'est rattachée à ce logement.");
@@ -103,7 +104,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string): Promi
   try { market = await getNeighborhood(apiKey, pl.listingId, pl.pms); } catch (e) { marketError = wrap(e); }
 
   // SuperHote (facultatif, lecture seule, jamais bloquant) : canal des réservations transmises sans canal + comparaison des prix
-  const sh = await snapshotSuperhote(p.superhote, now);
+  const sh = opts.skipSuperhote ? null : await snapshotSuperhote(p.superhote, now);
   const hints = sh?.ok ? channelHints(resaRows as any[], sh.reservations, (c) => mapChannel(c) !== "INCONNU") : {};
   const model = p.economics as EconomicModel;
   const plResas = mapReservations(resaRows, model, { ...hints, ...(pl.overrides ?? {}) });
