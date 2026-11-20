@@ -19,6 +19,8 @@ services:
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
       # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2). Sur la démo, la session expirée se rouvre seule.
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
+      # Facultatif : jours pendant lesquels un appareil reste reconnu après « Rester connecté sur cet appareil » (défaut 30, de 1 à 90 ; 0 désactive la fonction).
+      - REMEMBER_ME_DAYS=${REMEMBER_ME_DAYS:-30}
       # Clé API Resend pour envoyer les e-mails (mot de passe oublié, confirmation d'inscription). Vide = aucun e-mail envoyé.
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       # Expéditeur des e-mails, sur un domaine vérifié dans Resend. Ex. : NuitSignal <no-reply@votre-domaine.fr>

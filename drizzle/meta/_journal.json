@@ -64,6 +64,13 @@
       "when": 1795029258454,
       "tag": "0008_funnel_creation",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795206451773,
+      "tag": "0009_remember_tokens",
+      "breakpoints": true
     }
   ]
 }

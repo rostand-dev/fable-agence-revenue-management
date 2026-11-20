@@ -80,6 +80,15 @@ Parcours : « Mot de passe oublié ? » sur la connexion → `/mot-de-passe-oubl
 - Après changement : toutes les sessions sont fermées et un e-mail de confirmation est envoyé.
 - E-mails : `src/lib/email/` (client Resend, gabarits HTML + texte, conçus mobile d'abord aux couleurs du design system).
 
+## Rester connecté
+
+Case décochée par défaut sur la page de connexion. Sans elle, la session se ferme à la fermeture du navigateur et après `SESSION_IDLE_MINUTES` d'inactivité.
+
+- **Cochée** : un second cookie (`ns_remember`, httpOnly, sameSite lax) recrée la session sans mot de passe pendant `REMEMBER_ME_DAYS` jours. Le jeton est stocké haché (SHA-256), change à chaque utilisation, et un jeton déjà utilisé qui revient (copie) révoque toute la famille de jetons.
+- **Mot de passe redemandé** pour enregistrer, remplacer ou retirer une clé API (PriceLabs, SuperHote, Anthropic) quand la session vient d'un jeton ; une session ouverte par mot de passe ne le redemande pas.
+- **Révocation** : « Se déconnecter » oublie l'appareil ; Réglages > Sécurité > « Se déconnecter partout » oublie tous les appareils ; la réinitialisation du mot de passe aussi. Une expiration par inactivité garde l'appareil reconnu.
+- Code : `src/lib/remember.ts` (jetons), `src/lib/remember-policy.ts` (règles pures), `src/app/api/session/restore/route.ts`, `src/lib/reauth.ts`.
+
 ## Inscription neutre (confirmation par e-mail)
 
 Pour ne pas révéler quelles adresses ont déjà un compte, l'inscription ne crée rien tout de suite : la réponse est la même pour toute adresse (« Un e-mail vient d'être envoyé… », durée de réponse égalisée).
@@ -160,7 +169,7 @@ npm run db:idempotent       # obligatoire juste après db:generate : rend la mig
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
 2. **Build Pack : Docker Compose**, fichier `docker-compose.yml` à la racine.
 3. Coolify génère le mot de passe PostgreSQL (`SERVICE_PASSWORD_POSTGRES`) et l'URL du service `app`. Dans **Domains** du service `app`, saisir votre domaine (par exemple `https://rm.rosyops.io`) — le port interne est 3000.
-4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés API enregistrées (PriceLabs, Anthropic). Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (clé de repli partagée ; chaque propriétaire peut saisir la sienne dans l'application), `ANTHROPIC_MODEL` (modèle par défaut) et `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification). Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Pour le compte de démo du preview : voir « Compte de démo (test/preview) ». Voir les sections « Mot de passe oublié » et « Inscription neutre ».
+4. `APP_SECRET` est générée par Coolify (`SERVICE_PASSWORD_64_APPSECRET`) : ne la modifiez pas ensuite, elle chiffre les clés API enregistrées (PriceLabs, Anthropic). Facultatif, dans **Environment Variables** : `ANTHROPIC_API_KEY` (clé de repli partagée ; chaque propriétaire peut saisir la sienne dans l'application), `ANTHROPIC_MODEL` (modèle par défaut) `SESSION_IDLE_MINUTES` (minutes d'inactivité avant déconnexion automatique, 15 par défaut, minimum 2 ; redéployer après modification) et `REMEMBER_ME_DAYS` (jours pendant lesquels un appareil « Rester connecté » reste reconnu, 30 par défaut, de 1 à 90 ; 0 désactive la fonction). Voir « Rester connecté ». Pour le **mot de passe oublié** : `RESEND_API_KEY`, `EMAIL_FROM` (domaine vérifié dans Resend) et, facultatifs, `EMAIL_REPLY_TO` et `PASSWORD_RESET_MINUTES` (30 par défaut). `SIGNUP_EMAIL_CONFIRMATION` (`true` par défaut ; `false` en preview pour s'inscrire sans e-mail de confirmation). Pour le compte de démo du preview : voir « Compte de démo (test/preview) ». Voir les sections « Mot de passe oublié » et « Inscription neutre ».
 5. **Deploy**. Contrôle : `https://<domaine>/api/health` répond `{"status":"ok"}`.
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 

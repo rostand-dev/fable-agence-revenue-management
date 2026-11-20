@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { and, eq, gt, isNull, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, ensureMigrated, newId, schema } from "@/db";
-import { createSession, destroySession, hashPassword, verifyPassword } from "@/lib/auth";
+import { createSession, destroySession, getUser, hashPassword, verifyPassword } from "@/lib/auth";
+import { forgetAllDevices, forgetThisDevice, issueRememberToken } from "@/lib/remember";
 import { clientIp, generateToken, hashToken, isPwned, looksLikeToken, padTo, passwordProblem, rateKey, resetLink, resetMinutesFromEnv } from "@/lib/password-reset";
 import { allowAttempt, purgeOldAttempts } from "@/lib/rate-limit";
 import { emailConfigured, sendEmail } from "@/lib/email/resend";
@@ -33,7 +34,7 @@ export async function signupAction(_: AuthState, fd: FormData): Promise<AuthStat
     const tenantId = newId("tn"), userId = newId("usr");
     await db.insert(schema.tenants).values({ id: tenantId, name: p.data.name });
     await db.insert(schema.users).values({ id: userId, tenantId, email: p.data.email, name: p.data.name, passwordHash: hashPassword(p.data.password) });
-    await createSession(userId);
+    await createSession(userId, { passwordVerified: true });
     redirect("/");
   }
 
@@ -87,7 +88,7 @@ export async function confirmSignupAction(_: ConfirmState, fd: FormData): Promis
     return true;
   });
   if (!created) return { error: BAD_SIGNUP_LINK, invalidLink: true };
-  await createSession(userId);
+  await createSession(userId, { passwordVerified: true });
   redirect("/");
 }
 const BAD_SIGNUP_LINK = "Ce lien n'est plus valable : il a expiré, a déjà été utilisé ou est incorrect. Recommencez votre inscription.";
@@ -97,12 +98,26 @@ export async function loginAction(_: AuthState, fd: FormData): Promise<AuthState
   const email = String(fd.get("email") ?? "").trim().toLowerCase(), password = String(fd.get("password") ?? "");
   const [u] = await db.select().from(schema.users).where(eq(schema.users.email, email));
   if (!u || !verifyPassword(password, u.passwordHash)) return { error: "Adresse ou mot de passe incorrect.", values: { email } };
-  await createSession(u.id);
+  await createSession(u.id, { passwordVerified: true });
+  if (fd.get("remember") === "on") await issueRememberToken(u.id); // case « Rester connecté », décochée par défaut
   redirect("/");
 }
 
 export async function logoutAction(): Promise<void> {
   await destroySession();
+  await forgetThisDevice();
+  redirect("/connexion");
+}
+
+/** « Se déconnecter partout » : ferme toutes les sessions et oublie tous les appareils de cet utilisateur. */
+export async function logoutEverywhereAction(): Promise<null> {
+  const u = await getUser();
+  if (u) {
+    await db.delete(schema.sessions).where(eq(schema.sessions.userId, u.id));
+    await forgetAllDevices(u.id);
+  }
+  await destroySession();
+  await forgetThisDevice();
   redirect("/connexion");
 }
 
@@ -179,6 +194,7 @@ export async function resetPasswordAction(_: ResetState, fd: FormData): Promise<
     if (used.length !== 1) return false;
     await tx.update(schema.users).set({ passwordHash: newHash }).where(eq(schema.users.id, used[0].userId));
     await tx.delete(schema.sessions).where(eq(schema.sessions.userId, used[0].userId));
+    await tx.delete(schema.rememberTokens).where(eq(schema.rememberTokens.userId, used[0].userId));
     await tx.delete(schema.passwordResets).where(and(eq(schema.passwordResets.userId, used[0].userId), ne(schema.passwordResets.tokenHash, hash)));
     return true;
   });

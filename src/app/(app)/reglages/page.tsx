@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { logoutEverywhereAction } from "@/app/actions/auth";
 import { resetDemoAction } from "@/app/actions/decisions";
 import { saveAgentModelsAction } from "@/app/actions/llm";
 import { renameAgentsAction } from "@/app/actions/settings";
@@ -12,6 +13,7 @@ import { getLlmStatus } from "@/lib/agents/llm-config";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/dates";
+import { rememberDaysFromEnv } from "@/lib/remember-policy";
 
 export const metadata = { title: "Réglages" };
 export default async function Reglages() {
@@ -25,6 +27,11 @@ export default async function Reglages() {
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Compte</h2>
         <Recap rows={[["Nom", user.name], ["Adresse e-mail", user.email, true], ["Rôle", "Propriétaire — seule autorité d'approbation"]]} />
+      </section>
+      <section className="section">
+        <h2>Sécurité</h2>
+        <p className="section-note">Si vous avez coché « Rester connecté » sur un appareil, il reste reconnu jusqu'à {rememberDaysFromEnv()} jours. « Se déconnecter partout » ferme toutes vos sessions et fait oublier tous vos appareils, celui-ci compris.</p>
+        <ActionForm action={logoutEverywhereAction}><Submit className="btn btn-danger" icon="cross" pendingLabel="Déconnexion…">Se déconnecter partout</Submit></ActionForm>
       </section>
       <section className="section">
         <h2>Prénoms de l'équipe</h2>

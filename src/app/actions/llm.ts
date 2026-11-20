@@ -7,6 +7,7 @@ import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { LlmError, listAnthropicModels } from "@/lib/agents/llm";
 import { requireUser } from "@/lib/auth";
+import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { decryptSecret, encryptSecret, secretHint } from "@/lib/secret";
 
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
@@ -33,6 +34,8 @@ const audit = (tenantId: string, userId: string, type: string, summary: string) 
 /** Enregistre la clé après l'avoir vérifiée : elle doit pouvoir lister des modèles. Jamais réaffichée en entier. */
 export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const refused = await confirmPasswordIfNeeded(u, fd); // clé API : mot de passe redemandé si la session vient de « Rester connecté »
+  if (refused) return refused;
   return run(async () => {
     const key = txt(fd, "apiKey");
     if (key.length < 20) return { error: "La clé semble incomplète. Copiez-la en entier depuis la console Anthropic." };
@@ -50,8 +53,10 @@ export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<Form
   });
 }
 
-export async function removeLlmKeyAction(_: FormState, __: FormData): Promise<FormState> {
+export async function removeLlmKeyAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const refused = await confirmPasswordIfNeeded(u, fd);
+  if (refused) return refused;
   const res = await run(async () => {
     await db.delete(schema.llmCredentials).where(eq(schema.llmCredentials.tenantId, u.tenantId));
     await patchSettings(u.tenantId, (s) => { const { agentModels, ...rest } = s; return rest; });

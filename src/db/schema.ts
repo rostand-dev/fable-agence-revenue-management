@@ -27,8 +27,21 @@ export const sessions = pgTable("sessions", {
   id: id(),
   userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   expiresAt: ts("expires_at").notNull(),
+  /** Dernière saisie du mot de passe dans cette session. Vide si la session vient d'un jeton « Rester connecté » : les actions sensibles (clés API) redemandent alors le mot de passe. */
+  passwordVerifiedAt: ts("password_verified_at"),
   createdAt: created(),
 });
+
+/** Jetons « Rester connecté » : seul le hash SHA-256 est conservé. Un jeton change à chaque utilisation (même `familyId`) ; un jeton déjà utilisé qui revient révoque toute la famille. */
+export const rememberTokens = pgTable("remember_tokens", {
+  id: id(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  familyId: text("family_id").notNull(),
+  tokenHash: text("token_hash").notNull(),
+  expiresAt: ts("expires_at").notNull(),
+  usedAt: ts("used_at"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("remember_tokens_hash").on(t.tokenHash), index("remember_tokens_user").on(t.userId), index("remember_tokens_family").on(t.familyId)]);
 
 export const properties = pgTable("properties", {
   id: id(),

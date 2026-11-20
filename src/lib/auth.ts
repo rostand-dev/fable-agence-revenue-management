@@ -19,12 +19,13 @@ export function verifyPassword(pw: string, stored: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export async function createSession(userId: string): Promise<void> {
+/** `passwordVerified` : la personne vient de saisir son mot de passe (connexion, inscription). Faux pour une session rétablie par « Rester connecté » ou la démo. */
+export async function createSession(userId: string, opts: { passwordVerified?: boolean } = {}): Promise<void> {
   const id = randomBytes(32).toString("hex");
   const expiresAt = newExpiry(idleMsFromEnv());
   // ménage au passage : les sessions échues ne servent plus à rien
   await db.delete(schema.sessions).where(lt(schema.sessions.expiresAt, new Date()));
-  await db.insert(schema.sessions).values({ id, userId, expiresAt });
+  await db.insert(schema.sessions).values({ id, userId, expiresAt, passwordVerifiedAt: opts.passwordVerified ? new Date() : null });
   // cookie de session (sans date) : l'échéance qui fait foi est celle de la base, repoussée à chaque activité
   (await cookies()).set(COOKIE, id, { httpOnly: true, sameSite: "lax", secure: (process.env.APP_URL ?? "").startsWith("https"), path: "/" });
 }
@@ -34,7 +35,8 @@ export async function destroySession(): Promise<void> {
   jar.delete(COOKIE);
 }
 
-export type CurrentUser = { id: string; name: string; email: string; tenantId: string; tenantName: string; settings: Record<string, any> };
+/** `sessionId` et `passwordVerified` servent aux actions sensibles (clés API) : voir lib/reauth.ts. */
+export type CurrentUser = { sessionId: string; passwordVerified: boolean; id: string; name: string; email: string; tenantId: string; tenantName: string; settings: Record<string, any> };
 
 export const getUser = cache(async (): Promise<CurrentUser | null> => {
   await ensureMigrated();
@@ -52,11 +54,12 @@ export const getUser = cache(async (): Promise<CurrentUser | null> => {
   // expiration glissante : chaque requête authentifiée repousse l'échéance du délai d'inactivité (SESSION_IDLE_MINUTES, 15 min par défaut), par paliers d'une minute
   const next = refreshedExpiry(r.s.expiresAt, idleMsFromEnv());
   if (next) await db.update(schema.sessions).set({ expiresAt: next }).where(eq(schema.sessions.id, id));
-  return { id: r.u.id, name: r.u.name, email: r.u.email, tenantId: r.u.tenantId, tenantName: r.t.name, settings: r.t.settings ?? {} };
+  return { sessionId: id, passwordVerified: !!r.s.passwordVerifiedAt, id: r.u.id, name: r.u.name, email: r.u.email, tenantId: r.u.tenantId, tenantName: r.t.name, settings: r.t.settings ?? {} };
 });
 /** Toute page et toute action du cockpit passe par ici : l'isolation par propriétaire en dépend. */
 export async function requireUser(): Promise<CurrentUser> {
   const u = await getUser();
-  if (!u) redirect("/connexion");
+  // sans session : la route tente d'abord « Rester connecté », puis renvoie vers /connexion
+  if (!u) redirect("/api/session/restore");
   return u;
 }

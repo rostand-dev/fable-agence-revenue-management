@@ -29,11 +29,19 @@ export function IdleGuard({ idleMs }: { idleMs: number }) {
   const warning = useRef(false);
   const [left, setLeft] = useState<number | null>(null);
 
+  /** Inactivité : la session est fermée ; un appareil « Rester connecté » est rétabli par la route de restauration, sinon /connexion?expire=1. */
   const logout = useCallback(async () => {
     if (ending.current) return;
     ending.current = true;
     try { await fetch("/api/session/end", { method: "POST", keepalive: true }); } catch { /* le serveur aura de toute façon expiré la session */ }
-    window.location.assign("/connexion?expire=1");
+    window.location.assign("/api/session/restore?expire=1&next=" + encodeURIComponent(window.location.pathname + window.location.search));
+  }, []);
+  /** « Me déconnecter » : choix explicite, l'appareil est aussi oublié. */
+  const logoutNow = useCallback(async () => {
+    if (ending.current) return;
+    ending.current = true;
+    try { await fetch("/api/session/end?forget=1", { method: "POST", keepalive: true }); } catch { /* idem */ }
+    window.location.assign("/connexion");
   }, []);
 
   const ping = useCallback(async () => {
@@ -112,7 +120,7 @@ export function IdleGuard({ idleMs }: { idleMs: number }) {
       </p>
       <div className="idle-actions">
         <button type="button" className="btn btn-primary" autoFocus onClick={stay}>Rester connecté(e)</button>
-        <button type="button" className="btn btn-ghost" onClick={logout}>Me déconnecter</button>
+        <button type="button" className="btn btn-ghost" onClick={logoutNow}>Me déconnecter</button>
       </div>
     </dialog>
   );

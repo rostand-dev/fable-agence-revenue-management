@@ -6,6 +6,7 @@ import { db, newId, schema } from "@/db";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
+import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, type Provider } from "@/lib/integrations/capabilities";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
@@ -49,6 +50,9 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   if (p.isDemo) return { error: "Un logement de démonstration ne se modifie pas." };
   // le lancement (ONBOARDING → SHADOW) ne se fait qu'à la vérification du parcours guidé, PriceLabs connecté
   if (p.status === "ONBOARDING") return { error: "Ce logement est en cours de création : terminez-la dans le parcours guidé." };
+  // une clé API saisie ici est une modification sensible : mot de passe redemandé (avant toute écriture) si la session vient de « Rester connecté »
+  const plKey = p.pricelabs?.apiKeyEnc ? "" : txt(fd, "pricelabsKey"), shKey = p.superhote?.apiKeyEnc ? "" : txt(fd, "superhoteKey");
+  if (plKey || shKey) { const refused = await confirmPasswordIfNeeded(u, fd); if (refused) return refused; }
   const draft = txt(fd, "intent") === "draft";
   const v = readProperty(fd);
   const err = check(v, draft);
@@ -63,7 +67,6 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   }).where(eq(schema.properties.id, p.id));
   await db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: u.tenantId, actor: "user:" + u.id, type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.` });
   // Une clé déjà enregistrée ne se remplace pas ici : elle se gère dans l'onglet de l'intégration.
-  const plKey = p.pricelabs?.apiKeyEnc ? "" : txt(fd, "pricelabsKey"), shKey = p.superhote?.apiKeyEnc ? "" : txt(fd, "superhoteKey");
   const { plError, shError } = await connectKeys(u.tenantId, p.id, "user:" + u.id, plKey, shKey);
   revalidatePath("/", "layout");
   if (plKey || shKey) redirect(landing(p.id, plKey, shKey, plError, shError));
