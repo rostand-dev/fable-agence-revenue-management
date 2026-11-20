@@ -66,7 +66,7 @@ export function calendarPatches(
     if (d.date < today) continue;
     if (blocked.has(d.date)) { if (d.state !== "BLOCKED") out.push({ date: d.date, state: "BLOCKED", priceCents: null, sentPriceCents: null }); }
     else if (booked.has(d.date)) { if (d.state !== "BOOKED") out.push({ date: d.date, state: "BOOKED", priceCents: d.priceCents, sentPriceCents: d.sentPriceCents }); }
-    else if (d.state === "BOOKED" && avail.get(d.date) === true) out.push({ date: d.date, state: "FREE", priceCents: d.priceCents ?? d.sentPriceCents ?? d.recommendedPriceCents, sentPriceCents: d.sentPriceCents });
+    else if (d.state === "BOOKED" && avail.get(d.date) === true) out.push({ date: d.date, state: "FREE", priceCents: d.priceCents ?? d.recommendedPriceCents, sentPriceCents: d.sentPriceCents });
   }
   return out;
 }

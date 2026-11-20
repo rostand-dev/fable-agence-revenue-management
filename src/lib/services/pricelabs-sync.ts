@@ -121,8 +121,22 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   const blocked = new Set<string>();
   for (const r of resas) if (r.status === "BLOCKED") for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) blocked.add(d);
   days = days.map((d) => (blocked.has(d.date) ? { ...d, state: "BLOCKED" as const, priceCents: null, sentPriceCents: null } : d));
+  // SuperHote fait foi pour le prix : son prix de calendrier (avant majoration par canal) remplace le prix recommandé PriceLabs sur les nuits libres.
+  // Rattaché mais illisible, ou nuit sans prix chez SuperHote : on garde `price` PriceLabs (recommandé), jamais `user_price`.
+  let pricesFromSuperhote = 0;
+  if (shLinked && sh?.ok) {
+    const shByDate = new Map(sh.calendar.map((n) => [n.date, n]));
+    days = days.map((d) => {
+      const n = shByDate.get(d.date);
+      if (d.state !== "FREE" || !n || !n.available || n.reservationId || n.priceCents === null || n.priceCents <= 0) return d;
+      pricesFromSuperhote++;
+      return { ...d, priceCents: n.priceCents };
+    });
+  }
+  const freeNights = days.filter((d) => d.state === "FREE").length;
+  const priceSource: "SUPERHOTE" | "PRICELABS" = pricesFromSuperhote > 0 && pricesFromSuperhote >= freeNights / 2 ? "SUPERHOTE" : "PRICELABS";
   const shLastSync = !sh ? null : sh.ok
-    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[], { from: h.histFrom, to: h.histTo }) }
+    ? { ok: true, at: sh.at, reservations: sh.reservations.filter((r) => !r.canceled).length, nights: sh.calendar.length, autoChannels: Object.keys(hints).length, priceCheck: comparePriceSeries(sh.calendar, days.map((d) => ({ date: d.date, state: d.state, sentPriceCents: d.recommendedPriceCents ?? null }))), observedCommission: shObservedCommission(sh.reservations), observedPaymentFee: observedPaymentFee(sh.reservations), reservationCheck: compareReservations(sh.reservations, resaRows as any[], { from: h.histFrom, to: h.histTo }) }
     : { ok: false, at: sh.at, error: sh.error };
   const bedrooms = p.bedrooms ?? listing.bedrooms;
   const mk = mapMarket(market, bedrooms, days);
@@ -138,7 +152,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     if (rows.length) observedCommission[ch] = { pct: Math.round((rows.reduce((a, x) => a + x.c, 0) / rows.reduce((a, x) => a + x.g, 0)) * 1000) / 10, n: rows.length };
   }
   const lastSync = {
-    ok: true, at: now.toISOString(), reservationsSource: toWrite ? source : "CONSERVEES", observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
+    ok: true, at: now.toISOString(), reservationsSource: toWrite ? source : "CONSERVEES", priceSource, pricesFromSuperhote, observedCommission, days: days.length, unknownPrices: days.filter((d) => d.state === "FREE" && d.priceCents === null).length,
     reservations: confirmed.length, cancelled: resas.filter((r) => r.status === "CANCELLED").length, ownerBlocks: resas.filter((r) => r.status === "BLOCKED").length, duplicates: resas.filter((r) => r.status === "DUPLICATE").length,
     historyFrom: confirmed.map((r) => r.checkIn).sort()[0] ?? null,
     touristTaxPct: model?.touristTaxPct ?? null,

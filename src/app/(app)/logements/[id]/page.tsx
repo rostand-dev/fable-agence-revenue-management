@@ -58,17 +58,17 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const stats = windowStats(input.days, today);
   const lead = leadTimes(input.resas), los = medianLos(input.resas), share = channelShare(input.resas);
   const flagged = new Map<string, boolean>();
-  for (const o of opps.filter((x) => x.playbook !== "PB-10")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
+  for (const o of opps.filter((x) => x.playbook !== "PB-10" && x.playbook !== "PB-11")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
   const first3 = sum((k) => 1) && kpis.slice(0, 3).reduce((a, k) => a + k.netRevpanCents, 0) / 3, last3 = kpis.slice(-3).reduce((a, k) => a + k.netRevpanCents, 0) / 3;
   const trend = !hasHistory ? null : last3 > first3 * 1.05 ? "croissante" : last3 < first3 * 0.95 ? "décroissante" : "stable";
   const markups = (p.channelMarkups ?? []) as ChannelMarkup[];
   const channel = pickDefaultChannel(markups, sp.canal);            // null tant qu'aucune majoration n'est renseignée
   const unknownChannels = markups.filter((m) => m.pct === null).map((m) => m.label);
   const calHref = (extra: { canal?: string; jour?: string }) => `/logements/${p.id}?tab=calendrier${extra.canal ? "&canal=" + encodeURIComponent(extra.canal) : ""}${extra.jour ? "&jour=" + extra.jour : ""}`;
-  /** Prix affiché pour une nuit libre, en centimes : estimé sur le canal choisi (à partir du prix recommandé), sinon prix envoyé à SuperHote ; null = inconnu. */
+  /** Prix affiché pour une nuit libre, en centimes : estimé sur le canal choisi (à partir du prix recommandé), sinon prix du calendrier (SuperHote, avant majoration) ; null = inconnu. */
   const shownCents = (d: (typeof input.days)[number]): number | null => {
-    if (!channel) return d.sentPriceCents ?? null;
-    const e = estimatePublishedPrice({ state: d.state, recommendedPriceCents: d.recommendedPriceCents }, channel.pct);
+    if (!channel) return d.priceCents ?? null;
+    const e = estimatePublishedPrice({ state: d.state, recommendedPriceCents: d.priceCents ?? d.recommendedPriceCents }, channel.pct);
     return e ? e.displayEuros * 100 : null;
   };
   const stateLabel = (st: string) => (st === "BOOKED" ? "réservé" : st === "BLOCKED" ? "bloqué" : "libre");
@@ -84,6 +84,10 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </div>
         <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{([["pricelabs", pricelabsBadge(p.pricelabs, p.isDemo)], ["superhote", superhoteBadge(p.superhote, p.isDemo)]] as const).map(([k, b]) => b && <Link key={k} href={badgeHref(k, p.id, p.status)} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
+      {!p.isDemo && p.status !== "ONBOARDING" && (() => {
+        const missing = Object.keys((p.economics as any)?.channels ?? {}).map((c) => (c === "AIRBNB" ? { k: "airbnb", l: "Airbnb" } : { k: "booking", l: "Booking.com" })).filter((c) => !markups.some((m) => (m.key === c.k || m.key.startsWith(c.k + "-")) && m.pct !== null)).map((c) => c.l);
+        return missing.length ? <Banner role="attention" title="Majoration non renseignée" style={{ marginBottom: 16 }}>Majoration SuperHote manquante pour {missing.join(" et ")}. Sans elle, le prix vendu sur ce canal ne peut pas être calculé : il est exclu de la revue des agents. Saisissez-la dans « Modifier le dossier ».</Banner> : null;
+      })()}
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
       {!p.isDemo && p.status === "ONBOARDING" && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link></span></Banner>}
       {miss.length > 0 && !onboarding && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Il manque : {miss.join(", ")}. Aucun plancher n'est calculé et aucune situation n'est ouverte tant que ces valeurs manquent ; une estimation provisoire suffit pour démarrer.{!p.isDemo && <> <Link href={`/logements/${p.id}/couts`}>Les renseigner pas à pas avec {agentName("onboarding", names)}</Link></>}</Banner>}
@@ -172,7 +176,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
               <div className="detail-head"><h3>{fmtDate(detailDay.date)} · {stateLabel(detailDay.state)}</h3><Link className="btn btn-ghost btn-sm" href={calHref({ canal: channel?.key })} scroll={false}>Fermer</Link></div>
               {(() => {
                 const gap = sentMinusRecommended(detailDay.sentPriceCents, detailDay.recommendedPriceCents);
-                const rows = estimateAllChannels({ state: detailDay.state, recommendedPriceCents: detailDay.recommendedPriceCents }, markups);
+                const rows = estimateAllChannels({ state: detailDay.state, recommendedPriceCents: detailDay.priceCents ?? detailDay.recommendedPriceCents }, markups);
                 return (
                   <dl>
                     <dt>Prix recommandé (PriceLabs)</dt><dd>{euro(detailDay.recommendedPriceCents, true)}</dd>

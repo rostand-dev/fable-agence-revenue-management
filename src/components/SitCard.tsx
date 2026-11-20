@@ -15,8 +15,8 @@ export function SitCard({ o, rank, propertyName, names, provisional }: { o: OppW
   const c = (o.candidates as Candidate[])[o.selected];
   const conf = confidenceScale(o.confidence), risk = riskScale(o.risk);
   const open = o.status === "OPEN";
-  const role = o.veto ? "veto" : o.playbook === "PB-10" ? "tech" : c.type === "NO_ACTION" ? "neutre" : c.audit.verdict === "NEEDS_HUMAN" ? "attention" : "sain";
-  const roleLabel = o.veto ? "Veto économique" : o.playbook === "PB-10" ? "Donnée à vérifier" : c.type === "NO_ACTION" ? "Inaction recommandée" : c.audit.verdict === "NEEDS_HUMAN" ? "Validation renforcée" : "Option conforme";
+  const role = o.veto ? "veto" : o.playbook === "PB-10" ? "tech" : o.playbook === "PB-11" ? "attention" : c.type === "NO_ACTION" ? "neutre" : c.audit.verdict === "NEEDS_HUMAN" ? "attention" : "sain";
+  const roleLabel = o.veto ? "Veto économique" : o.playbook === "PB-10" ? "Donnée à vérifier" : o.playbook === "PB-11" ? "Réglage PriceLabs à corriger" : c.type === "NO_ACTION" ? "Inaction recommandée" : c.audit.verdict === "NEEDS_HUMAN" ? "Validation renforcée" : "Option conforme";
   return (
     <article className={`sit${open ? "" : " is-settled"}`} aria-labelledby={`t-${o.id}`}>
       <div className="sit-rank">

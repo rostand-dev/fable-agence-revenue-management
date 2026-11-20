@@ -188,8 +188,9 @@ export function channelHints(plRows: { reservation_id: unknown; check_in: unknow
 
 export type PriceCheckSummary = { compared: number; matching: number; differing: number; maxGapCents: number; medianGapCents: number | null; verdict: "IDENTIQUE" | "ECART" | "INCONNU"; samples: { date: ISODate; shCents: number; sentCents: number }[] };
 /**
- * Compare le prix de calendrier SuperHote au `user_price` PriceLabs (prix envoyé à SuperHote), sur les nuits libres.
- * Si les deux sont identiques, le prix du calendrier SuperHote est le prix AVANT majoration par canal.
+ * Compare le prix de calendrier SuperHote au prix recommandé PriceLabs (`price`, passé dans `sentPriceCents`), sur les nuits libres.
+ * Relevé réel (nov. 2026) : SuperHote = `price` ; `user_price` n'est PAS le prix publié (127 € contre 77 €). Si les deux sont identiques,
+ * le prix du calendrier SuperHote est le prix AVANT majoration par canal.
  */
 export function comparePriceSeries(sh: ShNight[], sent: { date: ISODate; sentPriceCents: number | null; state: string }[], toleranceCents = 100): PriceCheckSummary {
   const by = new Map(sh.map((n) => [n.date, n]));

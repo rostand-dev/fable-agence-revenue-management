@@ -2,7 +2,7 @@ import { addDays, diffDays, fmtDay, type ISODate } from "../dates";
 import { euro, pct } from "../format";
 import { auditCandidate, type AuditContext } from "./audit";
 import { DEMAND_MODEL_NOTE, percentileAfter, sellProbability } from "./demand";
-import { cumulativeDiscountPct, hardFloorCents, missingEconomics, simulateStack, strategyFloorCents } from "./economics";
+import { cumulativeDiscountPct, hardFloorCents, missingEconomics, simulateStack, strategyFloorCents, UnknownEconomics } from "./economics";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
 import type { Candidate, Channel, Day, DetectedOpportunity, Diagnosis, DiagnosisStep, EconomicModel, Evidence, Promo, Resa, StackResult, Strategy } from "./types";
 import { CHANNEL_LABEL } from "./types";
@@ -19,6 +19,14 @@ export type EngineInput = {
   /** Plages de dates couvertes par une action encore en observation */
   activeRanges: { from: ISODate; to: ISODate }[];
   now: Date;
+  /**
+   * Majoration SuperHote par canal, en % : prix du calendrier SuperHote (avant majoration) → prix affiché sur le canal.
+   * `null` = majoration inconnue : le canal est exclu de la revue (jamais traité comme 0 %).
+   * Absent = sans objet (prix de catalogue de démonstration, déjà au prix du canal).
+   */
+  markups?: Partial<Record<Channel, number | null>>;
+  /** Origine du prix du calendrier : SuperHote fait foi dès qu'il est rattaché et lisible ; sinon prix recommandé PriceLabs. */
+  priceSource?: "SUPERHOTE" | "PRICELABS";
 };
 
 type Ctx = EngineInput & {
@@ -40,9 +48,19 @@ function runs(dates: ISODate[]): ISODate[][] {
 }
 const overlaps = (ctx: Ctx, from: ISODate, to: ISODate) => ctx.activeRanges.some((r) => r.from < to && from < r.to);
 
-function stack(ctx: Ctx, channel: Channel, nights: number, price: number, promos: Promo[] | { label: string; discountPct: number }[]): StackResult {
-  return simulateStack({ model: ctx.model, channel, nights, publishedNightlyCents: Math.round(price), promos: promos.map((p) => ({ label: p.label, discountPct: p.discountPct })) });
+/** Multiplicateur du prix du calendrier vers le prix affiché sur le canal : 1 + majoration ÷ 100. Majoration inconnue = erreur, jamais 0 %. */
+export function markupFactor(markups: EngineInput["markups"], channel: Channel): number {
+  if (!markups) return 1;
+  const m = markups[channel];
+  if (m === undefined || m === null) throw new UnknownEconomics(["majoration " + CHANNEL_LABEL[channel]]);
+  return 1 + m / 100;
 }
+/** `price` = prix du calendrier (avant majoration). Le prix publié sur le canal est price × (1 + majoration), puis remises, commission, coûts. */
+function stack(ctx: Ctx, channel: Channel, nights: number, price: number, promos: Promo[] | { label: string; discountPct: number }[]): StackResult {
+  return simulateStack({ model: ctx.model, channel, nights, publishedNightlyCents: Math.round(price * markupFactor(ctx.markups, channel)), promos: promos.map((p) => ({ label: p.label, discountPct: p.discountPct })) });
+}
+const markupPctOf = (ctx: Ctx, channel: Channel): number => (ctx.markups?.[channel] ?? 0);
+const fmtPctFr = (x: number) => (Math.round(x * 100) / 100).toString().replace(".", ",") + " %";
 /** Espérance de contribution sur un ensemble de nuits libres, pour un prix et des remises donnés. */
 function expected(ctx: Ctx, dates: ISODate[], channel: Channel, priceFactor: number, promosFor: (d: ISODate) => { label: string; discountPct: number }[], los: number, demandFactor = 1): number | null {
   let total = 0;
@@ -59,7 +77,7 @@ function expected(ctx: Ctx, dates: ISODate[], channel: Channel, priceFactor: num
   return Math.round(total);
 }
 function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: ISODate): Candidate {
-  return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && overlaps(ctx, from, to) }) };
+  return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && draft.type !== "MIN_PRICE_CHANGE" && overlaps(ctx, from, to) }) };
 }
 /** Écriture PriceLabs par API seulement si la capacité existe pour ce logement (US-002) ; sinon procédure manuelle guidée. */
 const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.capabilities["pricelabs.write"] ? "API_PRICELABS" : "MANUAL_RUNBOOK");
@@ -97,7 +115,7 @@ function avgDay(ctx: Ctx, dates: ISODate[]) {
 }
 const srcCal = (ctx: Ctx) => (ctx.property.isDemo ? "Calendrier de démonstration" : "PriceLabs · disponibilités");
 const srcMkt = (ctx: Ctx) => (ctx.property.isDemo ? "Marché de démonstration" : "PriceLabs · marché");
-const srcPL = (ctx: Ctx) => (ctx.property.isDemo ? "Grille de démonstration" : "PriceLabs · grille publiée");
+const srcPL = (ctx: Ctx) => (ctx.property.isDemo ? "Grille de démonstration" : ctx.priceSource === "SUPERHOTE" ? "SuperHote · calendrier" : "PriceLabs · prix recommandé");
 
 /* ------------------------------------------------------------------ PB-06 */
 function floorBreach(ctx: Ctx): DetectedOpportunity[] {
@@ -135,20 +153,32 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
         hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Réactiver la règle sur les dates concernées.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 7,
       }, from, to));
     }
-    const needed = Math.ceil(strat / (1 - cur.cumulativeDiscountPct / 100) / 100) * 100;
-    const f2 = needed / price; const e2 = expected(ctx, run, channel, f2, promoFn, los);
-    cands.push(finalize(ctx, {
-      type: "PRICE_OVERRIDE", label: `Poser un prix daté à ${euro(needed)} la nuit`,
-      detail: `Plus petit prix publié qui ramène le prix vendu ${CHANNEL_LABEL[channel]} au plancher stratégique de ${euro(strat)}.`, agent: "pricing",
-      target: { system: "PRICELABS" }, parameters: { nightlyCents: needed, restoresFloor: true, dates: run }, nightsTouched: run.length, priceChangePct: (f2 - 1) * 100,
-      current: cur, proposed: stack(ctx, channel, los, needed, promos), expectedDeltaCents: base !== null && e2 !== null ? e2 - base : null,
-      hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 7,
-    }, from, to));
+    // prix du calendrier (avant majoration, entier en euros) dont le prix vendu atteint un plancher donné : plancher ÷ (1 − cumul remises) ÷ (1 + majoration)
+    const mk = markupFactor(ctx.markups, channel);
+    const baseFor = (floor: number) => Math.ceil(floor / (1 - cur.cumulativeDiscountPct / 100) / mk / 100) * 100;
+    const needHard = baseFor(hard), needStrat = baseFor(strat);
+    const priceOpt = (needed: number, floor: number, kind: "absolu" | "stratégique"): Omit<Candidate, "audit"> => {
+      const f2 = needed / price;
+      return {
+        type: "PRICE_OVERRIDE", label: `Poser un prix daté à ${euro(needed)} la nuit (plancher ${kind})`,
+        detail: `Plus petit prix du calendrier qui ramène le prix vendu ${CHANNEL_LABEL[channel]} au plancher ${kind} de ${euro(floor)}${ctx.markups ? `, majoration de ${fmtPctFr(markupPctOf(ctx, channel))} comprise` : ""}.`, agent: "pricing",
+        target: { system: "PRICELABS" }, parameters: { nightlyCents: needed, restoresFloor: true, floorKind: kind, dates: run }, nightsTouched: run.length, priceChangePct: (f2 - 1) * 100,
+        current: cur, proposed: stack(ctx, channel, los, needed, promos), expectedDeltaCents: base !== null ? (() => { const e2 = expected(ctx, run, channel, f2, promoFn, los); return e2 !== null ? e2 - base : null; })() : null,
+        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 7,
+      };
+    };
+    if (Number.isFinite(needHard)) cands.push(finalize(ctx, priceOpt(needHard, hard, "absolu"), from, to));
+    if (Number.isFinite(needStrat) && needStrat > needHard) cands.push(finalize(ctx, priceOpt(needStrat, strat, "stratégique"), from, to));
     cands.push(noAction(ctx, from, to, cur, "Laisser la grille en l'état jusqu'à la prochaine revue.", 1));
     const evidence: Evidence[] = [
-      { kind: "fait", label: "Prix publié moyen", value: euro(price), source: srcPL(ctx) },
+      { kind: "fait", label: "Prix du calendrier (avant majoration)", value: euro(price), source: srcPL(ctx) },
+      ...(ctx.markups ? [
+        { kind: "fait" as const, label: `Majoration ${CHANNEL_LABEL[channel]}`, value: `+${fmtPctFr(markupPctOf(ctx, channel))}`, source: "Réglages du logement" },
+        { kind: "fait" as const, label: `Prix publié ${CHANNEL_LABEL[channel]}`, value: `${euro(cur.publishedNightlyCents)} (${euro(price)} × ${mk.toFixed(2).replace(".", ",")})`, source: "Calcul" },
+      ] : []),
       { kind: "fait", label: `Prix vendu ${CHANNEL_LABEL[channel]} après remises`, value: `${euro(cur.soldNightlyCents)} (cumul ${cur.cumulativeDiscountPct.toFixed(1).replace(".", ",")} %)`, source: "Simulateur de cumul" },
       { kind: "comparaison", label: `Plancher absolu · ${los} nuits`, value: euro(hard), source: "Modèle économique" },
+      { kind: "comparaison", label: "Calcul du prix proposé", value: `plancher ${euro(hard)} ÷ (1 − ${cur.cumulativeDiscountPct.toFixed(1).replace(".", ",")} % de remises) ÷ ${mk.toFixed(2).replace(".", ",")} de majoration, arrondi à l'euro supérieur = ${euro(needHard)}${needStrat > needHard ? ` ; au plancher stratégique de ${euro(strat)} : ${euro(needStrat)}` : ""}`, source: "Calcul" },
       { kind: "comparaison", label: "Contribution par nuit simulée", value: `${euro(cur.contributionPerNightCents)} pour un minimum de ${euro(ctx.model.hardContributionPerNightCents)}`, source: "Simulateur de cumul" },
       ...(rule ? [{ kind: "fait" as const, label: "Règle à l'origine du prix", value: rule, source: srcPL(ctx) }] : []),
     ];
@@ -165,7 +195,7 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
       title: `Le prix vendu ${CHANNEL_LABEL[channel]} passe sous le plancher absolu sur ${plural(run.length, "nuit")}`,
       stayFrom: from, stayTo: to,
       signalText: `Prix vendu ${euro(cur.soldNightlyCents)} la nuit pour un plancher de ${euro(hard)}`, signalSource: `${srcPL(ctx)} + simulateur de cumul`,
-      hypothesisText: rule ? `La règle « ${rule} » s'applique sans tenir compte des remises du canal.` : "Le prix publié ne couvre plus les coûts une fois les remises du canal déduites.",
+      hypothesisText: rule ? `La règle « ${rule} » s'applique sans tenir compte des remises du canal.` : cur.cumulativeDiscountPct > 0 ? "Le prix publié ne couvre plus les coûts une fois les remises du canal déduites." : `Le prix publié sur ${CHANNEL_LABEL[channel]}${ctx.markups ? `, majoration de ${fmtPctFr(markupPctOf(ctx, channel))} comprise,` : ""} reste sous le plancher ; aucune remise du canal n'intervient.`,
       signals: { soldNightlyCents: cur.soldNightlyCents, hardFloorCents: hard, strategyFloorCents: strat, channel, rule },
       diagnosis, candidates: cands, selected: pick(cands, { veto: true }), veto: true,
       vetoText: `Une vente aujourd'hui sur ${CHANNEL_LABEL[channel]} laisserait ${euro(cur.contributionPerNightCents)} de contribution par nuit, sous le minimum absolu de ${euro(ctx.model.hardContributionPerNightCents)}.`,
@@ -173,6 +203,63 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
     });
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ PB-11 */
+/**
+ * Le prix minimum PriceLabs est un plancher mécanique : tant que minimum × (1 + majoration) passe sous le plancher absolu d'un canal,
+ * PriceLabs peut vendre sous ce plancher dès que la demande baisse. L'agent d'onboarding propose de relever ce minimum.
+ * Il ne se déclenche jamais pour un canal dont la majoration est inconnue (ce canal est exclu de la revue).
+ */
+function minPriceBelowFloor(ctx: Ctx): DetectedOpportunity[] {
+  const min = ctx.strategy.minPriceCents;
+  if (!min || min <= 0 || ctx.channels.length === 0) return [];
+  const los = Math.max(ctx.strategy.minStay ?? 2, 2);
+  const rows = ctx.channels.map((ch) => {
+    const cur = stack(ctx, ch, los, min, []);
+    const hard = hardFloorCents(ctx.model, ch, los);
+    return { ch, cur, hard, need: Math.ceil(hard / markupFactor(ctx.markups, ch) / 100) * 100 };
+  });
+  const bad = rows.filter((r) => r.cur.soldNightlyCents < r.hard).sort((a, b) => b.need - a.need);
+  if (!bad.length) return [];
+  const w = bad[0], newMin = w.need, from = ctx.today, to = addDays(ctx.today, 90);
+  const mk = markupFactor(ctx.markups, w.ch), name = CHANNEL_LABEL[w.ch];
+  const proposed = stack(ctx, w.ch, los, newMin, []);
+  const cands: Candidate[] = [
+    finalize(ctx, {
+      type: "MIN_PRICE_CHANGE", label: `Relever le prix minimum PriceLabs à ${euro(newMin)}`,
+      detail: `Plus petit minimum entier dont le prix vendu ${name} atteint le plancher absolu de ${euro(w.hard)}${ctx.markups ? `, majoration de ${fmtPctFr(markupPctOf(ctx, w.ch))} comprise` : ""}. Aucun prix daté n'est posé : seule la limite basse change.`, agent: "onboarding",
+      target: { system: "PRICELABS" }, parameters: { minPriceCents: newMin, previousMinPriceCents: min, restoresFloor: true, channel: w.ch }, nightsTouched: 0, priceChangePct: (newMin / min - 1) * 100,
+      current: w.cur, proposed, expectedDeltaCents: null,
+      hypothesis: "Constat de calcul : il ne dépend d'aucune hypothèse de demande. Relever le minimum peut réduire les ventes les jours où PriceLabs descendrait à cette limite.",
+      rollbackPlan: `Remettre le prix minimum à ${euro(min)} dans PriceLabs.`, executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 14,
+    }, from, to),
+    noAction(ctx, from, to, w.cur, "Laisser le minimum actuel : PriceLabs pourra vendre sous le plancher absolu.", 7),
+  ];
+  const evidence: Evidence[] = [
+    { kind: "fait", label: "Prix minimum PriceLabs", value: euro(min), source: "PriceLabs · réglages de l'annonce" },
+    ...(ctx.markups ? [{ kind: "fait" as const, label: `Majoration ${name}`, value: `+${fmtPctFr(markupPctOf(ctx, w.ch))}`, source: "Réglages du logement" }] : []),
+    { kind: "fait", label: `Prix vendu ${name} au minimum`, value: `${euro(w.cur.soldNightlyCents)} (${euro(min)} × ${mk.toFixed(2).replace(".", ",")})`, source: "Simulateur de cumul" },
+    { kind: "comparaison", label: `Plancher absolu · ${los} nuits`, value: euro(w.hard), source: "Modèle économique" },
+    { kind: "comparaison", label: "Calcul du minimum proposé", value: `plancher ${euro(w.hard)} ÷ ${mk.toFixed(2).replace(".", ",")} de majoration, arrondi à l'euro supérieur = ${euro(newMin)}`, source: "Calcul" },
+  ];
+  return [{
+    playbook: "PB-11", dedupe: "min", reasonCode: "MIN_PRICE_BELOW_FLOOR",
+    title: `Le prix minimum PriceLabs laisse vendre ${name} sous le plancher absolu`,
+    stayFrom: from, stayTo: to,
+    signalText: `Minimum PriceLabs ${euro(min)} : prix vendu ${euro(w.cur.soldNightlyCents)} au minimum, pour un plancher de ${euro(w.hard)}`, signalSource: "PriceLabs · réglages + simulateur de cumul",
+    hypothesisText: "Le minimum configuré dans PriceLabs est plus bas que ce que le modèle économique du logement autorise.",
+    signals: { minPriceCents: min, soldAtMinCents: w.cur.soldNightlyCents, hardFloorCents: w.hard, proposedMinCents: newMin, channel: w.ch },
+    diagnosis: {
+      primary: "FLOOR_BREACH", primaryLabel: "Le prix minimum PriceLabs est sous le plancher économique absolu",
+      alternatives: [{ cause: "BASE_PRICE_LOW", label: "Prix de base trop bas", why: "Écartée : seul le minimum permet de descendre sous le plancher ; le prix de base n'est pas en cause." }],
+      confidence: confidence([[true, 0.35], [ctx.priceSource === "SUPERHOTE", 0.1]]),
+      confidenceNote: "Constat de calcul : il ne dépend d'aucune hypothèse de demande.",
+      tree: [{ question: "Le prix vendu au minimum respecte-t-il le plancher absolu ?", answer: `Non : ${euro(w.cur.soldNightlyCents)} pour ${euro(w.hard)}.`, verdict: "non" }],
+      evidence,
+    },
+    candidates: cands, selected: pick(cands, { forceType: "MIN_PRICE_CHANGE" }), veto: false, urgency: 1, expiresAt: addDays(ctx.today, 7),
+  }];
 }
 
 /* ------------------------------------------------------------------ PB-05 */
@@ -558,7 +645,7 @@ function dataDrift(ctx: Ctx): DetectedOpportunity[] {
 }
 
 /* ------------------------------------------------------------------ entrée */
-export type EngineResult = { opportunities: DetectedOpportunity[]; stats: WindowStat[]; blocked: string[] };
+export type EngineResult = { opportunities: DetectedOpportunity[]; stats: WindowStat[]; blocked: string[]; /** Canaux exclus de la revue faute de majoration renseignée */ missingMarkups: Channel[] };
 
 /**
  * Revue déterministe d'un logement : signaux → diagnostic → options → simulation → audit.
@@ -568,8 +655,12 @@ export type EngineResult = { opportunities: DetectedOpportunity[]; stats: Window
 export function reviewProperty(input: EngineInput): EngineResult {
   const stats = windowStats(input.days, input.today);
   const blocked = missingEconomics(input.model);
-  if (blocked.length) return { opportunities: [], stats, blocked };
-  const channels = Object.keys(input.model.channels) as Channel[];
+  if (blocked.length) return { opportunities: [], stats, blocked, missingMarkups: [] };
+  const declared = Object.keys(input.model.channels) as Channel[];
+  // une majoration inconnue n'est jamais traitée comme 0 % : le canal est exclu et l'application demande de la saisir
+  const missingMarkups = input.markups ? declared.filter((c) => input.markups![c] === undefined || input.markups![c] === null) : [];
+  const channels = declared.filter((c) => !missingMarkups.includes(c));
+  if (channels.length === 0) return { opportunities: [], stats, blocked: [], missingMarkups };
   const share = channelShare(input.resas);
   const refChannel = [...channels].sort((a, b) => (input.model.channels[b]!.commissionPct + input.model.channels[b]!.paymentFeePct) - (input.model.channels[a]!.commissionPct + input.model.channels[a]!.paymentFeePct))[0];
   const stale = channels.filter((c) => {
@@ -581,8 +672,8 @@ export function reviewProperty(input: EngineInput): EngineResult {
     lead: leadTimes(input.resas), share, claimed: new Set(), stale,
     audit: { model: input.model, strategy: input.strategy, stalePromoChannels: stale, conflict: false, capabilities: input.capabilities, demo: input.property.isDemo, promos: input.promos, window: { from: input.today, to: input.today } },
   };
-  const opportunities = [...floorBreach(ctx), ...stackRisk(ctx), ...orphanGaps(ctx), ...eventUplift(ctx), ...paceHigh(ctx, stats), ...paceLow(ctx, stats), ...dataDrift(ctx)];
-  return { opportunities, stats, blocked: [] };
+  const opportunities = [...floorBreach(ctx), ...minPriceBelowFloor(ctx), ...stackRisk(ctx), ...orphanGaps(ctx), ...eventUplift(ctx), ...paceHigh(ctx, stats), ...paceLow(ctx, stats), ...dataDrift(ctx)];
+  return { opportunities, stats, blocked: [], missingMarkups };
 }
 
 /** Score de priorité (blueprint §9.2). Il organise le travail ; il ne contourne jamais un veto. */
