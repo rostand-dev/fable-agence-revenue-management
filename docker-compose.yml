@@ -17,6 +17,8 @@ services:
       # Durée minimale d'observation avant activation d'un logement, en jours (US-024) : 14 par défaut, de 0 à 90 ; une valeur invalide revient à 14.
       # 0 supprime le délai (activation possible dès le lancement) : réserver aux tests/préproduction. Facultatif.
       - ACTIVATION_SHADOW_MIN_DAYS=${ACTIVATION_SHADOW_MIN_DAYS:-14}
+      # Masquage des données personnelles (e-mails, téléphones, IBAN, cartes, secrets) dans les journaux du serveur (US-034) : on par défaut ; off = débogage local seulement, jamais en production ni en staging.
+      - LOG_PII_MASKING=${LOG_PII_MASKING:-on}
       # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, Anthropic). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
       - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
       # Facultatif : clé Anthropic de repli, utilisée quand le propriétaire n'a saisi aucune clé. Vide = agents en repli déterministe.

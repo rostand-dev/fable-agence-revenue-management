@@ -4,6 +4,8 @@
  * Module pur (aucun accès base) : il dit QUELS événements existent, dans quelle famille, avec quel libellé.
  * Un événement absent d'ici ne peut pas être enregistré proprement : `recordAudit` le refuse en test, le signale en production.
  */
+import { isTravellerKey } from "../privacy/pii";
+
 export type AuditCategory = "APPROVAL" | "EXECUTION" | "CONFIGURATION" | "INTEGRATION" | "ACCESS" | "SYSTEM";
 
 export const AUDIT_CATEGORIES: Record<AuditCategory, { label: string; hint: string }> = {
@@ -107,5 +109,6 @@ export function redactPayload(value: unknown, depth = 0): unknown {
   if (value === null || typeof value !== "object") return value;
   if (depth > 6) return MASKED;
   if (Array.isArray(value)) return value.map((v) => redactPayload(v, depth + 1));
-  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, SECRET_KEY.test(k) ? MASKED : redactPayload(v, depth + 1)]));
+  // US-034 : l'identité d'un voyageur (nom, e-mail, téléphone, notes privées…) n'entre jamais dans le journal
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, SECRET_KEY.test(k) || isTravellerKey(k) ? MASKED : redactPayload(v, depth + 1)]));
 }

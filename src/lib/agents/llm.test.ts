@@ -55,6 +55,21 @@ describe("callLlm", () => {
   });
 });
 
+describe("US-034 : masquage des données personnelles avant l'envoi au modèle", () => {
+  it("callLlm masque e-mail, téléphone et secret dans le système et les messages, sans toucher au reste", async () => {
+    fetchMock.mockResolvedValueOnce(json({ content: [{ type: "text", text: "ok" }], usage: {} }));
+    await callLlm({ apiKey: "k".repeat(20), model: "m", source: "utilisateur" }, { system: "Contexte : anne@x.fr, T3 Châtillon, 2026-12-01", messages: [{ role: "user", content: "Rappelle le 06 11 22 33 44 (whsec_AbCdEf0123456789xyz) pour 135,50 €" }] });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    expect(body.system).toBe("Contexte : [e-mail masqué], T3 Châtillon, 2026-12-01");
+    expect(body.messages[0].content).toBe("Rappelle le [téléphone masqué] ([secret masqué]) pour 135,50 €");
+  });
+  it("streamLlm masque aussi ce qui part en flux", async () => {
+    fetchMock.mockResolvedValueOnce(new Response('data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":1}}\n\n', { status: 200 }));
+    await streamLlm({ apiKey: "k".repeat(20), model: "m", source: "utilisateur" }, { system: "s", messages: [{ role: "user", content: "écris à marie@x.fr" }] }, () => {});
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).messages[0].content).toBe("écris à [e-mail masqué]");
+  });
+});
+
 describe("pickLlmConfig", () => {
   const base = { serverKey: undefined as string | undefined, defaultModel: "defaut" };
   it("clé utilisateur + modèle choisi", () => expect(pickLlmConfig({ ...base, userKey: "u", agentModel: "m" })).toEqual({ apiKey: "u", model: "m", source: "utilisateur" }));
