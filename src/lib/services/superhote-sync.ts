@@ -5,9 +5,9 @@ import type { AuditType } from "../audit/types";
 import { listRentals } from "../integrations/superhote";
 import type { EconomicModel } from "../engine/types";
 import { observedCommission, observedPaymentFee } from "../integrations/superhote-map";
-import { calendarPatches, shReservations } from "../integrations/superhote-reservations";
-import { todayISO } from "../dates";
-import { replaceReservations } from "./reservations-store";
+import { addDays, todayISO } from "../dates";
+import { applyCalendarEffect, reconcileReservations, type ReconcileResult } from "./reservation-ingest";
+import { withTenant } from "@/db/tenant";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
 import { cleanupWebhookForToken } from "./superhote-webhook";
 import { shErrorText, snapshotSuperhote } from "./superhote-read";
@@ -83,9 +83,13 @@ export async function syncSuperhote(tenantId: string, propertyId: string): Promi
   else {
     const snap = await snapshotSuperhote(p.superhote);
     // SuperHote fait foi pour les réservations, même sans PriceLabs
-    if (snap?.ok) await db.transaction((tx) => replaceReservations(tx, tenantId, p.id, shReservations(snap.reservations, p.economics as EconomicModel), "SUPERHOTE"));
+    let rec: ReconcileResult | null = null;
+    if (snap?.ok) {
+      try { rec = await withTenant(tenantId, (tx) => reconcileReservations(tx, { tenantId, propertyId: p.id, model: p.economics as EconomicModel, reservations: snap.reservations, readAt: new Date(snap.at) })); }
+      catch (e) { console.error("[superhote] réconciliation impossible :", e instanceof Error ? e.message : e); throw new SyncError("Les réservations lues n'ont pas pu être enregistrées (erreur technique). Rien n'a été modifié."); }
+    }
     const lastSync = snap?.ok ? { ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, reservationsSource: "SUPERHOTE", observedCommission: observedCommission(snap.reservations), observedPaymentFee: observedPaymentFee(snap.reservations) } : { ok: false, at: snap?.at ?? new Date().toISOString(), error: snap && !snap.ok ? snap.error : "Lecture impossible." };
-    await db.update(properties).set({ superhote: { ...p.superhote, lastSync } }).where(eq(properties.id, p.id));
+    await db.update(properties).set({ superhote: { ...p.superhote, lastSync, ...(rec ? { lastReconcile: rec } : {}) } }).where(eq(properties.id, p.id));
     if (!lastSync.ok) throw new SyncError((lastSync as any).error);
   }
   const [fresh] = await db.select({ sh: properties.superhote }).from(properties).where(eq(properties.id, p.id));
@@ -110,15 +114,22 @@ export async function refreshSuperhoteReservations(tenantId: string, propertyId:
     await db.update(properties).set({ superhote: { ...p.superhote, lastSync: { ...prev, ok: false, at: now.toISOString(), error } } }).where(eq(properties.id, p.id));
     return { ok: false, error };
   }
-  const rows = shReservations(snap.reservations, p.economics as EconomicModel);
-  const days = await db.select().from(calendarDays).where(eq(calendarDays.propertyId, p.id));
-  const patches = calendarPatches(days, rows, snap.calendar, todayISO(now));
   const { error: _e, ...kept } = prev;
   const lastSync = { ...kept, ok: true, at: snap.at, reservations: snap.reservations.filter((r) => !r.canceled).length, nights: snap.calendar.length, reservationsSource: "SUPERHOTE", observedCommission: observedCommission(snap.reservations), observedPaymentFee: observedPaymentFee(snap.reservations) };
-  await db.transaction(async (tx) => {
-    await replaceReservations(tx, tenantId, p.id, rows, "SUPERHOTE");
-    for (const c of patches) await tx.update(calendarDays).set({ state: c.state, priceCents: c.priceCents, sentPriceCents: c.sentPriceCents }).where(and(eq(calendarDays.propertyId, p.id), eq(calendarDays.date, c.date)));
-    await tx.update(properties).set({ superhote: { ...p.superhote, lastSync } }).where(eq(properties.id, p.id));
-  });
-  return { ok: true, reservations: lastSync.reservations, patched: patches.length };
+  let outcome: { rec: ReconcileResult; patched: number };
+  try {
+    outcome = await withTenant(tenantId, async (tx) => {
+      const rec = await reconcileReservations(tx, { tenantId, propertyId: p.id, model: p.economics as EconomicModel, reservations: snap.reservations, readAt: new Date(snap.at) });
+      // le calendrier suit les réservations RÉELLEMENT enregistrées (et non la lecture brute) : nuits vendues ou bloquées ; libérées seulement si SuperHote les déclare disponibles
+      const today = todayISO(now), patched = await applyCalendarEffect(tx, p.id, { from: today, to: addDays(today, 91) }, snap.calendar, today);
+      await tx.update(properties).set({ superhote: { ...p.superhote, lastSync, lastReconcile: rec } }).where(eq(properties.id, p.id));
+      return { rec, patched };
+    });
+  } catch (e) {
+    console.error("[superhote] réconciliation impossible :", e instanceof Error ? e.message : e);
+    const error = "Les réservations lues n'ont pas pu être enregistrées (erreur technique). Les données précédentes sont conservées.";
+    await db.update(properties).set({ superhote: { ...p.superhote, lastSync: { ...prev, ok: false, at: now.toISOString(), error } } }).where(eq(properties.id, p.id));
+    return { ok: false, error };
+  }
+  return { ok: true, reservations: lastSync.reservations, patched: outcome.patched };
 }

@@ -33,6 +33,10 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
             ["Jeton API", <span key="k">{sh.keyHint} · chiffré</span>, true],
             ["Logement rattaché", sh.rentalId ? `${sh.rentalName ?? sh.rentalId} · identifiant ${sh.rentalId}` : <Vq>à confirmer</Vq>],
             ["Dernière lecture", ls?.at ? <>{fmtDateTime(new Date(ls.at))} · {ls.ok ? <State role="sain">réussie</State> : <State role="attention">en échec</State>}</> : <Vq>aucune</Vq>],
+            ...(sh.lastReconcile ? [["Dernière réconciliation", (() => {
+              const r = sh.lastReconcile, parts = [[r.created, "créée", "créées"], [r.modified, "modifiée", "modifiées"], [r.cancelled + r.vanished, "annulée", "annulées"], [r.reactivated, "réactivée", "réactivées"]].filter(([n]) => (n as number) > 0).map(([n, one, many]) => `${n} ${(n as number) > 1 ? many : one}`);
+              return <span key="rc" data-testid="reconcile-summary">{fmtDateTime(new Date(r.at))} · {parts.length ? <>{parts.join(", ")} {r.unchanged === 0 && r.modified + r.cancelled + r.vanished + r.reactivated === 0 ? <State role="sain">première lecture</State> : <State role="attention">écart rattrapé</State>}</> : <State role="sain">aucun écart</State>}{r.suspicious && <> · <State role="attention">lecture vide ignorée</State></>}</span>;
+            })()] as [string, React.ReactNode]] : []),
             ...(ls?.ok ? [
               ["Réservations lues", `${ls.reservations} non annulée${ls.reservations > 1 ? "s" : ""} · ${ls.nights} nuits de calendrier (J+0 à J+90)`],
               ...(plLinked ? [["Canaux relevés", ls.autoChannels > 0 ? `${ls.autoChannels} réservation${ls.autoChannels > 1 ? "s" : ""} transmise${ls.autoChannels > 1 ? "s" : ""} sans canal par PriceLabs ${ls.autoChannels > 1 ? "ont reçu leur canal" : "a reçu son canal"} depuis SuperHote` : "aucune réservation sans canal à compléter"] as [string, React.ReactNode]] : []),

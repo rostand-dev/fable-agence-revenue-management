@@ -5,14 +5,14 @@
  * Les écritures d'un même logement sont sérialisées par un verrou de transaction (deux webhooks simultanés ne se croisent pas).
  * L'appelant ouvre la transaction par `withTenant` (isolation par la base) ; `tenantId` doit être celui du logement.
  */
-import { and, eq, gt, inArray, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import type { EconomicModel } from "../engine/types";
 import { dedupeConfirmed, type PlReservation } from "../integrations/pricelabs-map";
 import type { ShReservation } from "../integrations/superhote-map";
 import { calendarPatches, shReservations } from "../integrations/superhote-reservations";
 import { affectedWindow, diffReservation, type ChangeKind, type FieldChange, type Snap } from "../reservations/nights";
-import { addDays, type ISODate } from "../dates";
+import { addDays, todayISO, type ISODate } from "../dates";
 import { snapOf, writeNights } from "./reservations-store";
 
 const { reservations, reservationChanges, calendarDays } = schema;
@@ -34,12 +34,17 @@ export type IngestResult = {
 
 const toDate = (iso: string | null): Date | null => { if (!iso) return null; const d = new Date(iso); return Number.isNaN(+d) ? null : d; };
 
+/** Prend le verrou du logement (jusqu'à la fin de la transaction). À poser EN PREMIER dans toute transaction qui touche réservations et calendrier : même ordre partout, pas d'interblocage. */
+export async function lockProperty(tx: IngestTx, propertyId: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"res:" + propertyId}, 0))`);
+}
+
 export async function applyReservation(tx: IngestTx, input: IngestInput): Promise<IngestResult> {
   const { tenantId, propertyId, reservation, source } = input;
   const incoming = shReservations([reservation], input.model)[0] as PlReservation;
   const externalId = incoming.externalId, at = toDate(reservation.updatedAt);
   // sérialise tout ce qui touche ce logement : la création concurrente d'une même réservation et la réévaluation des chevauchements
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${"res:" + propertyId}, 0))`);
+  await lockProperty(tx, propertyId);
   const [existing] = await tx.select().from(reservations).where(and(eq(reservations.tenantId, tenantId), eq(reservations.propertyId, propertyId), eq(reservations.externalId, externalId))).for("update");
 
   // plus ancien que l'état connu, ou sans date alors qu'un état daté existe : ignoré (la réconciliation, qui lit `updated_at`, tranchera). À date égale, le dernier arrivé gagne.
@@ -109,4 +114,43 @@ export async function applyCalendarEffect(tx: IngestTx, propertyId: string, win:
   const patches = calendarPatches(days, rows as Pick<PlReservation, "checkIn" | "checkOut" | "status">[], shCalendar, today);
   for (const c of patches) await tx.update(calendarDays).set({ state: c.state, priceCents: c.priceCents, sentPriceCents: c.sentPriceCents }).where(and(eq(calendarDays.propertyId, propertyId), eq(calendarDays.date, c.date)));
   return patches.length;
+}
+
+export type ReconcileResult = { created: number; modified: number; cancelled: number; reactivated: number; unchanged: number; stale: number; vanished: number; suspicious: boolean; at: string };
+
+/**
+ * Réconciliation (US-032) : applique une lecture COMPLÈTE de SuperHote réservation par réservation (même écriture que les webhooks : `applyReservation`),
+ * ce qui détecte les créations, modifications, annulations et réactivations manquées, avec leur historique (source RECONCILE).
+ * Une réservation connue mais absente d'une lecture complète est passée en annulée, sauf si elle a été modifiée depuis le début de la lecture (webhook plus récent)
+ * ou si la lecture est vide alors que des réservations existent (lecture suspecte : rien n'est annulé, l'écart est signalé). Un séjour terminé absent de la lecture est conservé.
+ * Une lecture partielle n'arrive jamais ici : le client SuperHote échoue plutôt que de renvoyer des pages manquantes.
+ * Les réservations relayées par PriceLabs sont remplacées : SuperHote fait foi.
+ */
+export async function reconcileReservations(tx: IngestTx, input: { tenantId: string; propertyId: string; model: EconomicModel | null; reservations: ShReservation[]; readAt: Date }): Promise<ReconcileResult> {
+  const { tenantId, propertyId, model } = input;
+  await lockProperty(tx, propertyId);
+  // réservations relayées par PriceLabs : remplacées seulement si SuperHote en renvoie (une lecture vide ne doit rien effacer)
+  if (input.reservations.length > 0) await tx.delete(reservations).where(and(eq(reservations.propertyId, propertyId), eq(reservations.source, "PRICELABS")));
+  const res: ReconcileResult = { created: 0, modified: 0, cancelled: 0, reactivated: 0, unchanged: 0, stale: 0, vanished: 0, suspicious: false, at: input.readAt.toISOString() };
+  const seen = new Set<string>();
+  for (const r of input.reservations) {
+    const out = await applyReservation(tx, { tenantId, propertyId, model, reservation: r, source: "RECONCILE" });
+    seen.add(out.externalId);
+    const k = out.outcome;
+    if (k === "CREATED") res.created++; else if (k === "MODIFIED") res.modified++; else if (k === "CANCELLED") res.cancelled++; else if (k === "REACTIVATED") res.reactivated++; else if (k === "STALE") res.stale++; else res.unchanged++;
+  }
+  const known = await tx.select().from(reservations).where(and(eq(reservations.propertyId, propertyId), eq(reservations.source, "SUPERHOTE"), inArray(reservations.status, ["CONFIRMED", "BLOCKED", "DUPLICATE"])));
+  // absente de la lecture : annulée seulement si le séjour n'est pas terminé (un historique ancien peut ne plus être renvoyé) et si rien ne l'a modifiée depuis le début de la lecture (marge d'horloge : 60 s)
+  const today = todayISO(input.readAt);
+  const gone = known.filter((k) => !seen.has(k.externalId) && k.checkOut >= today && +k.updatedAt < +input.readAt - 60_000);
+  if (gone.length > 0 && seen.size === 0) { res.suspicious = true; return res; }
+  for (const k of gone) {
+    const before = snapOf({ ...k, status: k.status as Snap["status"] }), after: Snap = { ...before, status: "CANCELLED" };
+    await tx.update(reservations).set({ status: "CANCELLED", updatedAt: new Date() }).where(eq(reservations.id, k.id));
+    await writeNights(tx, tenantId, propertyId, k.id, after);
+    await tx.insert(reservationChanges).values({ id: newId("rch"), tenantId, propertyId, externalId: k.externalId, kind: "CANCELLED", source: "RECONCILE", deliveryId: null, occurredAt: input.readAt, before, after, changes: diffReservation(before, after).changes });
+    await reevaluateOverlaps(tx, tenantId, propertyId, affectedWindow(before, after), k.externalId, "CANCELLED", "RECONCILE", null, input.readAt); // un doublon dont le jumeau a disparu redevient confirmé
+    res.vanished++;
+  }
+  return res;
 }

@@ -10,6 +10,8 @@ import { channelHints, compareReservations, comparePriceSeries, observedCommissi
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
 import { shReservations } from "../integrations/superhote-reservations";
 import { replaceReservations } from "./reservations-store";
+import { applyCalendarEffect, lockProperty, reconcileReservations, type ReconcileResult } from "./reservation-ingest";
+import { withTenant } from "@/db/tenant";
 import { snapshotSuperhote } from "./superhote-read";
 
 const { properties, calendarDays, marketDays, reservations, agentRuns } = schema;
@@ -161,13 +163,20 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
   };
 
-  await db.transaction(async (tx) => {
+  let rec: ReconcileResult | null = null;
+  await withTenant(tenantId, async (tx) => {
+    await lockProperty(tx, p.id); // même ordre de verrous que les webhooks : verrou du logement d'abord, puis calendrier
     await tx.delete(calendarDays).where(eq(calendarDays.propertyId, p.id));
     await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
     await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now })));
     await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
-    if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
-    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync } } : {}) }).where(eq(properties.id, p.id));
+    if (toWrite && source === "SUPERHOTE" && sh?.ok) {
+      rec = await reconcileReservations(tx, { tenantId, propertyId: p.id, model, reservations: sh.reservations, readAt: new Date(sh.at) });
+      // le calendrier reflète les réservations réellement enregistrées (webhook plus récent, doublon, lecture suspecte), pas seulement la lecture brute
+      await applyCalendarEffect(tx, p.id, { from: todayISO(now), to: addDays(todayISO(now), 91) }, [], todayISO(now));
+    }
+    else if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
+    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync, ...(rec ? { lastReconcile: rec } : {}) } } : {}) }).where(eq(properties.id, p.id));
     // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une version, tracée avec son avant/après (US-023)
     const res = await commitStrategy(tx, { tenantId, propertyId: p.id, next: (cur) => ({ ...cur, basePriceCents: listing.baseCents ?? cur.basePriceCents ?? null, minPriceCents: listing.minCents ?? cur.minPriceCents ?? null, maxPriceCents: listing.maxCents ?? cur.maxPriceCents ?? null, maxDiscountStackPct: cur.maxDiscountStackPct ?? 20, maxPriceChangePct: cur.maxPriceChangePct ?? 5 }), source: "PRICELABS_SYNC", createdBy: "system" });
     if (res) {
