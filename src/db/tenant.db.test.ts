@@ -76,6 +76,11 @@ describe("isolation par la base (RLS, US-011)", () => {
     await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`delete from strategy_versions`), { enforce: true })).rejects.toThrow();
   });
 
+  it("les validations d'activation sont en ajout seul pour le rôle applicatif", async () => {
+    await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`update activation_validations set note = 'x'`), { enforce: true })).rejects.toThrow();
+    await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`delete from activation_validations`), { enforce: true })).rejects.toThrow();
+  });
+
   it("les versions du modèle économique sont en ajout seul pour le rôle applicatif, et la suppression d'un logement passe quand même", async () => {
     const pid = newId("prop");
     await db.insert(schema.properties).values({ id: pid, tenantId: a.tenantId, name: "Versions RLS", city: "Paris", kind: "T2", status: "ACTIVE" });

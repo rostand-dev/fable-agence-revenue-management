@@ -6,8 +6,10 @@ import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { evaluateMapping } from "@/lib/mapping";
 import { calendarStateOf, evaluateQuality, type QualityReport } from "@/lib/quality";
+import { shadowState } from "@/lib/activation-gates";
 import { identityComplete } from "@/lib/onboarding";
 import { loadMappingFacts } from "./mapping";
+import { loadGateFacts } from "./validations";
 import { PortfolioError, type PortfolioActor } from "./portfolio";
 
 const { properties } = schema;
@@ -19,6 +21,7 @@ export type QualityView = QualityReport & { name: string; status: string; isDemo
 async function evaluate(ex: Ex, tenantId: string, propertyId: string, lock = false) {
   const { p, facts } = await loadMappingFacts(ex, tenantId, propertyId, lock);
   const strategy = (p.strategy ?? {}) as Strategy;
+  const gates = await loadGateFacts(ex as never, tenantId, propertyId, p.economics as EconomicModel);
   const report = evaluateQuality({
     identityOk: identityComplete(p),
     pricelabsLinked: !!p.pricelabs?.listingId,
@@ -28,8 +31,11 @@ async function evaluate(ex: Ex, tenantId: string, propertyId: string, lock = fal
     prices: { basePriceCents: strategy.basePriceCents ?? null, minPriceCents: strategy.minPriceCents ?? null, maxPriceCents: strategy.maxPriceCents ?? null },
     superhoteLinked: !!p.superhote?.rentalId,
     provisionalCount: ((p.economics as EconomicModel)?.provisional ?? []).length,
+    shadow: shadowState(p.onboarding?.completedAt),
+    floors: gates.floors,
+    reconciliation: gates.reconciliation,
   });
-  return { p, report };
+  return { p, report, gates };
 }
 
 export async function getQuality(tenantId: string, propertyId: string): Promise<QualityView> {
@@ -43,7 +49,7 @@ export async function getQuality(tenantId: string, propertyId: string): Promise<
  */
 export async function activateProperty(u: PortfolioActor, propertyId: string) {
   await db.transaction(async (tx) => {
-    const { p, report } = await evaluate(tx, u.tenantId, propertyId, true);
+    const { p, report, gates } = await evaluate(tx, u.tenantId, propertyId, true);
     if (p.isDemo) throw new PortfolioError("INVALID", "Un logement de démonstration ne s'active pas.");
     if (p.status === "ACTIVE") throw new PortfolioError("INVALID", "Ce logement est déjà actif.");
     if (p.status !== "SHADOW") throw new PortfolioError("INVALID", "Seul un logement en observation peut être activé : lancez d'abord l'observation depuis le parcours de création.");
@@ -52,6 +58,6 @@ export async function activateProperty(u: PortfolioActor, propertyId: string) {
       throw new PortfolioError("INVALID", `Activation refusée. À corriger : ${todo.join(" ; ")}.`);
     }
     await tx.update(properties).set({ status: "ACTIVE" }).where(and(eq(properties.id, p.id), eq(properties.tenantId, u.tenantId)));
-    await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.activated", entity: "Property", entityId: p.id, summary: `${u.name} active ${p.name} : la checklist de qualité est satisfaite.`, payload: { warnings: report.warnings, checks: report.items.map((i) => ({ key: i.key, ok: i.ok, severity: i.severity })) } });
+    await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.activated", entity: "Property", entityId: p.id, summary: `${u.name} active ${p.name} : la checklist de qualité est satisfaite.`, payload: { floorsFingerprint: gates.floors.status === "OK" ? gates.fingerprint : null, reconciliation: { sampleSize: gates.reconciliation.sampleSize, maxGapPct: gates.reconciliation.maxGapPct, by: gates.reconciliation.by }, floorsValidatedBy: gates.floors.by, warnings: report.warnings, checks: report.items.map((i) => ({ key: i.key, ok: i.ok, severity: i.severity })) } });
   });
 }

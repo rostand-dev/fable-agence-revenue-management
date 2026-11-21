@@ -4,7 +4,10 @@ import { db, schema } from "@/db";
 import { makeTenant } from "@/test/db";
 import { confirmMapping, getMapping } from "./mapping";
 import { createProperty, PortfolioError } from "./portfolio";
+import { floorFingerprint } from "@/lib/activation-gates";
+import type { EconomicModel } from "@/lib/engine/types";
 import { activateProperty, getQuality } from "./quality";
+import { recordReconciliation, validateFloors } from "./validations";
 
 type T = Awaited<ReturnType<typeof makeTenant>>;
 let a: T, b: T;
@@ -14,13 +17,17 @@ const prop = (id: string) => db.select().from(schema.properties).where(eq(schema
 const events = (t: T) => db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.tenantId, t.tenantId), eq(schema.auditEvents.type, "property.activated")));
 const ECON = { cleaningFeeChargedCents: 5000, cleaningCostCents: 4000, linenCostCents: 1000, nightlyVariableCostCents: 500, hardContributionPerNightCents: 3000, strategyContributionPerNightCents: 4000, channels: { AIRBNB: { commissionPct: 15.5, paymentFeePct: 0 } } };
 
-/** Logement en observation, complet : tout est vrai sauf ce que le test retire. */
+const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+/** Logement en observation, complet (observation de 20 jours, planchers et rapprochement validés) : tout est vrai sauf ce que le test retire. */
 async function shadow(t: T, name: string) {
   const { id } = await createProperty(t.actor, { name, city: "Lille", kind: "T2", bedrooms: 2 });
   await db.update(schema.properties).set({
     status: "SHADOW", economics: ECON as never, strategy: { basePriceCents: 12000, minPriceCents: 8000, maxPriceCents: 20000, minStay: 2 } as never,
     pricelabs: { apiKeyEnc: "x", listingId: "pl1", pms: "superhote", listingName: "Annonce", candidates: [{ id: "pl1", pms: "superhote", name: "Annonce", city: "Lille", bedrooms: 2 }], lastSync: { ok: true, at: new Date().toISOString(), days: 90 } } as never,
+    onboarding: { step: "verification", completedAt: daysAgo(20) } as never,
   }).where(eq(schema.properties.id, id));
+  await validateFloors(t.actor, id, floorFingerprint(ECON as unknown as EconomicModel), "");
+  await recordReconciliation(t.actor, id, { sampleSize: 12, maxGapPct: 0.4, source: "SuperHote comparé aux relevés" });
   return id;
 }
 const confirm = async (t: T, id: string) => confirmMapping(t.actor, id, false, (await getMapping(t.tenantId, id)).fingerprint);
@@ -61,7 +68,7 @@ describe("checklist de qualité et activation (US-024)", () => {
     await confirm(a, id);
     await db.update(schema.properties).set({ economics: {} as never }).where(eq(schema.properties.id, id));
     const q = await getQuality(a.tenantId, id);
-    expect(q.blockers).toEqual(["economics"]);
+    expect(q.blockers).toEqual(["economics", "floors"]); // sans modèle complet, les planchers ne se calculent pas non plus
     await db.update(schema.properties).set({ economics: ECON as never, pricelabs: { apiKeyEnc: "x", listingId: "pl1", pms: "superhote", listingName: "Annonce", candidates: [{ id: "pl1", pms: "superhote", name: "Annonce", city: "Lille", bedrooms: 2 }] } as never }).where(eq(schema.properties.id, id));
     expect((await getQuality(a.tenantId, id)).blockers).toEqual(["calendar"]);
   });

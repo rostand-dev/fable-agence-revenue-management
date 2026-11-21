@@ -1,3 +1,4 @@
+import { RECONCILIATION_MAX_GAP_PCT, RECONCILIATION_MIN_SAMPLE, SHADOW_MIN_DAYS, type FloorsState, type ReconciliationState, type ShadowState } from "./activation-gates";
 import type { MappingStatus } from "./mapping";
 
 /**
@@ -5,7 +6,7 @@ import type { MappingStatus } from "./mapping";
  * un point BLOQUANT non satisfait interdit l'activation ; un point d'AVERTISSEMENT ne la bloque pas mais reste affiché.
  * Une information inconnue ne valide jamais un point (aucune valeur supposée).
  */
-export type QualityKey = "identity" | "pricelabs" | "calendar" | "economics" | "mapping" | "prices" | "superhote" | "provisional";
+export type QualityKey = "identity" | "pricelabs" | "calendar" | "economics" | "mapping" | "prices" | "shadow" | "floors" | "reconciliation" | "superhote" | "provisional";
 export type QualitySeverity = "BLOCKING" | "ADVISORY";
 export type CalendarState = { status: "OK" | "NEVER" | "FAILED" | "STALE"; days: number | null; at: string | null };
 /** Une lecture n'atteste la grille que si elle a réussi, porte des jours, et date de moins de 48 h. */
@@ -31,8 +32,12 @@ export type QualityFacts = {
   prices: { basePriceCents: number | null; minPriceCents: number | null; maxPriceCents: number | null };
   superhoteLinked: boolean;
   provisionalCount: number;
+  /** Conditions d'activation du blueprint (§6.1) : observation, planchers validés, rapprochement. */
+  shadow: ShadowState;
+  floors: FloorsState;
+  reconciliation: ReconciliationState;
 };
-export type QualityFix = "dossier" | "pricelabs" | "superhote" | "couts" | "mapping";
+export type QualityFix = "dossier" | "pricelabs" | "superhote" | "couts" | "mapping" | "validations";
 export type QualityItem = { key: QualityKey; label: string; severity: QualitySeverity; ok: boolean; detail: string; fix: QualityFix };
 export type QualityReport = { items: QualityItem[]; blockers: QualityKey[]; warnings: QualityKey[]; canActivate: boolean };
 
@@ -54,6 +59,12 @@ export function pricesProblem(p: QualityFacts["prices"]): string | null {
   return null;
 }
 
+const frDate = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }) : "";
+const frDateTime = (iso: string | null) => iso ? new Date(iso).toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" }) : "";
+const shadowDetail = (s: ShadowState) => s.status === "OK" ? `Observation depuis ${s.days} jours.` : s.status === "WAITING" ? `Observation depuis ${s.days} jour${(s.days ?? 0) > 1 ? "s" : ""} sur ${SHADOW_MIN_DAYS} : activation possible à partir du ${frDateTime(s.readyAt)}.` : "Date de lancement de l'observation inconnue.";
+const floorsDetail = (f: FloorsState) => f.status === "OK" ? `Validés par ${f.by} le ${frDate(f.at)}.` : f.status === "STALE" ? "Les coûts ont changé depuis la dernière validation : relisez et validez de nouveau la grille." : f.status === "INCOMPLETE" ? "Planchers non calculables : le modèle économique est incomplet." : "Grille de planchers (canal × 2, 7 et 28 nuits) non validée par une personne.";
+const reconciliationDetail = (r: ReconciliationState) => r.status === "OK" ? `${r.sampleSize} réservations rapprochées, écart maximal ${String(r.maxGapPct).replace(".", ",")} % (attesté par ${r.by} le ${frDate(r.at)}).` : r.status === "TOO_SMALL" ? `Échantillon trop petit : ${r.sampleSize} réservation${(r.sampleSize ?? 0) > 1 ? "s" : ""}, au moins ${RECONCILIATION_MIN_SAMPLE} attendues.` : r.status === "GAP" ? `Écart constaté de ${String(r.maxGapPct).replace(".", ",")} %, au-delà de ${RECONCILIATION_MAX_GAP_PCT} % : corrigez la source puis refaites le rapprochement.` : `Aucun échantillon de ${RECONCILIATION_MIN_SAMPLE} réservations rapproché à ce jour.`;
+
 export function evaluateQuality(f: QualityFacts): QualityReport {
   const prices = pricesProblem(f.prices);
   const items: QualityItem[] = [
@@ -63,6 +74,9 @@ export function evaluateQuality(f: QualityFacts): QualityReport {
     { key: "economics", label: "Modèle économique complet", severity: "BLOCKING", ok: f.economicsMissing === 0, fix: "couts", detail: f.economicsMissing === 0 ? "Tous les coûts et seuils sont renseignés." : `${f.economicsMissing} valeur${f.economicsMissing > 1 ? "s" : ""} manquante${f.economicsMissing > 1 ? "s" : ""} (coûts et seuils).` },
     { key: "mapping", label: "Mapping des identifiants confirmé", severity: "BLOCKING", ok: f.mappingStatus === "CONFIRMED", fix: "mapping", detail: MAPPING_DETAIL[f.mappingStatus] },
     { key: "prices", label: "Prix de base et minimum cohérents", severity: "BLOCKING", ok: prices === null, fix: "pricelabs", detail: prices === null ? "Prix de base, minimum et maximum cohérents." : `Incohérence : ${prices}.` },
+    { key: "shadow", label: `Observation d'au moins ${SHADOW_MIN_DAYS} jours`, severity: "BLOCKING", ok: f.shadow.status === "OK", fix: "validations", detail: shadowDetail(f.shadow) },
+    { key: "floors", label: "Planchers validés", severity: "BLOCKING", ok: f.floors.status === "OK", fix: f.floors.status === "INCOMPLETE" ? "couts" : "validations", detail: floorsDetail(f.floors) },
+    { key: "reconciliation", label: "Réservations rapprochées (échantillon)", severity: "BLOCKING", ok: f.reconciliation.status === "OK", fix: "validations", detail: reconciliationDetail(f.reconciliation) },
     { key: "superhote", label: "SuperHote rattaché", severity: "ADVISORY", ok: f.superhoteLinked, fix: "superhote", detail: f.superhoteLinked ? "Réservations lues via SuperHote." : "Non rattaché : les réservations sont lues via PriceLabs, moins fiable." },
     { key: "provisional", label: "Valeurs économiques confirmées", severity: "ADVISORY", ok: f.provisionalCount === 0, fix: "couts", detail: f.provisionalCount === 0 ? "Aucune valeur provisoire." : `${f.provisionalCount} valeur${f.provisionalCount > 1 ? "s" : ""} provisoire${f.provisionalCount > 1 ? "s" : ""} à confirmer.` },
   ];
