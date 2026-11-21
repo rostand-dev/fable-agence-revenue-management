@@ -33,7 +33,7 @@ describe("snapshots PriceLabs", () => {
   it("la première lecture crée un snapshot de prix et un de marché, avec origine, validité et qualité", async () => {
     const { prop } = await setup("snap-first");
     const rows = await snaps(prop);
-    expect(rows.map((r) => r.kind).sort()).toEqual(["MARKET", "PRICING"]);
+    expect(rows.map((r) => r.kind).sort()).toEqual(["CONFIG", "MARKET", "PRICING"]);
     const price = rows.find((r) => r.kind === "PRICING")!;
     expect(price).toMatchObject({ source: "PRICELABS", adapter: "FAKE", validFrom: TODAY, validTo: addDays(TODAY, 90), unchangedOf: null });
     expect(price.contentHash).toMatch(/^[0-9a-f]{64}$/);
@@ -48,9 +48,9 @@ describe("snapshots PriceLabs", () => {
     later(1);
     await syncPriceLabs(t.tenantId, prop);
     const all = await snaps(prop);
-    expect(all).toHaveLength(4);
+    expect(all).toHaveLength(6);
     const again = all.filter((r) => r.unchangedOf);
-    expect(again).toHaveLength(2);
+    expect(again).toHaveLength(3);
     for (const r of again) {
       expect(r.payload).toBeNull();
       expect(first.find((f) => f.kind === r.kind)!.id).toBe(r.unchangedOf);
@@ -93,7 +93,7 @@ describe("snapshots PriceLabs", () => {
     usePriceLabsAdapter(() => fake);
     await connectPriceLabs(t.tenantId, prop, KEY, "user:t");
     await selectListing(t.tenantId, prop, FAKE_LISTING_ID, "user:t");
-    expect((await snaps(prop)).map((r) => r.kind)).toEqual(["PRICING"]);
+    expect((await snaps(prop)).map((r) => r.kind).sort()).toEqual(["CONFIG", "PRICING"]);
     const state = await getSnapshotState(t.tenantId, prop);
     expect(state.latest.MARKET).toBeNull();
     expect(state.freshness.MARKET.state).toBe("MISSING");
@@ -103,7 +103,7 @@ describe("snapshots PriceLabs", () => {
     fake.scenario.failures = { prices: 500 };
     later(1);
     await syncPriceLabs(t.tenantId, prop).catch(() => {});
-    expect(await snaps(prop)).toHaveLength(2);
+    expect(await snaps(prop)).toHaveLength(3);
   });
   it("fraîcheur : à jour juste après la lecture, périmée après les seuils (prix 24 h, marché 48 h)", async () => {
     const { t, prop } = await setup("snap-fresh");
@@ -200,5 +200,55 @@ describe("snapshots : immuabilité et isolation par la base", () => {
     const { prop } = await setup("snap-cascade");
     await db.delete(schema.properties).where(eq(schema.properties.id, prop));
     expect(await snaps(prop)).toHaveLength(0);
+  });
+});
+
+describe("US-041 : configuration et contrôle de la grille", () => {
+  const audits = (tenantId: string, type: string) => db.select().from(schema.auditEvents).where(and(eq(schema.auditEvents.tenantId, tenantId), eq(schema.auditEvents.type, type)));
+  const prop_ = async (id: string) => (await db.select().from(schema.properties).where(eq(schema.properties.id, id)))[0];
+  it("la configuration lue est conservée en snapshot (sans clé), puis relue sans changement : lecture légère et aucune alerte", async () => {
+    const { t, prop } = await setup("cfg-first");
+    const cfg = (await snaps(prop)).find((r) => r.kind === "CONFIG")!;
+    expect(cfg.payload).toMatchObject({ basePriceCents: 11600, minPriceCents: 8300, maxPriceCents: 25000, pushEnabled: true, currency: "EUR" });
+    expect(JSON.stringify(cfg.payload)).not.toContain(KEY);
+    expect(cfg.qualityScore).toBe(100);
+    later(1); await syncPriceLabs(t.tenantId, prop);
+    expect((await snaps(prop)).filter((r) => r.kind === "CONFIG" && r.unchangedOf)).toHaveLength(1);
+    expect((await audits(t.tenantId, "integration.pricelabs_config_changed")).length).toBe(0);
+  });
+  it("un minimum et une synchronisation modifiés chez PriceLabs : nouveau snapshot de configuration et alerte avec avant/après", async () => {
+    const { t, prop, fake } = await setup("cfg-change");
+    fake.scenario.listings[0].min = 90; fake.scenario.listings[0].push_enabled = false;
+    later(2); await syncPriceLabs(t.tenantId, prop);
+    const cfgs = (await snaps(prop)).filter((r) => r.kind === "CONFIG");
+    expect(cfgs).toHaveLength(2); expect(cfgs[1].unchangedOf).toBeNull();
+    const [a] = await audits(t.tenantId, "integration.pricelabs_config_changed");
+    expect(a.summary).toContain("Prix minimum 83 € → 90 €");
+    expect((a.payload as any).changes.map((c: any) => c.key)).toEqual(["minPriceCents", "pushEnabled"]);
+    expect((await audits(t.tenantId, "integration.pricelabs_config_changed")).length).toBe(1);
+    // l'ancienne configuration reste lisible
+    expect(cfgs[0].payload).toMatchObject({ minPriceCents: 8300 });
+  });
+  it("le rapport de grille est mémorisé avec la lecture : nominal propre", async () => {
+    const { prop } = await setup("cfg-grid-ok");
+    expect((await prop_(prop)).pricelabs!.lastSync.gridReport).toMatchObject({ expected: 91, received: 91, missing: 0, score: 100, issues: [] });
+  });
+  it("grille partielle et minimum incohérent : la lecture réussit et les anomalies sont signalées, jamais corrigées", async () => {
+    const t = await makeTenant("cfg-bad"), prop = await makeProperty(t.tenantId, "Logement cfg-bad");
+    const fake = new FakePriceLabs(buildScenario("partial-grid", TODAY)); usePriceLabsAdapter(() => fake);
+    await connectPriceLabs(t.tenantId, prop, KEY, "user:t"); await selectListing(t.tenantId, prop, FAKE_LISTING_ID, "user:t");
+    const rep = (await prop_(prop)).pricelabs!.lastSync.gridReport;
+    expect(rep.missing).toBe(31); expect(rep.score).toBeLessThan(100);
+    expect(rep.issues.map((i: any) => i.code)).toEqual(["MISSING_DAYS", "UNKNOWN_PRICES"]);
+    const days = await db.select().from(calendarDays).where(eq(calendarDays.propertyId, prop));
+    expect(days.filter((d) => d.state === "FREE" && d.priceCents === null).length).toBe(rep.unknownPrices); // inconnu reste inconnu
+  });
+  it("la fraîcheur de la configuration est exposée avec les prix et le marché", async () => {
+    const { t, prop } = await setup("cfg-fresh");
+    let s = await getSnapshotState(t.tenantId, prop);
+    expect(s.freshness.CONFIG.state).toBe("FRESH");
+    later(25);
+    s = await getSnapshotState(t.tenantId, prop);
+    expect(s.freshness.CONFIG.state).toBe("STALE");
   });
 });

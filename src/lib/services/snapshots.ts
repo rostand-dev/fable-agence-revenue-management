@@ -10,7 +10,7 @@ import { PortfolioError } from "./portfolio";
  * Ce que PriceLabs a répondu est conservé tel quel, avec son horodatage, sa qualité et son origine (adaptateur réel ou simulé).
  * Les projections (calendar_days, market_days) pointent le snapshot dont elles viennent : toute valeur affichée se retrace jusqu'à sa lecture.
  */
-export type SnapshotKind = "PRICING" | "MARKET";
+export type SnapshotKind = "PRICING" | "MARKET" | "CONFIG";
 
 /** JSON canonique : clés triées, pour que deux réponses identiques aient la même empreinte quel que soit l'ordre des champs. */
 export function canonicalJson(v: unknown): string {
@@ -28,6 +28,17 @@ export type NewSnapshot = {
   observedAt: Date; validFrom?: string | null; validTo?: string | null;
   payload: unknown; qualityScore: number; lineage?: Record<string, unknown>;
 };
+
+/** Réponse brute du dernier snapshot d'une nature (suit `unchangedOf`). null si aucun. Sert à comparer une lecture à la précédente. */
+export async function latestPayload(tx: TenantTx, propertyId: string, kind: SnapshotKind): Promise<unknown | null> {
+  const [r] = await tx.select({ payload: schema.sourceSnapshots.payload, unchangedOf: schema.sourceSnapshots.unchangedOf }).from(schema.sourceSnapshots)
+    .where(and(eq(schema.sourceSnapshots.propertyId, propertyId), eq(schema.sourceSnapshots.kind, kind)))
+    .orderBy(desc(schema.sourceSnapshots.observedAt), desc(schema.sourceSnapshots.createdAt)).limit(1);
+  if (!r) return null;
+  if (!r.unchangedOf) return r.payload ?? null;
+  const [o] = await tx.select({ payload: schema.sourceSnapshots.payload }).from(schema.sourceSnapshots).where(eq(schema.sourceSnapshots.id, r.unchangedOf));
+  return o?.payload ?? null;
+}
 
 /** Enregistre un snapshot dans la transaction de l'appelant. Identique au précédent : ligne sans payload qui le pointe (la fraîcheur avance, rien n'est dupliqué). */
 export async function recordSnapshot(tx: TenantTx, s: NewSnapshot): Promise<{ id: string; unchanged: boolean }> {
@@ -72,10 +83,10 @@ export async function getSnapshotState(tenantId: string, propertyId: string, opt
     .where(and(eq(schema.sourceSnapshots.tenantId, tenantId), eq(schema.sourceSnapshots.propertyId, propertyId), extra))
     .orderBy(desc(schema.sourceSnapshots.observedAt), desc(schema.sourceSnapshots.createdAt));
   // le dernier de chaque nature est cherché à part (index property+kind+observed_at) : il ne sort jamais d'une fenêtre d'historique
-  const [pricing, market, rows] = await Promise.all([base(eq(schema.sourceSnapshots.kind, "PRICING")).limit(1), base(eq(schema.sourceSnapshots.kind, "MARKET")).limit(1), base().limit(limit)]);
+  const [pricing, market, config, rows] = await Promise.all([base(eq(schema.sourceSnapshots.kind, "PRICING")).limit(1), base(eq(schema.sourceSnapshots.kind, "MARKET")).limit(1), base(eq(schema.sourceSnapshots.kind, "CONFIG")).limit(1), base().limit(limit)]);
   const one = (r: (typeof pricing)[number] | undefined) => (r ? view(r, now) : null);
-  const [lp, lm] = [one(pricing[0]), one(market[0])];
-  return { latest: { PRICING: lp, MARKET: lm }, freshness: { PRICING: lp?.freshness ?? freshnessOf("PRICING", null, now), MARKET: lm?.freshness ?? freshnessOf("MARKET", null, now) }, history: rows.map((r) => view(r, now)) };
+  const [lp, lm, lc] = [one(pricing[0]), one(market[0]), one(config[0])];
+  return { latest: { PRICING: lp, MARKET: lm, CONFIG: lc }, freshness: { PRICING: lp?.freshness ?? freshnessOf("PRICING", null, now), MARKET: lm?.freshness ?? freshnessOf("MARKET", null, now), CONFIG: lc?.freshness ?? freshnessOf("CONFIG", null, now) }, history: rows.map((r) => view(r, now)) };
 }
 
 /** Réponse brute d'un snapshot (suit `unchangedOf` quand la lecture était identique à une précédente). null si inconnu ou hors du locataire. */

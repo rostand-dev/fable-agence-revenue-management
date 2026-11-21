@@ -75,6 +75,7 @@ export const AUDIT_TYPES = {
   "integration.pricelabs_listing_unlinked": { category: "INTEGRATION", label: "Annonce PriceLabs détachée" },
   "integration.pricelabs_tested": { category: "INTEGRATION", label: "Connexion PriceLabs testée" },
   "integration.pricelabs_listing_changed": { category: "INTEGRATION", label: "Annonce PriceLabs modifiée chez PriceLabs" },
+  "integration.pricelabs_config_changed": { category: "INTEGRATION", label: "Configuration PriceLabs modifiée chez PriceLabs" },
   "integration.pricelabs_disconnected": { category: "INTEGRATION", label: "PriceLabs déconnecté" },
   "integration.superhote_connected": { category: "INTEGRATION", label: "SuperHote connecté" },
   "integration.superhote_rental_linked": { category: "INTEGRATION", label: "Logement SuperHote rattaché" },

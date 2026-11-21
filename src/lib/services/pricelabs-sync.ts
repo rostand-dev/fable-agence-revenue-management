@@ -13,7 +13,8 @@ import { shReservations } from "../integrations/superhote-reservations";
 import { replaceReservations } from "./reservations-store";
 import { applyCalendarEffect, lockProperty, reconcileReservations, type ReconcileResult } from "./reservation-ingest";
 import { withTenant } from "@/db/tenant";
-import { recordSnapshot } from "./snapshots";
+import { latestPayload, recordSnapshot } from "./snapshots";
+import { analyzeGrid, diffConfig, normalizeConfig, type PricingConfiguration } from "../integrations/pricelabs-config";
 import { snapshotSuperhote } from "./superhote-read";
 
 const { properties, calendarDays, marketDays, reservations, agentRuns } = schema;
@@ -149,6 +150,9 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   // US-040 : l'annonce rattachée a-t-elle changé chez PriceLabs ? Les données du rattachement suivent PriceLabs, et le changement est journalisé.
   const prevCand = (pl.candidates ?? []).find((c: any) => c.id === pl.listingId);
   const drift = listingDrift(prevCand ? { name: prevCand.name ?? null, city: prevCand.city ?? null, bedrooms: typeof prevCand.bedrooms === "number" ? prevCand.bedrooms : null } : null, listing);
+  // US-041 : configuration lue (base, minimum, maximum, synchronisation) et contrôle de la grille brute de PriceLabs
+  const config = normalizeConfig(listing);
+  const gridReport = analyzeGrid(mapPrices(priceItem).filter((d) => d.date >= h.from && d.date <= h.to), { from: h.from, to: h.to }, config);
   const fresh = { id: listing.id, pms: listing.pms, name: listing.name, city: listing.city, bedrooms: listing.bedrooms };
   const candidates = prevCand ? (pl.candidates as any[]).map((c) => (c.id === pl.listingId ? fresh : c)) : [...(pl.candidates ?? []), fresh];
 
@@ -168,7 +172,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     estimatedCommissions: confirmed.filter((r) => r.commissionEstimated).length, unknownCommissions: confirmed.filter((r) => r.commissionCents === null).length, unknownChannel: confirmed.filter((r) => r.channel === "INCONNU").length,
     undeclaredRates: [...new Set(confirmed.filter((r) => r.commissionCents === null && r.channel !== "INCONNU").map((r) => r.channel))],
     marketDays: mk.market.filter((m) => m.marketOccupancy !== null).length, marketCategory: mk.category, marketListings: mk.listingsUsed, marketSource: mk.source, marketError,
-    listingChanges: drift, gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
+    listingChanges: drift, gridReport, gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
   };
 
   let rec: ReconcileResult | null = null;
@@ -182,6 +186,11 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
       qualityScore: rawDays.length ? (100 * rawDays.filter((d) => d.state !== "FREE" || d.priceCents !== null).length) / rawDays.length : 0, lineage });
     const marketSnap = market ? await recordSnapshot(tx, { tenantId, propertyId: p.id, kind: "MARKET", source: "PRICELABS", adapter: port.adapter, observedAt: now, validFrom: h.from, validTo: h.to, payload: market,
       qualityScore: mk.market.length ? (100 * mk.market.filter((m) => m.marketOccupancy !== null).length) / mk.market.length : 0, lineage }) : null;
+    const prevConfig = (await latestPayload(tx, p.id, "CONFIG")) as PricingConfiguration | null;
+    await recordSnapshot(tx, { tenantId, propertyId: p.id, kind: "CONFIG", source: "PRICELABS", adapter: port.adapter, observedAt: now, validFrom: h.from, validTo: h.to, payload: config,
+      qualityScore: 100 * [config.basePriceCents, config.minPriceCents, config.maxPriceCents, config.pushEnabled, config.currency].filter((v) => v !== null).length / 5, lineage });
+    const configChanges = diffConfig(prevConfig, config);
+    if (configChanges.length) await recordAudit(tx, { tenantId, actor: "system", type: "integration.pricelabs_config_changed", entity: "Property", entityId: p.id, summary: `La configuration PriceLabs de ${p.name} a changé : ${configChanges.map((c) => `${c.label} ${c.from ?? "inconnu"} → ${c.to ?? "inconnu"}`).join(" ; ")}.`, payload: { changes: configChanges } });
     await tx.delete(calendarDays).where(eq(calendarDays.propertyId, p.id));
     await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
     await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now, snapshotId: priceSnap.id })));

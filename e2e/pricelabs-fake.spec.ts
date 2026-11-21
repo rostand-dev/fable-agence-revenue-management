@@ -137,7 +137,8 @@ test("PriceLabs (faux serveur) : fraîcheur et snapshots visibles après la lect
   await expect(page.getByText("réussie")).toBeVisible();
   const box = page.getByTestId("pricelabs-snapshots");
   await expect(box).toBeVisible();
-  await expect(box.getByText("à jour", { exact: true })).toHaveCount(2);
+  await expect(box.getByText("à jour", { exact: true })).toHaveCount(3); // configuration, prix, marché
+  await expect(page.getByTestId("pricelabs-grid-report").getByText("Grille complète")).toBeVisible();
   await expect(box.getByText(/Lu le .* · PriceLabs · qualité/).first()).toBeVisible();
   await expectNoHorizontalOverflow(page, "onglet PriceLabs (fraîcheur)");
 
@@ -157,4 +158,22 @@ test("PriceLabs (faux serveur) : fraîcheur et snapshots visibles après la lect
   expect((await page.request.get(`/api/v1/snapshots/snap_inconnu`)).status()).toBe(404);
   expect((await page.request.get(`/api/v1/properties/prop_inconnu/snapshots`)).status()).toBe(404);
   expect(errors).toEqual([]);
+});
+
+// US-041 : configuration et contrôle de la grille lus depuis PriceLabs, anomalies signalées en toutes lettres.
+test("PriceLabs (faux serveur) : grille partielle, les jours manquants et prix inconnus sont signalés avec leurs dates", async ({ page }, info) => {
+  await linked(page, info, "partial-grid", "grille partielle");
+  const rep = page.getByTestId("pricelabs-grid-report");
+  await expect(rep).toBeVisible();
+  await expect(rep.getByText(/2 points à vérifier/)).toBeVisible();
+  await expect(rep.getByText(/31 jours attendus sans donnée/)).toBeVisible();
+  await expect(rep.getByText(/sans prix : inconnu, jamais remplacé par zéro/)).toBeVisible();
+  await expect(rep.getByText("à vérifier", { exact: true })).toHaveCount(2);
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (contrôle de grille)");
+});
+
+test("PriceLabs (faux serveur) : minimum au-dessus du prix de base, signalé dans le contrôle de la grille", async ({ page }, info) => {
+  await linked(page, info, "min-above-base", "minimum incohérent");
+  await expect(page.getByTestId("pricelabs-grid-report").getByText(/minimum est supérieur au prix de base/)).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (bornes incohérentes)");
 });
