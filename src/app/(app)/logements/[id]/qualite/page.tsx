@@ -32,7 +32,7 @@ export default async function Qualite({ params }: { params: Promise<{ id: string
     const fix = FIX(id, i.fix);
     return (
       <li key={i.key} data-testid={`quality-${i.key}`} data-ok={i.ok ? "true" : "false"} className="card" style={{ padding: 16, listStyle: "none" }}>
-        <div className="row-wrap" style={{ justifyContent: "space-between", alignItems: "baseline", gap: "4px 12px" }}>
+        <div className="quality-head">
           <strong>{i.label}</strong>
           <State role={i.ok ? "sain" : i.severity === "BLOCKING" ? "violation" : "attention"}>{i.ok ? "satisfait" : i.severity === "BLOCKING" ? "bloquant" : "à surveiller"}</State>
         </div>
