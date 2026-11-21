@@ -94,7 +94,6 @@ a.btn { text-decoration: none; }
 .subnav > a.subnav-link[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue); }
 @media (hover: hover) { .subnav > a.subnav-link:hover { color: var(--ink); } }
 @media (min-width: 900px) { .org-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.frieze > li { min-width: 150px; }
 .cal-day { overflow: hidden; white-space: nowrap; }
 @media (max-width: 479px) { .cal-day { padding: 4px 3px; } .cal-day .d { font-size: 9px; } .cal-day .p { font-size: 11px; } .cal-day .m { font-size: 9px; } }
 

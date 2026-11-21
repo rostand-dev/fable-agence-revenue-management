@@ -9,7 +9,7 @@ export async function expectNoHorizontalOverflow(page: Page, label = page.url())
 /**
  * Frise du cycle (`ol.frieze`) : les libellés d'étapes ne doivent ni se chevaucher, ni être trop serrés, ni déborder de leur case.
  * minGap : écart horizontal minimal, en pixels, entre deux textes voisins sur une même ligne.
- * La frise peut défiler horizontalement par conception : on mesure donc les cases entre elles, pas par rapport à l'écran.
+ * Les étapes passent à la ligne : seules les cases d'une même ligne sont comparées entre elles.
  */
 export async function friezeViolations(page: Page, minGap = 8): Promise<string[]> {
   return page.evaluate((gap) => {
@@ -29,7 +29,8 @@ export async function friezeViolations(page: Page, minGap = 8): Promise<string[]
         }
         const next = items[i + 1]; if (!next) return;
         const nb = next.getBoundingClientRect();
-        if (box.right > nb.left + 0.5) out.push(`étapes ${i + 1} et ${i + 2} : les cases se chevauchent`);
+        const sameRow = box.top < nb.bottom && nb.top < box.bottom;
+        if (sameRow && box.right > nb.left + 0.5) out.push(`étapes ${i + 1} et ${i + 2} : les cases se chevauchent`);
         for (const sel of [".fr-no", ".fr-name", ".fr-state"]) {
           const a = li.querySelector(sel), b = next.querySelector(sel); if (!a || !b) continue;
           const ra = textRect(a), rb = textRect(b);
