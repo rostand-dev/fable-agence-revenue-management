@@ -65,6 +65,8 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   deleteListingAction: { events: ["listing.deleted"] },
   deletePropertyAction: { events: ["property.deleted"] },
   renameTenantAction: { events: ["tenant.renamed"] },
+  // actions/mapping.ts (US-021)
+  confirmMappingAction: { events: ["mapping.confirmed"] },
   // actions/superhote.ts
   connectSuperhoteAction: { events: ["integration.superhote_connected"] },
   selectRentalAction: { events: ["integration.superhote_rental_linked"] },
@@ -84,5 +86,6 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/v1/properties/[id]": { events: ["property.updated", "property.deleted"] },
   "api/v1/properties/[id]/listings": { events: ["listing.created"] },
   "api/v1/properties/[id]/listings/[listingId]": { events: ["listing.updated", "listing.archived", "listing.restored", "listing.deleted"] },
+  "api/v1/properties/[id]/mapping": { events: ["mapping.confirmed"] },
   "api/session/end": { exempt: "Ferme la session après inactivité ; aucune donnée métier." },
 };

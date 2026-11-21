@@ -98,7 +98,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {!hasCal && !onboarding && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
 
       {sp.lance && <Banner role="sain" title="Observation lancée" style={{ marginBottom: 16 }}>Le dossier est complet : l'équipe lit vos données et vous proposera ses premières situations, sans rien appliquer sans votre accord.</Banner>}
-      {!p.isDemo && p.status !== "ONBOARDING" && <p className="row-wrap" style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/modifier`}><Icon name="sliders" />Modifier le dossier</Link><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer</Link></p>}
+      {!p.isDemo && p.status !== "ONBOARDING" && <p className="row-wrap" style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/modifier`}><Icon name="sliders" />Modifier le dossier</Link><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/mapping`}><Icon name="link" />Mapping des identifiants</Link><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer</Link></p>}
       <div className="subnav" role="tablist" aria-label="Sections du logement" style={{ marginBottom: 22 }}>
         {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={`/logements/${p.id}?tab=${k}`} scroll={false} className="subnav-link">{l}</Link>)}
       </div>
@@ -147,6 +147,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
         </>
       )}
 
+      {!p.isDemo && (tab === "annonces" || tab === "pricelabs" || tab === "superhote") && <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/mapping`}><Icon name="link" />Mapping des identifiants</Link></p>}
       {tab === "annonces" && <ListingsPanel propertyId={p.id} listings={listingRows} editable={!p.isDemo} />}
 
       {tab === "calendrier" && (hasCal ? (
