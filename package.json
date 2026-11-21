@@ -14,7 +14,8 @@
     "docs:capabilities": "tsx scripts/generate-capabilities-doc.ts",
     "docs:stacking": "tsx scripts/generate-stacking-doc.ts",
     "test:db": "vitest run -c vitest.db.config.mts",
-    "test:all": "npm test && npm run test:db"
+    "test:all": "npm test && npm run test:db",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
@@ -25,6 +26,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@types/node": "^26.6.6",
     "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",

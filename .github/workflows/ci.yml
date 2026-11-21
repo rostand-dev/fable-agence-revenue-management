@@ -91,3 +91,62 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+
+  # Tests de bout en bout dans un vrai navigateur (Playwright), bureau et mobile (390 px et 360 px), sur l'application construite
+  # et lancée dans la CI avec une base PostgreSQL jetable et le compte de démo. Aucun secret : tout est généré pour la CI.
+  # Le rapport HTML, les captures et les traces sont joints à l'exécution (onglet « Artifacts »).
+  tests-e2e:
+    name: Tests E2E (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: nuitsignal_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nuitsignal_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Base jetable du service ci-dessus.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nuitsignal_e2e
+      # Clé de chiffrement des clés API : valeur factice, propre à la CI (aucune donnée réelle n'est stockée).
+      APP_SECRET: ci-e2e-secret-0123456789abcdef
+      # Adresse publique fictive : le compte de démo n'est créé que si son domaine correspond à DEMO_ACCOUNT_ALLOWED_HOST.
+      APP_URL: http://e2e.nuit-signal.test:3000
+      DEMO_ACCOUNT_ENABLED: "true"
+      DEMO_ACCOUNT_ALLOWED_HOST: e2e.nuit-signal.test
+      DEMO_ACCOUNT_EMAIL: demo-e2e@example.test
+      DEMO_ACCOUNT_PASSWORD: ci-e2e-demo-passw0rd
+      # Création de compte immédiate, sans e-mail de confirmation (aucun envoi d'e-mail en CI).
+      SIGNUP_EMAIL_CONFIRMATION: "false"
+      # Identifiants que Playwright saisit pour se connecter : ceux du compte de démo ci-dessus.
+      E2E_EMAIL: demo-e2e@example.test
+      E2E_PASSWORD: ci-e2e-demo-passw0rd
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
