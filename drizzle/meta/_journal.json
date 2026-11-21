@@ -113,6 +113,13 @@
       "when": 1795236051246,
       "tag": "0015_property_mapping",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795237242462,
+      "tag": "0016_economic_versions",
+      "breakpoints": true
     }
   ]
 }

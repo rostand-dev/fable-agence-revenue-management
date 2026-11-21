@@ -10,6 +10,9 @@ import { missingEconomics } from "@/lib/engine/economics";
 import { runDailyReview } from "@/lib/services/review";
 import { syncPriceLabs } from "@/lib/services/pricelabs-sync";
 import { advance } from "@/lib/onboarding";
+import { diffEconomics } from "@/lib/economics-versions";
+import type { EconomicModel } from "@/lib/engine/types";
+import { recordEconomicsVersion } from "@/lib/services/economics-versions";
 
 const KEYS = ["airbnbPct", "bookingPct", "bookingFeePct", "cleaningFee", "cleaningCost", "linenMode", "linenCost", "nightMode", "energyYear", "waterYear", "consumablesStay", "nightsYear", "avgStay", "variableDirect", "hard", "rentCounted", "hardMode", "rent", "coop", "insurance", "subs", "taxes", "other", "nightsMonth", "goalMonth", "taxMode", "taxYear", "grossYear", "taxPct"];
 
@@ -33,11 +36,18 @@ export async function saveCostsAction(propertyId: string, raw: CostAnswers, fina
   // Pendant le parcours de création, le logement reste en onboarding : il n'est lancé qu'à l'étape « Vérification ».
   // Un logement déjà lancé n'est jamais rétrogradé : sans modèle complet, il n'y a simplement pas de revue (bannière « modèle incomplet »).
   const funnel = p.status === "ONBOARDING";
-  await db.update(schema.properties).set({
-    economics: model, status: p.status,
-    ...(funnel ? { onboarding: { ...advance(p.onboarding, "couts", final ? "next" : "stay"), costQ: final ? 0 : Math.min(7, Math.max(0, Math.trunc(question ?? 0))) } } : {}),
-    strategyVersion: changed && p.status !== "ONBOARDING" ? p.strategyVersion + 1 : p.strategyVersion,
-  }).where(eq(schema.properties.id, p.id));
+  // Le modèle et sa version s'écrivent ensemble. Pendant la création, une sauvegarde d'étape n'est pas versionnée : la première version naît à la validation.
+  // Le modèle économique a sa propre numérotation (US-022) ; la version de la stratégie ne bouge plus quand il change.
+  await db.transaction(async (tx) => {
+    await tx.update(schema.properties).set({
+      economics: model, status: p.status,
+      ...(funnel ? { onboarding: { ...advance(p.onboarding, "couts", final ? "next" : "stay"), costQ: final ? 0 : Math.min(7, Math.max(0, Math.trunc(question ?? 0))) } } : {}),
+    }).where(eq(schema.properties.id, p.id));
+    if (changed && (final || !funnel)) {
+      const v = await recordEconomicsVersion(tx, { tenantId: u.tenantId, propertyId: p.id, previous: p.economicsVersion > 0 ? (p.economics as EconomicModel) : null, next: model, createdBy: u.id });
+      if (v) await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.economics_versioned", entity: "Property", entityId: p.id, summary: `${u.name} enregistre la version ${v} du modèle économique de ${p.name}.`, payload: { version: v, changes: diffEconomics(p.economicsVersion > 0 ? (p.economics as EconomicModel) : null, model).map((c) => c.key) } });
+    }
+  });
   if (final) {
     const prov = model.provisional ?? [];
     await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "costs", mode: "DETERMINISTIC", summary: `${p.name} : coûts et seuils validés, planchers calculés${prov.length ? `. ${prov.length} valeur${prov.length > 1 ? "s" : ""} provisoire${prov.length > 1 ? "s" : ""} à confirmer : ${prov.join(", ")}` : ""}.` });

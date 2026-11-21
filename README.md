@@ -174,6 +174,10 @@ Page `/logements/{id}/mapping` : pour chaque logement, ce que désignent PriceLa
 
 API : `GET` et `POST /api/v1/properties/{id}/mapping` (session). Migration `0015_property_mapping` : une colonne `properties.mapping`, idempotente. Aucune nouvelle variable d'environnement.
 
+## Modèle économique versionné (US-022)
+
+Chaque changement de commission, de frais de paiement, de coût, de seuil ou de taxe de séjour crée une **version** (`economic_model_versions`) : numéro, date, auteur, et la liste de ce qui a changé (avant → après, « inconnue » quand la valeur n'est pas renseignée). Écran `/logements/{id}/versions-economie`, API `GET /api/v1/properties/{id}/economics/versions`. Une version n'est jamais modifiée ni supprimée : le rôle applicatif de la base n'a que `SELECT` et `INSERT` sur la table (isolation par tenant également). Pendant la création d'un logement, les sauvegardes d'étape ne sont pas versionnées : la version 1 naît à la validation des coûts. Le numéro de version de la **stratégie** ne bouge plus quand le modèle économique change. Migration `0016_economic_versions` idempotente : elle reprend chaque logement réel déjà renseigné en version 1 (auteur « système »). Aucune nouvelle variable d'environnement.
+
 ## Développement
 
 ```bash
