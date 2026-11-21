@@ -160,6 +160,14 @@ Le jeton API se saisit par logement, à la création du logement (étape 2 du pa
 - **Journal d'audit (US-012)** : ajout seul, garanti par des déclencheurs PostgreSQL ; chaque action serveur est déclarée dans `src/lib/audit/coverage.ts` (un test échoue sinon).
 - **Fonctions activées (US-013)** : Réglages → « Fonctions activées ». Un drapeau ne peut que couper (écriture automatique par API, lectures planifiées, revue automatique), pour tout l'espace, un logement ou une intégration ; chaque changement est journalisé.
 
+## Portefeuille : propriétaires, logements, annonces (US-020)
+
+- **Entités** : un espace (`tenants`) regroupe des **propriétaires** (`owners`, dont un « par défaut », créé automatiquement et jamais supprimable), des **logements** (`properties`, rattachés à un propriétaire) et des **annonces** (`listings`, une par canal Airbnb, Booking.com ou direct). La migration `0014` reprend les espaces existants : propriétaire par défaut créé, logements rattachés.
+- **Écrans** : Configuration → Propriétaires ; fiche d'un logement → onglet Annonces ; fiche → « Supprimer » (le nom du logement est ressaisi) ; Réglages → nom de l'espace ; étape « Le logement » du parcours (le choix du propriétaire n'apparaît que s'il y en a plusieurs).
+- **Règles** : un identifiant d'annonce ne désigne qu'un seul logement de l'espace ; au plus une annonce *active* par canal Airbnb ou Booking ; l'identifiant Airbnb se déduit de l'adresse ; un logement de démonstration ne se modifie ni ne se supprime ; la suppression d'un logement est refusée tant qu'une action de revenu est en cours. Tout est journalisé. La suppression d'un espace entier relève de l'US-123 (RGPD).
+- **API REST** (session du cockpit, jamais de clé ni de réglage interne dans les réponses ; erreurs `{ error: { code, message } }`) : `GET|POST /api/v1/owners`, `PATCH|DELETE /api/v1/owners/{id}`, `GET|POST /api/v1/properties`, `GET|PATCH|DELETE /api/v1/properties/{id}` (DELETE : `{ "confirmName": "<nom exact>" }`), `GET|POST /api/v1/properties/{id}/listings`, `PATCH|DELETE /api/v1/properties/{id}/listings/{listingId}` (PATCH : `externalId`, `url`, `title`, `status` ACTIVE|ARCHIVED). Une requête qui modifie depuis une autre origine est refusée.
+- Code : règles pures `src/lib/portfolio.ts`, services `src/lib/services/portfolio.ts` (utilisés par les écrans et l'API), actions `src/app/actions/portfolio.ts`, routes `src/app/api/v1/`.
+
 ## Développement
 
 ```bash

@@ -9,6 +9,7 @@ import { ActionForm, Submit } from "./forms";
 import { Say } from "./Funnel";
 import { Icon } from "./Icon";
 import { MarkupsEditor } from "./MarkupsEditor";
+import { OwnerSelect } from "./OwnerSelect";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { SuperhoteGuide } from "./SuperhoteGuide";
 import { Banner, Recap, Vq } from "./ui";
@@ -40,7 +41,7 @@ function Fld({ name, label, value, req, help, full, numeric }: { name: string; l
 const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
 
 /** Étape 1. Sans `p`, le dossier n'existe pas encore : il est créé au premier enregistrement. */
-export function LogementStep({ p }: { p?: { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; positioning?: string; objective?: string } }) {
+export function LogementStep({ p, owners = [], ownerId }: { p?: { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; positioning?: string; objective?: string }; owners?: { id: string; name: string; isDefault: boolean }[]; ownerId?: string | null }) {
   return (
     <>
       <div className="fn-head"><h1>Parlez-nous du logement</h1><p>Nom, ville et type suffisent pour continuer. Le reste peut rester « inconnu » : rien n'est jamais remplacé par zéro.</p></div>
@@ -49,6 +50,7 @@ export function LogementStep({ p }: { p?: { id: string; name: string; city: stri
         <button type="submit" name="intent" value="next" className="sr-only" tabIndex={-1} aria-hidden="true">Continuer</button>
         <div className="fn-card">
           <div className="form-grid">
+            <OwnerSelect owners={owners} value={ownerId} />
             <Fld name="name" label="Nom du logement" value={p && p.name !== "Logement sans nom" ? p.name : ""} req />
             <Fld name="city" label="Ville" value={p?.city} req />
             <Fld name="kind" label="Type (T2, T3, maison…)" value={p?.kind} req />

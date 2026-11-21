@@ -1,4 +1,5 @@
 import type { OnboardingState } from "@/lib/onboarding";
+import { sql } from "drizzle-orm";
 import { pgTable, text, integer, boolean, timestamp, jsonb, date, real, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
@@ -43,9 +44,23 @@ export const rememberTokens = pgTable("remember_tokens", {
   createdAt: created(),
 }, (t) => [uniqueIndex("remember_tokens_hash").on(t.tokenHash), index("remember_tokens_user").on(t.userId), index("remember_tokens_family").on(t.familyId)]);
 
+/** Propriétaire du bien (identité commerciale, US-020) : un espace peut en regrouper plusieurs ; exactement un est « par défaut » (il reçoit les logements créés sans choix). */
+export const owners = pgTable("owners", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  email: text("email"),
+  notes: text("notes"),
+  isDefault: boolean("is_default").notNull().default(false),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("owners_tenant").on(t.tenantId), uniqueIndex("owners_one_default").on(t.tenantId).where(sql`is_default`), uniqueIndex("owners_name_ci").on(t.tenantId, sql`lower(${t.name})`)]);
+
 export const properties = pgTable("properties", {
   id: id(),
   tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  /** Propriétaire du bien (US-020). Un propriétaire qui possède des logements ne peut pas être supprimé. */
+  ownerId: text("owner_id").references(() => owners.id),
   name: text("name").notNull(),
   city: text("city").notNull(),
   kind: text("kind").notNull(),
@@ -76,6 +91,29 @@ export const properties = pgTable("properties", {
   nextReviewAt: ts("next_review_at"),
   createdAt: created(),
 }, (t) => [index("properties_tenant").on(t.tenantId)]);
+
+/**
+ * Annonce d'un logement sur un canal (US-020) : Airbnb, Booking.com ou direct. L'identifiant du canal (`externalId`) est facultatif ;
+ * une fois renseigné, il ne peut désigner qu'un seul logement de l'espace. Un logement a au plus une annonce ACTIVE par canal Airbnb ou Booking.
+ */
+export const listings = pgTable("listings", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  /** AIRBNB | BOOKING | DIRECT */
+  channel: text("channel").notNull(),
+  externalId: text("external_id"),
+  url: text("url"),
+  title: text("title"),
+  /** ACTIVE | ARCHIVED */
+  status: text("status").notNull().default("ACTIVE"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  index("listings_property").on(t.tenantId, t.propertyId),
+  uniqueIndex("listings_channel_external").on(t.tenantId, t.channel, t.externalId).where(sql`external_id is not null`),
+  uniqueIndex("listings_one_active_per_channel").on(t.propertyId, t.channel).where(sql`status = 'ACTIVE' and channel in ('AIRBNB', 'BOOKING')`),
+]);
 
 export const reservations = pgTable("reservations", {
   id: id(),

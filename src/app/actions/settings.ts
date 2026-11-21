@@ -62,14 +62,21 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   if (err) return { error: err };
   const mk = readMarkups(fd);
   if (!mk.ok) return { error: mk.error };
+  // propriétaire du bien : de cet espace, sinon refus ; vide = inchangé
+  const requestedOwner = txt(fd, "ownerId");
+  if (requestedOwner) {
+    const [o] = await db.select({ id: schema.owners.id }).from(schema.owners).where(and(eq(schema.owners.id, requestedOwner), eq(schema.owners.tenantId, u.tenantId)));
+    if (!o) return { error: "Ce propriétaire n'existe pas dans votre espace." };
+  }
   const old = p.strategy as Strategy;
   const strategy: Strategy = { ...old, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: old.maxDiscountStackPct ?? 20, maxPriceChangePct: old.maxPriceChangePct ?? 5 };
   const name = v.name || p.name || "Logement sans nom";
   await db.update(schema.properties).set({
-    name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, strategy, channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
+    name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, ...(requestedOwner ? { ownerId: requestedOwner } : {}), strategy, channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
   }).where(eq(schema.properties.id, p.id));
   const next: Record<string, unknown> = { name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity };
   const changed: string[] = Object.keys(next).filter((k) => ((p as Record<string, unknown>)[k] ?? null) !== (next[k] ?? null));
+  if (requestedOwner && requestedOwner !== p.ownerId) changed.push("ownerId");
   if (old.minStay !== strategy.minStay) changed.push("minStay");
   if (JSON.stringify(p.channelMarkups) !== JSON.stringify(mk.markups)) changed.push("channelMarkups");
   await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: draft ? "property.draft_saved" : "property.updated", entity: "Property", entityId: p.id, summary: `${u.name} ${draft ? "enregistre sa saisie pour" : "met à jour le dossier de"} ${name}.`, payload: { changed } });

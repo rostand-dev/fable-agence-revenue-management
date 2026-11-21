@@ -130,3 +130,8 @@ export function floorGrid(m: EconomicModel, los: number[] = [2, 7, 28]) {
     out.push({ channel: c, nights: n, hardCents: hardFloorCents(m, c, n), strategyCents: strategyFloorCents(m, c, n) });
   return out;
 }
+
+/** Modèle économique vide : tout est inconnu (`null`), rien n'est remplacé par zéro. Point de départ d'un logement qu'on crée. */
+export function emptyEconomics(): EconomicModel {
+  return { channels: {}, cleaningFeeChargedCents: null, cleaningCostCents: null, linenCostCents: null, nightlyVariableCostCents: null, hardContributionPerNightCents: null, strategyContributionPerNightCents: null, targetContributionPerNightCents: null, origin: "DECLARED", touristTaxPct: null };
+}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { logoutEverywhereAction } from "@/app/actions/auth";
 import { resetDemoAction } from "@/app/actions/decisions";
 import { saveAgentModelsAction } from "@/app/actions/llm";
+import { renameTenantAction } from "@/app/actions/portfolio";
 import { renameAgentsAction } from "@/app/actions/settings";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
 import { FlagsPanel } from "@/components/FlagsPanel";
@@ -32,6 +33,14 @@ export default async function Reglages() {
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Compte</h2>
         <Recap rows={[["Nom", user.name], ["Adresse e-mail", user.email, true], ["Rôle", "Propriétaire — seule autorité d'approbation"]]} />
+        <ActionForm action={renameTenantAction} style={{ marginTop: 18, maxWidth: 520 }}>
+          <div className="field">
+            <label htmlFor="tenantName">Nom de l'espace</label>
+            <input id="tenantName" name="tenantName" type="text" required minLength={2} maxLength={80} defaultValue={user.tenantName} autoComplete="off" />
+            <span className="help">Le nom sous lequel votre espace apparaît. La liste des personnes ou sociétés propriétaires des biens se gère dans <Link href="/proprietaires">Propriétaires</Link>.</span>
+          </div>
+          <div style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer le nom</Submit></div>
+        </ActionForm>
       </section>
       <section className="section" id="fonctions">
         <h2>Fonctions activées</h2>

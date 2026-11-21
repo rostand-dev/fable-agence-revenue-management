@@ -99,6 +99,13 @@
       "when": 1795220976975,
       "tag": "0013_pb13_minimum_pricelabs",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795234346321,
+      "tag": "0014_owners_listings",
+      "breakpoints": true
     }
   ]
 }

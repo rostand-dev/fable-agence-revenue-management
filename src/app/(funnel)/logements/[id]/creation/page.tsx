@@ -15,6 +15,7 @@ import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { funnelView, isStep, launchBlockers, resumeStep, type FunnelFacts, type StepKey } from "@/lib/onboarding";
 import type { ChannelMarkup } from "@/lib/pricing/published";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
+import { listOwners } from "@/lib/services/portfolio";
 import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
 
 export const metadata = { title: "Création d'un logement" };
@@ -42,7 +43,7 @@ export default async function Creation({ params, searchParams }: { params: Promi
 
   let body: React.ReactNode;
   if (step === "logement") {
-    body = <LogementStep p={{ id: p.id, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, positioning: strat.positioning ?? p.profile?.positioning ?? "", objective: strat.objective ?? "" }} />;
+    body = <LogementStep p={{ id: p.id, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, positioning: strat.positioning ?? p.profile?.positioning ?? "", objective: strat.objective ?? "" }} owners={await listOwners(user.tenantId)} ownerId={p.ownerId} />;
   } else if (step === "superhote") {
     const taken = await rentalLinkedElsewhere(user.tenantId, p.id);
     const cands = ((p.superhote?.candidates ?? []) as any[]).map((c) => ({ id: String(c.id), label: c.name, detail: [c.city, c.capacity ? `${c.capacity} voyageurs` : null, `identifiant ${c.id}`].filter(Boolean).join(" · "), taken: taken.get(String(c.id)) }));

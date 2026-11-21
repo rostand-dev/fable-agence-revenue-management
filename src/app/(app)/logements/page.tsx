@@ -19,9 +19,9 @@ import { FUNNEL_STEPS, resumeStep, stepIndex, stepLabel } from "@/lib/onboarding
 
 export const metadata = { title: "Logements" };
 
-export default async function Logements({ searchParams }: { searchParams: Promise<{ enregistre?: string }> }) {
+export default async function Logements({ searchParams }: { searchParams: Promise<{ enregistre?: string; supprime?: string }> }) {
   const user = await requireUser();
-  const saved = !!(await searchParams).enregistre;
+  const sp = await searchParams, saved = !!sp.enregistre, deleted = !!sp.supprime;
   const [props, opps, resas] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN"]), db.select().from(schema.reservations).where(eq(schema.reservations.tenantId, user.tenantId))]);
   const months = lastMonths(todayISO(), 3);
   return (
@@ -30,6 +30,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
         <h1>Vos logements</h1>
         <p>Chaque logement a sa propre stratégie, ses propres planchers et son propre dossier. Les agents, eux, sont les mêmes d'un logement à l'autre.</p>
       </div>
+      {deleted && <Banner role="sain" title="Logement supprimé" style={{ marginBottom: 16 }}>Le logement et ses données ont été supprimés. Le journal d'audit en garde la trace.</Banner>}
       {saved && <Banner role="sain" title="Saisie enregistrée" style={{ marginBottom: 16 }}>Vous reprendrez la création exactement là où vous vous êtes arrêtée, avec « Reprendre la création ».</Banner>}
       <p style={{ margin: "0 0 18px" }}><Link className="btn btn-primary" href="/logements/nouveau"><Icon name="plus" />Ajouter un logement</Link></p>
       <div className="stack">
