@@ -67,3 +67,17 @@ Limite supplémentaire : la fraîcheur affichée pour les prix est celle de la l
 - Nouvel évènement d'audit : `integration.pricelabs_config_changed`. Aucune migration, aucune variable d'environnement nouvelle (la colonne `kind` accepte la nouvelle valeur).
 
 **Tests** : unitaires (`pricelabs-config.test.ts` : normalisation, différences, cas de grille dont doublons, bornes cumulées et scénarios fictifs), base (création et relecture légère du snapshot de configuration, changement avec avant/après, rapport mémorisé, grille partielle sans correction, fraîcheur), E2E faux serveur (grille complète, grille partielle, bornes incohérentes ; bureau, mobile 390 et 360).
+
+## US-042 — Import marché/compset selon capacités
+
+**Ce qui change**
+- **Capacité de marché constatée** (`pricelabs-market.ts`, module pur) à chaque lecture, mémorisée dans `lastSync.marketReport` et affichée dans l'onglet PriceLabs (« Contrôle du marché », état en toutes lettres) : *disponible* (catégorie trouvée, compset d'au moins 10 annonces, occupation connue pour 80 % des jours), *limité* (compset réduit, couverture d'occupation insuffisante, aucun prix de marché), *aucune donnée* (PriceLabs ne renvoie rien ou rien d'exploitable) ou *illisible* (la lecture a échoué).
+- **Le marché ne bloque jamais la lecture** : prix, configuration et réservations sont importés quoi qu'il arrive. Un jour de marché non fourni reste **inconnu**, jamais supposé.
+- **Panne du marché après une lecture réussie** : les jours de marché précédents sont **conservés avec leur date de lecture d'origine** (au lieu d'être remplacés par des « inconnus »), seuls les jours passés sont retirés ; aucun faux snapshot de marché n'est écrit, et la fraîcheur du marché passe naturellement à « périmé ». Marché de nouveau lisible : les jours sont remplacés par la nouvelle lecture. Marché illisible dès la première lecture : aucune ligne.
+- **Les jours conservés ne servent plus au-delà de 48 h** : le moteur (`loadEngineInput`) traite un marché dont la lecture date de plus de 48 h (seuil de fraîcheur MARKET) comme **inconnu**, sauf pour un logement de démonstration. Le nombre de jours conservés affiché est recompté sous verrou, hors jours sans occupation. Deux pannes consécutives gardent la date de la lecture d'origine.
+- **Réponse de marché vide ou sans catégorie** (*aucune donnée*) : ce n'est pas une panne, elle **remplace** l'existant par des jours inconnus.
+- Seuil de couverture jugé sur la valeur exacte (79,5 % = limité).
+- Le compset (taille, catégorie de chambres, source) est repris du snapshot `MARKET` de l'US-043.
+- Aucune migration, aucune variable d'environnement nouvelle.
+
+**Tests** : unitaires (`pricelabs-market.test.ts` : 10 cas de capacité, seuils de compset et de couverture, scénarios fictifs), base (nominal, compset réduit, panne avec conservation datée et sans faux snapshot, panne dès la première lecture, jours passés, retour à la normale, deux pannes de suite, réponse vide, marché de plus de 48 h ignoré par le moteur), E2E faux serveur (marché complet, compset réduit, marché illisible ; bureau, mobile 390 et 360).

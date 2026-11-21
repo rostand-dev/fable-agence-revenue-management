@@ -1,11 +1,12 @@
 import { and, asc, eq } from "drizzle-orm";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, schema } from "@/db";
 import { makeProperty, makeTenant } from "@/test/db";
 import { addDays } from "../dates";
 import { usePriceLabsAdapter } from "../integrations/pricelabs";
 import { FakePriceLabs, ReplayPriceLabs } from "../integrations/pricelabs-fake";
 import { buildScenario, FAKE_LISTING_ID, type ScenarioName } from "../integrations/pricelabs-scenarios";
+import { loadEngineInput } from "./review";
 import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, SyncError, syncPriceLabs, testPriceLabsConnection } from "./pricelabs-sync";
 import path from "node:path";
 
@@ -241,5 +242,98 @@ describe("US-040 : test de connexion et changements d'annonce", () => {
     fake.scenario.failures = { prices: 500 };
     await syncPriceLabs(t.tenantId, prop).catch(() => {});
     expect((await getProp(prop)).pricelabs!.lastCheck).toMatchObject({ ok: true });
+  });
+});
+
+describe("US-042 : marché et compset selon les capacités", () => {
+  beforeEach(() => vi.setSystemTime(new Date(TODAY + "T10:00:00Z"))); // chaque test repart de la même heure
+  it("nominal : marché disponible, rapport mémorisé", async () => {
+    const { t, prop } = await setup("mkt-ok");
+    await link(t, prop);
+    expect((await getProp(prop)).pricelabs!.lastSync.marketReport).toMatchObject({ capability: "AVAILABLE", withOccupancy: 91, listingsUsed: 120, issues: [] });
+  });
+  it("compset réduit : capacité limitée, jours de marché tout de même importés", async () => {
+    const { t, prop } = await setup("mkt-sparse", "market-sparse");
+    await link(t, prop);
+    const r = (await getProp(prop)).pricelabs!.lastSync.marketReport;
+    expect(r.capability).toBe("LIMITED"); expect(r.issues.map((i: any) => i.code)).toContain("SMALL_COMPSET");
+    expect((await mkt(prop)).length).toBeGreaterThan(0);
+  });
+  it("marché illisible après une lecture réussie : les jours précédents sont conservés, datés, et rien n'est inventé", async () => {
+    const { t, prop, fake } = await setup("mkt-keep");
+    await link(t, prop);
+    const before = await mkt(prop);
+    expect(before).toHaveLength(91);
+    fake.scenario.failures = { neighborhood: 500 };
+    vi.setSystemTime(new Date("2026-11-21T20:00:00Z"));
+    await syncPriceLabs(t.tenantId, prop);
+    const after = await mkt(prop);
+    expect(after).toHaveLength(91);
+    expect(after.map((m) => [m.date, m.marketOccupancy, m.marketAdrCents, m.snapshotId])).toEqual(before.map((m) => [m.date, m.marketOccupancy, m.marketAdrCents, m.snapshotId]));
+    expect(after[0].observedAt.getTime()).toBe(before[0].observedAt.getTime()); // date de la lecture d'origine, pas celle de la relecture
+    const p = await getProp(prop);
+    expect(p.pricelabs!.lastSync).toMatchObject({ ok: true, marketDays: 91 });
+    expect(p.pricelabs!.lastSync.marketReport).toMatchObject({ capability: "UNAVAILABLE", keptDays: 91 });
+    expect(p.pricelabs!.lastSync.marketError).toBeTruthy();
+    const snaps = await db.select().from(schema.sourceSnapshots).where(and(eq(schema.sourceSnapshots.propertyId, prop), eq(schema.sourceSnapshots.kind, "MARKET")));
+    expect(snaps).toHaveLength(1); // pas de faux snapshot de marché
+  });
+  it("marché illisible dès la première lecture : aucune ligne, signaux inconnus", async () => {
+    const { t, prop } = await setup("mkt-never", "market-down");
+    await link(t, prop);
+    expect(await mkt(prop)).toHaveLength(0);
+    expect((await getProp(prop)).pricelabs!.lastSync.marketReport).toMatchObject({ capability: "UNAVAILABLE", keptDays: 0 });
+  });
+  it("les jours de marché passés ne sont pas conservés indéfiniment", async () => {
+    const { t, prop, fake } = await setup("mkt-past");
+    await link(t, prop);
+    fake.scenario.failures = { neighborhood: 500 };
+    vi.setSystemTime(new Date(addDays(TODAY, 3) + "T10:00:00Z"));
+    await syncPriceLabs(t.tenantId, prop);
+    const rows = await mkt(prop);
+    expect(rows.every((m) => m.date >= addDays(TODAY, 3))).toBe(true);
+    expect(rows.length).toBeLessThan(91);
+  });
+  it("marché de nouveau lisible : les jours sont remplacés par la nouvelle lecture", async () => {
+    const { t, prop, fake } = await setup("mkt-back");
+    await link(t, prop);
+    fake.scenario.failures = { neighborhood: 500 };
+    await syncPriceLabs(t.tenantId, prop);
+    fake.scenario.failures = {};
+    vi.setSystemTime(new Date("2026-11-21T22:00:00Z"));
+    await syncPriceLabs(t.tenantId, prop);
+    const p = await getProp(prop);
+    expect(p.pricelabs!.lastSync.marketReport.capability).toBe("AVAILABLE");
+    expect((await mkt(prop)).every((m) => m.observedAt.getTime() === new Date("2026-11-21T22:00:00Z").getTime())).toBe(true);
+  });
+  it("deux pannes de suite : les jours conservés gardent la date de la lecture d'origine", async () => {
+    const { t, prop, fake } = await setup("mkt-twice");
+    await link(t, prop);
+    const origin = (await mkt(prop))[0].observedAt.getTime();
+    fake.scenario.failures = { neighborhood: 500 };
+    for (const h of [5, 10]) { vi.setSystemTime(new Date(new Date(TODAY + "T10:00:00Z").getTime() + h * 3_600_000)); await syncPriceLabs(t.tenantId, prop); }
+    expect((await mkt(prop))[0].observedAt.getTime()).toBe(origin);
+    expect((await getProp(prop)).pricelabs!.lastSync.marketReport).toMatchObject({ capability: "UNAVAILABLE", keptDays: 91 });
+  });
+  it("réponse de marché vide (sans données) : elle remplace l'existant par des jours inconnus, c'est dit et non une panne", async () => {
+    const { t, prop, fake } = await setup("mkt-empty");
+    await link(t, prop);
+    fake.scenario.neighborhood = Object.fromEntries(Object.keys(fake.scenario.neighborhood).map((k) => [k, null]));
+    vi.setSystemTime(new Date(TODAY + "T12:00:00Z"));
+    await syncPriceLabs(t.tenantId, prop);
+    const p = await getProp(prop);
+    expect(p.pricelabs!.lastSync.marketReport).toMatchObject({ capability: "NONE", keptDays: 0 });
+    expect((await mkt(prop)).every((m) => m.marketOccupancy === null && m.marketAdrCents === null)).toBe(true);
+  });
+  it("le moteur ignore un marché de plus de 48 h, même conservé après une panne ; un marché frais est utilisé", async () => {
+    const { t, prop, fake } = await setup("mkt-engine");
+    await link(t, prop);
+    const at = (h: number) => new Date(new Date(TODAY + "T10:00:00Z").getTime() + h * 3_600_000);
+    const known = async (now: Date) => (await loadEngineInput(t.tenantId, prop, TODAY, now))!.days.filter((d) => d.marketOccupancy !== null).length;
+    expect(await known(at(1))).toBeGreaterThan(0);
+    fake.scenario.failures = { neighborhood: 500 };
+    vi.setSystemTime(at(30)); await syncPriceLabs(t.tenantId, prop);
+    expect(await known(at(30))).toBeGreaterThan(0); // 30 h : encore frais (seuil 48 h)
+    expect(await known(at(49))).toBe(0); // plus de 48 h depuis la lecture d'origine : inconnu
   });
 });

@@ -83,6 +83,32 @@ function GridReportView({ report }: { report: Record<string, any> }) {
   );
 }
 
+const CAP_WORD = { AVAILABLE: "disponible", LIMITED: "limité", NONE: "aucune donnée", UNAVAILABLE: "illisible" } as const;
+const CAP_ROLE = { AVAILABLE: "sain", LIMITED: "attention", NONE: "attention", UNAVAILABLE: "violation" } as const;
+
+/** Ce que PriceLabs a réellement fourni pour le marché : capacité, compset, couverture, limites (état en toutes lettres). */
+function MarketReportView({ report }: { report: Record<string, any> }) {
+  const cap = report.capability as keyof typeof CAP_WORD;
+  return (
+    <div className="stack" style={{ gap: 6 }} data-testid="pricelabs-market-report">
+      <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Contrôle du marché</h2>
+      <p className="section-note" style={{ margin: 0 }}>
+        <State role={CAP_ROLE[cap] ?? "neutre"}>{CAP_WORD[cap] ?? cap}</State>{" "}
+        {cap === "UNAVAILABLE" || cap === "NONE" ? "Les signaux de marché restent inconnus." : <>Occupation connue pour {report.withOccupancy} jour{report.withOccupancy > 1 ? "s" : ""} sur {report.expected}{report.listingsUsed !== null ? ` · compset de ${report.listingsUsed} annonce${report.listingsUsed > 1 ? "s" : ""}` : ""}.</>}
+      </p>
+      {report.issues?.length > 0 && (
+        <ul role="list" style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 6 }}>
+          {report.issues.map((i: any) => (
+            <li key={i.code} style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+              <State role={i.severity === "WARN" ? "attention" : "neutre"}>{i.severity === "WARN" ? "à vérifier" : "information"}</State> {i.message}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Connexion PriceLabs d'un logement : saisie de la clé, choix de l'annonce, état de la dernière lecture. */
 export type NoChannel = { externalId: string; checkIn: string; checkOut: string; nights: number; grossRoomCents: number; commissionCents: number | null; choice: string };
 
@@ -199,6 +225,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
           })()}
           {snapshots && <SnapshotFreshness state={snapshots} />}
           {ls?.ok && ls.gridReport && <GridReportView report={ls.gridReport} />}
+          {ls?.ok && ls.marketReport && <MarketReportView report={ls.marketReport} />}
           {ls?.listingChanges?.length > 0 && <Banner role="attention" title="Annonce modifiée chez PriceLabs">{ls.listingChanges.join(" ; ")}. Vérifiez que l'annonce correspond toujours à ce logement.</Banner>}
           {pl.lastCheck && <ConnectionCheckResult check={pl.lastCheck} />}
           <div className="row-wrap">
