@@ -98,7 +98,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
       <section className="section" aria-labelledby="frise-h" style={{ marginTop: 0 }}>
         <h2 id="frise-h">Avancement du cycle</h2>
         <p className="section-note">Huit étapes, d'observer à mesurer. Chaque transition est contrôlée : aucune étape ne peut être sautée.</p>
-        <ol className="frieze">
+        <ol className="frieze" role="list">
           {CYCLE.map((name, i) => {
             const st = settled && i >= 4 ? "na" : i < done ? "fait" : i === done ? "encours" : "avenir";
             const lib = { fait: "fait", encours: "en cours", avenir: "à venir", na: "non applicable" }[st];

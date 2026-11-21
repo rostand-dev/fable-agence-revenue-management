@@ -35,7 +35,7 @@ export default async function Methode() {
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Le cycle d'une décision</h2>
         <p className="section-note">Huit étapes traçables. Les quatre premières sont faites par l'équipe avant que vous ne voyiez le dossier.</p>
-        <ol className="frieze">{CYCLE.map((n, i) => <li key={n} className={i < 4 ? "is-fait" : i === 4 ? "is-encours" : "is-avenir"}><span className="fr-step"><span className="fr-glyph" /><span className="fr-no">{i + 1}/8</span></span><span className="fr-name">{n}</span><span className="fr-state">{i < 4 ? "équipe" : i === 4 ? "vous" : i === 5 ? "équipe ou vous" : "équipe"}</span></li>)}</ol>
+        <ol className="frieze" role="list">{CYCLE.map((n, i) => <li key={n} className={i < 4 ? "is-fait" : i === 4 ? "is-encours" : "is-avenir"}><span className="fr-step"><span className="fr-glyph" /><span className="fr-no">{i + 1}/8</span></span><span className="fr-name">{n}</span><span className="fr-state">{i < 4 ? "équipe" : i === 4 ? "vous" : i === 5 ? "équipe ou vous" : "équipe"}</span></li>)}</ol>
       </section>
       {WORKFLOWS.map((w) => (
         <section className="section" key={w.id}>

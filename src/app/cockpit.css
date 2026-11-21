@@ -1032,20 +1032,22 @@ td .vq, th .vq { font-size: 12.5px; }
    DOSSIER — frise, registre, preuves, cascade, décision
    ============================================================ */
 
+/* Frise du cycle : 2 colonnes sur mobile, 4 puis 8 quand la place le permet. Les étapes passent à la ligne au lieu de se comprimer
+   (un trait de 1 px entre les cases est dessiné par le gap sur fond --line). */
 .frieze {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--surface);
-  overflow-x: auto;
-  scrollbar-width: none;
+  background: var(--line);
+  overflow: hidden;
 }
-.frieze::-webkit-scrollbar { display: none; }
-.frieze > li { list-style: none; position: relative; padding: 14px 12px 14px 16px; min-width: 132px; }
-.frieze > li + li { border-left: 1px solid var(--line); }
+@media (min-width: 640px) { .frieze { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1500px) { .frieze { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
+.frieze > li { list-style: none; position: relative; padding: 14px 12px 14px 16px; background: var(--surface); overflow-wrap: anywhere; }
 .frieze .fr-step { display: flex; align-items: center; gap: 8px; }
 .frieze .fr-glyph {
   flex: none;
@@ -1066,7 +1068,7 @@ td .vq, th .vq { font-size: 12.5px; }
 .frieze .is-avenir .fr-glyph { border-radius: 50%; border-style: dashed; }
 .frieze .is-na .fr-glyph { border-radius: 2px; border-style: dotted; color: var(--faint); }
 .frieze .is-na { opacity: .66; }
-.frieze .is-encours { background: rgb(37 99 235 / 10%); }
+.frieze .is-encours { background-image: linear-gradient(rgb(37 99 235 / 10%), rgb(37 99 235 / 10%)); }
 
 .dcols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 20px; align-items: start; }
 
