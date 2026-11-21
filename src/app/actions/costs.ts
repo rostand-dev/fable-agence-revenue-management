@@ -42,7 +42,7 @@ export async function saveCostsAction(propertyId: string, raw: CostAnswers, fina
     // verrou sur le logement : le diff se calcule sur l'état réellement en base, pas sur une lecture faite avant l'attente d'une autre sauvegarde
     const [cur] = await tx.select({ economics: schema.properties.economics, economicsVersion: schema.properties.economicsVersion }).from(schema.properties).where(and(eq(schema.properties.id, p.id), eq(schema.properties.tenantId, u.tenantId))).for("update");
     await tx.update(schema.properties).set({
-      economics: model, status: p.status,
+      economics: model,
       ...(funnel ? { onboarding: { ...advance(p.onboarding, "couts", final ? "next" : "stay"), costQ: final ? 0 : Math.min(7, Math.max(0, Math.trunc(question ?? 0))) } } : {}),
     }).where(eq(schema.properties.id, p.id));
     if (final || !funnel) {

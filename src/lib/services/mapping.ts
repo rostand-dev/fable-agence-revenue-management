@@ -9,11 +9,12 @@ const { properties, listings } = schema;
 type Ex = Pick<typeof db, "select">;
 
 /** Ce qu'on sait du rattachement d'un logement, lu en base pour son espace seulement. */
-async function loadFacts(ex: Ex, tenantId: string, propertyId: string, lock = false) {
+export async function loadMappingFacts(ex: Ex, tenantId: string, propertyId: string, lock = false) {
   const q = ex.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.tenantId, tenantId)));
   const [p] = lock ? await q.for("update") : await q;
   if (!p) throw new PortfolioError("NOT_FOUND", "Logement introuvable.");
-  const ls = await ex.select({ channel: listings.channel, externalId: listings.externalId }).from(listings).where(and(eq(listings.tenantId, tenantId), eq(listings.propertyId, propertyId), eq(listings.status, "ACTIVE")));
+  const lq = ex.select({ channel: listings.channel, externalId: listings.externalId }).from(listings).where(and(eq(listings.tenantId, tenantId), eq(listings.propertyId, propertyId), eq(listings.status, "ACTIVE")));
+  const ls = lock ? await lq.for("share") : await lq; // sous verrou, une annonce ne change pas entre le contrôle et l'écriture
   const plc = p.pricelabs?.listingId ? (p.pricelabs.candidates ?? []).find((c: any) => String(c.id) === String(p.pricelabs!.listingId)) : null;
   const shc = p.superhote?.rentalId ? (p.superhote.candidates ?? []).find((c: any) => String(c.id) === String(p.superhote!.rentalId)) : null;
   const facts: MappingFacts = {
@@ -29,7 +30,7 @@ async function loadFacts(ex: Ex, tenantId: string, propertyId: string, lock = fa
 export type MappingView = MappingEvaluation & { confirmedAt: string | null; isDemo: boolean };
 
 export async function getMapping(tenantId: string, propertyId: string): Promise<MappingView> {
-  const { p, facts } = await loadFacts(db, tenantId, propertyId);
+  const { p, facts } = await loadMappingFacts(db, tenantId, propertyId);
   const e = evaluateMapping(facts);
   return { ...e, confirmedAt: e.status === "CONFIRMED" ? p.mapping!.at : null, isDemo: p.isDemo };
 }
@@ -40,7 +41,7 @@ export async function getMapping(tenantId: string, propertyId: string): Promise<
  */
 export async function confirmMapping(u: PortfolioActor, propertyId: string, acknowledge: boolean, seenFingerprint: unknown) {
   await db.transaction(async (tx) => {
-    const { p, facts } = await loadFacts(tx, u.tenantId, propertyId, true); // verrou : deux confirmations simultanées ne s'écrasent pas
+    const { p, facts } = await loadMappingFacts(tx, u.tenantId, propertyId, true); // verrou : deux confirmations simultanées ne s'écrasent pas
     if (p.isDemo) throw new PortfolioError("INVALID", "Un logement de démonstration n'a pas de mapping à confirmer.");
     const e = evaluateMapping(facts);
     if (!e.confirmable) throw new PortfolioError("INVALID", "Rattachez d'abord l'annonce PriceLabs de ce logement.");

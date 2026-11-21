@@ -211,3 +211,12 @@ Un quatrième contrôle, **Tests E2E (Playwright)**, ouvre l'application dans un
 6. Ouvrir le domaine, créer votre compte : les deux logements de démonstration s'installent et la première revue s'exécute.
 
 Les données vivent dans le volume `nuitsignal-db` : pensez à activer une sauvegarde de ce volume dans Coolify.
+
+## Checklist de qualité et activation (US-024)
+
+Un logement passe d'**Observation** à **Actif** seulement si la checklist de qualité (`/logements/[id]/qualite`, `GET /api/v1/properties/{id}/quality`) n'a plus aucun point bloquant. Le lancement en Observation (parcours de création) est inchangé.
+
+- **Bloquants** : identité du logement, annonce PriceLabs rattachée, grille de prix lue, modèle économique complet, mapping des identifiants confirmé (US-021), prix de base/minimum/maximum cohérents (une valeur inconnue ne valide jamais le point).
+- **À surveiller** (n'empêchent pas) : SuperHote rattaché, valeurs économiques provisoires.
+- **Activation** : `POST /api/v1/properties/{id}/activate` ou bouton de la page. Le contrôle est refait dans la transaction, sur la ligne verrouillée ; refus (400) avec la liste des points à corriger ; événement d'audit `property.activated` avec le détail de la checklist. Un logement de démonstration ou en création ne s'active pas.
+- Aucune nouvelle table, migration ni variable d'environnement.

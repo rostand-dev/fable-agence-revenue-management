@@ -12,7 +12,7 @@ import { answersFromModel } from "@/lib/engine/costs";
 import { missingEconomics } from "@/lib/engine/economics";
 import { lastMonths, medianLos, monthlyKpis } from "@/lib/engine/metrics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
-import { funnelView, isStep, launchBlockers, resumeStep, type FunnelFacts, type StepKey } from "@/lib/onboarding";
+import { funnelView, identityComplete, isStep, launchBlockers, resumeStep, type FunnelFacts, type StepKey } from "@/lib/onboarding";
 import type { ChannelMarkup } from "@/lib/pricing/published";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { listOwners } from "@/lib/services/portfolio";
@@ -31,7 +31,7 @@ export default async function Creation({ params, searchParams }: { params: Promi
   if (p.status !== "ONBOARDING") redirect(`/logements/${p.id}`);
   const model = p.economics as EconomicModel, strat = (p.strategy ?? {}) as Strategy;
   const miss = missingEconomics(model);
-  const facts: FunnelFacts = { identityOk: p.name.length >= 2 && p.city.length >= 2 && !!p.kind, superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: miss.length, onboarding: p.onboarding };
+  const facts: FunnelFacts = { identityOk: identityComplete(p), superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: miss.length, onboarding: p.onboarding };
   const asked = (await searchParams).etape;
   const resume = resumeStep(facts);
   const step: StepKey = isStep(asked) ? asked : resume;
