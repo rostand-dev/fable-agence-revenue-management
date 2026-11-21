@@ -118,3 +118,32 @@ test("PriceLabs (faux serveur) : test de connexion avant rattachement, la clé e
   await expect(result.getByText("Lecture impossible")).toHaveCount(0);
   await expectNoHorizontalOverflow(page, "onglet PriceLabs (test sans annonce)");
 });
+
+// US-043 : snapshots immuables, fraîcheur visible dans l'onglet et lisible par l'API, sur bureau et mobile.
+test("PriceLabs (faux serveur) : fraîcheur et snapshots visibles après la lecture, sans fuite de la réponse brute", async ({ page }, info) => {
+  const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  const id = await linked(page, info, "nominal", "snapshots");
+  await expect(page.getByText("réussie")).toBeVisible();
+  const box = page.getByTestId("pricelabs-snapshots");
+  await expect(box).toBeVisible();
+  await expect(box.getByText("à jour", { exact: true })).toHaveCount(2);
+  await expect(box.getByText(/Lu le .* · PriceLabs · qualité/).first()).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (fraîcheur)");
+
+  // relecture à l'identique : le snapshot est signalé comme identique, rien n'est dupliqué
+  await page.getByRole("button", { name: "Relire PriceLabs maintenant" }).click();
+  await expect(page.getByTestId("pricelabs-snapshots").getByText(/identique à la lecture précédente/).first()).toBeVisible();
+
+  const res = await page.request.get(`/api/v1/properties/${id}/snapshots`);
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.latest.PRICING).toMatchObject({ kind: "PRICING", source: "PRICELABS", adapter: "HTTP" });
+  expect(body.freshness.PRICING.state).toBe("FRESH");
+  expect(JSON.stringify(body)).not.toContain('"payload"');
+  const raw = await page.request.get(`/api/v1/snapshots/${body.history.find((h: any) => !h.unchangedOf && h.kind === "PRICING").id}`);
+  expect(raw.status()).toBe(200);
+  expect((await raw.json()).payload).toBeTruthy();
+  expect((await page.request.get(`/api/v1/snapshots/snap_inconnu`)).status()).toBe(404);
+  expect((await page.request.get(`/api/v1/properties/prop_inconnu/snapshots`)).status()).toBe(404);
+  expect(errors).toEqual([]);
+});

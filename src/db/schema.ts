@@ -247,6 +247,8 @@ export const calendarDays = pgTable("calendar_days", {
   state: text("state").notNull(),
   rule: text("rule"),
   observedAt: ts("observed_at").notNull().defaultNow(),
+  /** Lineage (US-043) : snapshot d'où vient cette ligne. null = ligne antérieure aux snapshots ou issue d'une autre source. */
+  snapshotId: text("snapshot_id"),
 }, (t) => [primaryKey({ columns: [t.propertyId, t.date] })]);
 
 export const marketDays = pgTable("market_days", {
@@ -258,7 +260,37 @@ export const marketDays = pgTable("market_days", {
   pricePercentile: integer("price_percentile"),
   event: text("event"),
   observedAt: ts("observed_at").notNull().defaultNow(),
+  /** Lineage (US-043) : snapshot d'où vient cette ligne. */
+  snapshotId: text("snapshot_id"),
 }, (t) => [primaryKey({ columns: [t.propertyId, t.date] })]);
+
+/**
+ * Snapshot immuable d'une lecture externe (US-043, blueprint §7.4, §8.1, §12.4) : ce que la source a répondu, à quel moment, avec quelle qualité.
+ * Jamais modifié ni supprimé par l'application (le rôle applicatif n'a que SELECT et INSERT). Une lecture identique à la précédente n'est pas dupliquée :
+ * elle crée une ligne sans payload qui pointe la première (`unchangedOf`) et fait avancer la fraîcheur.
+ */
+export const sourceSnapshots = pgTable("source_snapshots", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  /** PRICING | MARKET */
+  kind: text("kind").notNull(),
+  /** PRICELABS */
+  source: text("source").notNull(),
+  /** HTTP | FAKE | REPLAY : jamais d'ambiguïté sur l'origine réelle ou simulée. */
+  adapter: text("adapter").notNull(),
+  observedAt: ts("observed_at").notNull(),
+  validFrom: date("valid_from", { mode: "string" }),
+  validTo: date("valid_to", { mode: "string" }),
+  contentHash: text("content_hash").notNull(),
+  unchangedOf: text("unchanged_of"),
+  /** Réponse brute de la source (sans clé ni secret). null quand la lecture est identique à `unchangedOf`. */
+  payload: jsonb("payload").$type<unknown>(),
+  /** 0 à 100 : part des données exploitables. */
+  qualityScore: integer("quality_score").notNull(),
+  lineage: jsonb("lineage").$type<Record<string, unknown>>().notNull().default({}),
+  createdAt: created(),
+}, (t) => [index("source_snapshots_latest").on(t.propertyId, t.kind, t.observedAt), index("source_snapshots_tenant").on(t.tenantId)]);
 
 export const promotions = pgTable("promotions", {
   id: id(),
