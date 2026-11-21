@@ -79,7 +79,7 @@ export const properties = pgTable("properties", {
   pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
   /** Connexion SuperHote (lecture seule) propre au logement : jeton chiffré, logement rattaché, canaux relevés, comparaison de prix */
   superhote: jsonb("superhote").$type<Record<string, any>>(),
-  /** Confirmation du mapping des identifiants externes (US-021) : { fingerprint, at, by, acknowledged }. Périmée dès que l'empreinte des identifiants change. */
+  /** Confirmation du mapping des identifiants externes (US-021) : { fingerprint, at, by, warnings }. Périmée dès que l'empreinte des identifiants change. */
   mapping: jsonb("mapping").$type<{ fingerprint: string; at: string; by: string; warnings: string[] }>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
   channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),

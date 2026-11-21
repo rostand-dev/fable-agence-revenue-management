@@ -36,11 +36,11 @@ export default async function Mapping({ params }: { params: Promise<{ id: string
           {m.items.map((i) => (
             <div className="card" key={i.key} data-testid={`mapping-${i.key}`} style={{ padding: 16 }}>
               <div className="row-wrap" style={{ justifyContent: "space-between", alignItems: "baseline" }}>
-                <strong>{i.label}{i.required && <span className="req" aria-hidden="true"> *</span>}</strong>
+                <strong>{i.label}{i.required && <span className="req" aria-hidden="true"> *</span>}{i.required && <span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}> (obligatoire)</span>}</strong>
                 <State role={ROLE[i.state]}>{STATE_LABEL[i.state]}</State>
               </div>
               <p style={{ margin: "6px 0 10px" }}>{i.detail}</p>
-              <Link className="btn btn-ghost btn-sm" href={i.fix === "annonces" ? `/logements/${p.id}?tab=annonces` : `/logements/${p.id}?tab=${i.fix}`}><Icon name="sliders" />{FIX_LABEL[i.fix]}</Link>
+              <Link className="btn btn-ghost btn-sm" href={i.fix === "annonces" ? `/logements/${p.id}?tab=annonces` : `/logements/${p.id}?tab=${i.fix}`}><Icon name="sliders" />{FIX_LABEL[i.fix]}<span style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clip: "rect(0 0 0 0)" }}> : {i.label}</span></Link>
             </div>
           ))}
         </div>
@@ -57,7 +57,7 @@ export default async function Mapping({ params }: { params: Promise<{ id: string
           : m.status === "CONFIRMED" ? <p className="section-note">Mapping confirmé. Il sera à reconfirmer dès qu'un identifiant change.</p>
           : <>
             {m.status === "STALE" && <Banner role="attention" title="Un identifiant a changé depuis la dernière confirmation" style={{ marginBottom: 12 }}>Relisez les rattachements ci-dessus avant de reconfirmer.</Banner>}
-            <MappingConfirmForm propertyId={p.id} hasChecks={m.checks.length > 0} label={m.status === "STALE" ? "Reconfirmer le mapping" : "Confirmer le mapping"} />
+            <MappingConfirmForm propertyId={p.id} fingerprint={m.fingerprint} hasChecks={m.checks.length > 0} label={m.status === "STALE" ? "Reconfirmer le mapping" : "Confirmer le mapping"} />
           </>}
       </section>
     </Page>

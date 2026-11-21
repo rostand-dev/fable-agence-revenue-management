@@ -26,13 +26,26 @@ export const normPlace = (s: string | null | undefined) => (s ?? "").normalize("
 const sameCity = (a: string | null, b: string | null) => {
   const x = normPlace(a), y = normPlace(b);
   if (!x || !y) return true; // inconnu : pas de contradiction
-  return x === y || x.includes(y) || y.includes(x);
+  return ` ${x} `.includes(` ${y} `) || ` ${y} `.includes(` ${x} `); // mots entiers : « nice » n'est pas dans « venice »
 };
 
-/** Empreinte des identifiants : change dès qu'un rattachement change. */
-export function mappingFingerprint(f: Pick<MappingFacts, "superhote" | "pricelabs" | "listings">): string {
+/**
+ * Empreinte de ce que la personne confirme : les identifiants rattachés, les données du logement qui servent aux contrôles
+ * (ville, chambres, capacité) et l'ensemble des écarts détectés. Change dès que l'un d'eux change.
+ */
+export function mappingFingerprint(f: MappingFacts): string {
   const l = f.listings.filter((x) => x.externalId).map((x) => `${x.channel}:${x.externalId}`).sort().join(",");
-  return [`sh:${f.superhote?.rentalId ?? "-"}`, `pl:${f.pricelabs ? `${f.pricelabs.listingId}|${f.pricelabs.pms ?? ""}` : "-"}`, `ls:${l || "-"}`].join(";");
+  const p = f.property;
+  return [`sh:${f.superhote?.rentalId ?? "-"}`, `pl:${f.pricelabs ? `${f.pricelabs.listingId}|${f.pricelabs.pms ?? ""}` : "-"}`, `ls:${l || "-"}`, `p:${normPlace(p.city)}|${p.bedrooms ?? "-"}|${p.capacity ?? "-"}`, `ck:${computeChecks(f).map((c) => c.id).sort().join(",") || "-"}`].join(";");
+}
+function computeChecks(f: MappingFacts): MappingCheck[] {
+  const pl = f.pricelabs, sh = f.superhote, checks: MappingCheck[] = [];
+  if (pl && !sameCity(f.property.city, pl.city)) checks.push({ id: "pl-city", message: `La ville de l'annonce PriceLabs (${pl.city}) ne correspond pas à celle du logement (${f.property.city}).` });
+  if (pl && pl.bedrooms != null && f.property.bedrooms != null && pl.bedrooms !== f.property.bedrooms) checks.push({ id: "pl-bedrooms", message: `L'annonce PriceLabs compte ${pl.bedrooms} chambre${pl.bedrooms > 1 ? "s" : ""}, le logement en déclare ${f.property.bedrooms}.` });
+  if (sh && !sameCity(f.property.city, sh.city)) checks.push({ id: "sh-city", message: `La ville du logement SuperHote (${sh.city}) ne correspond pas à celle du logement (${f.property.city}).` });
+  if (sh && sh.capacity != null && f.property.capacity != null && sh.capacity !== f.property.capacity) checks.push({ id: "sh-capacity", message: `Le logement SuperHote accueille ${sh.capacity} personne${sh.capacity > 1 ? "s" : ""}, le logement en déclare ${f.property.capacity}.` });
+  if (pl && sh && !sameCity(pl.city, sh.city)) checks.push({ id: "pl-sh-city", message: `PriceLabs (${pl.city}) et SuperHote (${sh.city}) ne situent pas le logement dans la même ville.` });
+  return checks;
 }
 
 export function evaluateMapping(f: MappingFacts): MappingEvaluation {
@@ -41,9 +54,11 @@ export function evaluateMapping(f: MappingFacts): MappingEvaluation {
   items.push(pl
     ? { key: "pricelabs", label: "Annonce PriceLabs", required: true, state: "ok", detail: `${pl.listingName ?? "Annonce"} (${pl.listingId}${pl.pms ? ` · ${pl.pms}` : ""})`, value: pl.listingId, fix: "pricelabs" }
     : { key: "pricelabs", label: "Annonce PriceLabs", required: true, state: "missing", detail: "Aucune annonce PriceLabs rattachée : sans elle, ni calendrier ni prix à analyser.", value: null, fix: "pricelabs" });
+  if (pl && pl.city == null && pl.bedrooms == null) items[0].detail += " — ville et chambres non vérifiables (annonce absente de la liste lue : reconnectez PriceLabs).";
   items.push(sh
     ? { key: "superhote", label: "Logement SuperHote", required: false, state: "ok", detail: `${sh.rentalName ?? "Logement"} (${sh.rentalId})`, value: sh.rentalId, fix: "superhote" }
     : { key: "superhote", label: "Logement SuperHote", required: false, state: "missing", detail: "Non rattaché : les réservations viennent alors de PriceLabs, moins fiables que SuperHote.", value: null, fix: "superhote" });
+  if (sh && sh.city == null && sh.capacity == null) items[1].detail += " — ville et capacité non vérifiables (logement absent de la liste lue : reconnectez SuperHote).";
   for (const [key, channel, label] of [["airbnb", "AIRBNB", "Annonce Airbnb"], ["booking", "BOOKING", "Annonce Booking.com"]] as const) {
     const l = f.listings.find((x) => x.channel === channel);
     items.push(l?.externalId
@@ -51,12 +66,7 @@ export function evaluateMapping(f: MappingFacts): MappingEvaluation {
       : { key, label, required: false, state: "missing", detail: l ? "Annonce saisie sans identifiant." : "Pas encore renseignée : elle permet de vérifier la promotion ou le prix sur le bon canal.", value: null, fix: "annonces" });
   }
 
-  const checks: MappingCheck[] = [];
-  if (pl && !sameCity(f.property.city, pl.city)) checks.push({ id: "pl-city", message: `La ville de l'annonce PriceLabs (${pl.city}) ne correspond pas à celle du logement (${f.property.city}).` });
-  if (pl && pl.bedrooms != null && f.property.bedrooms != null && pl.bedrooms !== f.property.bedrooms) checks.push({ id: "pl-bedrooms", message: `L'annonce PriceLabs compte ${pl.bedrooms} chambre${pl.bedrooms > 1 ? "s" : ""}, le logement en déclare ${f.property.bedrooms}.` });
-  if (sh && !sameCity(f.property.city, sh.city)) checks.push({ id: "sh-city", message: `La ville du logement SuperHote (${sh.city}) ne correspond pas à celle du logement (${f.property.city}).` });
-  if (sh && sh.capacity != null && f.property.capacity != null && sh.capacity !== f.property.capacity) checks.push({ id: "sh-capacity", message: `Le logement SuperHote accueille ${sh.capacity} personne${sh.capacity > 1 ? "s" : ""}, le logement en déclare ${f.property.capacity}.` });
-  if (pl && sh && !sameCity(pl.city, sh.city)) checks.push({ id: "pl-sh-city", message: `PriceLabs (${pl.city}) et SuperHote (${sh.city}) ne situent pas le logement dans la même ville.` });
+  const checks = computeChecks(f);
   const warned = new Set<MappingKey>();
   for (const c of checks) { if (c.id.startsWith("pl")) warned.add("pricelabs"); if (c.id.startsWith("sh") || c.id === "pl-sh-city") warned.add("superhote"); }
   for (const it of items) if (it.state === "ok" && warned.has(it.key)) it.state = "warning";

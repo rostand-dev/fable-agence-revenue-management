@@ -16,6 +16,16 @@ describe("mapping des identifiants externes (US-021)", () => {
     const f = base(); f.pricelabs!.city = null; f.superhote!.city = null;
     expect(evaluateMapping(f).checks).toEqual([]);
   });
+  it("la ville se compare par mots entiers, et un candidat sans données est signalé non vérifiable", () => {
+    const f = base(); f.property.city = "Nice"; f.pricelabs!.city = "Venice";
+    expect(evaluateMapping(f).checks.map((c) => c.id)).toContain("pl-city");
+    const g = base(); g.pricelabs!.city = null; g.pricelabs!.bedrooms = null;
+    expect(evaluateMapping(g).items[0].detail).toContain("non vérifiables");
+  });
+  it("l'empreinte tient compte de la ville, des chambres et de la capacité du logement", () => {
+    const a = base(), b = base(); b.property.bedrooms = 5;
+    expect(mappingFingerprint(a)).not.toBe(mappingFingerprint(b));
+  });
   it("sans annonce PriceLabs : incomplet et non confirmable ; SuperHote et annonces sont facultatifs", () => {
     const f = base(); f.pricelabs = null; f.superhote = null; f.listings = [];
     const e = evaluateMapping(f);

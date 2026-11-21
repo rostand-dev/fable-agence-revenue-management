@@ -9,11 +9,12 @@ const { properties, listings } = schema;
 type Ex = Pick<typeof db, "select">;
 
 /** Ce qu'on sait du rattachement d'un logement, lu en base pour son espace seulement. */
-async function loadFacts(ex: Ex, tenantId: string, propertyId: string) {
-  const [p] = await ex.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.tenantId, tenantId)));
+async function loadFacts(ex: Ex, tenantId: string, propertyId: string, lock = false) {
+  const q = ex.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.tenantId, tenantId)));
+  const [p] = lock ? await q.for("update") : await q;
   if (!p) throw new PortfolioError("NOT_FOUND", "Logement introuvable.");
   const ls = await ex.select({ channel: listings.channel, externalId: listings.externalId }).from(listings).where(and(eq(listings.tenantId, tenantId), eq(listings.propertyId, propertyId), eq(listings.status, "ACTIVE")));
-  const plc = p.pricelabs?.listingId ? (p.pricelabs.candidates ?? []).find((c: any) => c.id === p.pricelabs!.listingId) : null;
+  const plc = p.pricelabs?.listingId ? (p.pricelabs.candidates ?? []).find((c: any) => String(c.id) === String(p.pricelabs!.listingId)) : null;
   const shc = p.superhote?.rentalId ? (p.superhote.candidates ?? []).find((c: any) => String(c.id) === String(p.superhote!.rentalId)) : null;
   const facts: MappingFacts = {
     property: { name: p.name, city: p.city, bedrooms: p.bedrooms, capacity: p.capacity },
@@ -37,16 +38,18 @@ export async function getMapping(tenantId: string, propertyId: string): Promise<
  * Confirmation du mapping par une personne. Refusée tant que l'annonce PriceLabs manque ; en cas de doute détecté
  * (ville, chambres, capacité), la personne doit déclarer l'avoir vérifié, et les doutes sont gardés dans le journal.
  */
-export async function confirmMapping(u: PortfolioActor, propertyId: string, acknowledge: boolean) {
+export async function confirmMapping(u: PortfolioActor, propertyId: string, acknowledge: boolean, seenFingerprint: unknown) {
   await db.transaction(async (tx) => {
-    const { p, facts } = await loadFacts(tx, u.tenantId, propertyId);
+    const { p, facts } = await loadFacts(tx, u.tenantId, propertyId, true); // verrou : deux confirmations simultanées ne s'écrasent pas
     if (p.isDemo) throw new PortfolioError("INVALID", "Un logement de démonstration n'a pas de mapping à confirmer.");
     const e = evaluateMapping(facts);
     if (!e.confirmable) throw new PortfolioError("INVALID", "Rattachez d'abord l'annonce PriceLabs de ce logement.");
-    if (e.checks.length && !acknowledge) throw new PortfolioError("INVALID", "Des écarts sont signalés : cochez « J'ai vérifié ces écarts » pour confirmer malgré eux, ou corrigez le rattachement.");
+    // la personne confirme ce qu'elle a vu : si quelque chose a changé depuis l'affichage, elle relit d'abord
+    if (typeof seenFingerprint !== "string" || seenFingerprint !== e.fingerprint) throw new PortfolioError("CONFLICT", "Les rattachements ont changé depuis l'affichage de cette page : rechargez-la et relisez avant de confirmer.");
     if (e.status === "CONFIRMED") return;
+    if (e.checks.length && !acknowledge) throw new PortfolioError("INVALID", "Des écarts sont signalés : cochez « J'ai vérifié ces écarts » pour confirmer malgré eux, ou corrigez le rattachement.");
     const warnings = e.checks.map((c) => c.message);
-    await tx.update(properties).set({ mapping: { fingerprint: e.fingerprint, at: new Date().toISOString(), by: u.id, warnings } }).where(eq(properties.id, p.id));
+    await tx.update(properties).set({ mapping: { fingerprint: e.fingerprint, at: new Date().toISOString(), by: u.id, warnings } }).where(and(eq(properties.id, p.id), eq(properties.tenantId, u.tenantId)));
     await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "mapping.confirmed", entity: "Property", entityId: p.id, summary: `${u.name} confirme le mapping des identifiants de ${p.name}${warnings.length ? ` malgré ${warnings.length} écart${warnings.length > 1 ? "s" : ""} signalé${warnings.length > 1 ? "s" : ""}` : ""}.`, payload: { fingerprint: e.fingerprint, warnings, items: e.items.map((i) => ({ key: i.key, value: i.value })) } });
   });
 }
