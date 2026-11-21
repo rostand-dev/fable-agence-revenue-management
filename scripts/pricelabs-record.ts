@@ -12,7 +12,7 @@ async function main() {
   const key = process.env.PRICELABS_RECORD_KEY?.trim(), [id, out] = process.argv.slice(2);
   if (!key || !id || !out) { console.error("Usage : PRICELABS_RECORD_KEY=<clé> npx tsx scripts/pricelabs-record.ts <annonce> <sortie.json>"); process.exit(2); }
   const raw: { listings?: any; prices?: any; neighborhood?: any; reservations?: any[] } = {};
-  const port = new HttpPriceLabs(key, (endpoint, _req, body) => { if (endpoint === "listings") raw.listings = body; if (endpoint === "prices") raw.prices = body; if (endpoint === "neighborhood") raw.neighborhood = body; if (endpoint === "reservations") raw.reservations = body as any[]; });
+  const port = new HttpPriceLabs(key, { tap: (endpoint, _req, body) => { if (endpoint === "listings") raw.listings = body; if (endpoint === "prices") raw.prices = body; if (endpoint === "neighborhood") raw.neighborhood = body; if (endpoint === "reservations") raw.reservations = body as any[]; } });
   const listing = (await port.listListings()).find((l) => l.id === id);
   if (!listing) { console.error("Annonce introuvable sur ce compte."); process.exit(1); }
   const h = horizon(todayISO());

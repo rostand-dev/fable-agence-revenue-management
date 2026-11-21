@@ -1,10 +1,11 @@
 import { commitStrategy } from "./strategy";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
 import { horizon, priceLabsFor, PriceLabsError } from "../integrations/pricelabs";
+import { listingDrift, runConnectionCheck, type ConnectionReport } from "../integrations/pricelabs-check";
 import { mapChannel, mapMarket, mapPrices, mapReservations, type ChannelOverride } from "../integrations/pricelabs-map";
 import { channelHints, compareReservations, comparePriceSeries, observedCommission as shObservedCommission, observedPaymentFee } from "../integrations/superhote-map";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
@@ -144,6 +145,11 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     : { ok: false, at: sh.at, error: sh.error };
   const bedrooms = p.bedrooms ?? listing.bedrooms;
   const mk = mapMarket(market, bedrooms, days);
+  // US-040 : l'annonce rattachée a-t-elle changé chez PriceLabs ? Les données du rattachement suivent PriceLabs, et le changement est journalisé.
+  const prevCand = (pl.candidates ?? []).find((c: any) => c.id === pl.listingId);
+  const drift = listingDrift(prevCand ? { name: prevCand.name ?? null, city: prevCand.city ?? null, bedrooms: typeof prevCand.bedrooms === "number" ? prevCand.bedrooms : null } : null, listing);
+  const fresh = { id: listing.id, pms: listing.pms, name: listing.name, city: listing.city, bedrooms: listing.bedrooms };
+  const candidates = prevCand ? (pl.candidates as any[]).map((c) => (c.id === pl.listingId ? fresh : c)) : [...(pl.candidates ?? []), fresh];
 
   const strat = p.strategy as Strategy;
   const confirmed = resas.filter((r) => r.status === "CONFIRMED");
@@ -161,7 +167,7 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     estimatedCommissions: confirmed.filter((r) => r.commissionEstimated).length, unknownCommissions: confirmed.filter((r) => r.commissionCents === null).length, unknownChannel: confirmed.filter((r) => r.channel === "INCONNU").length,
     undeclaredRates: [...new Set(confirmed.filter((r) => r.commissionCents === null && r.channel !== "INCONNU").map((r) => r.channel))],
     marketDays: mk.market.filter((m) => m.marketOccupancy !== null).length, marketCategory: mk.category, marketListings: mk.listingsUsed, marketSource: mk.source, marketError,
-    gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
+    listingChanges: drift, gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
   };
 
   let rec: ReconcileResult | null = null;
@@ -177,7 +183,8 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
       await applyCalendarEffect(tx, p.id, { from: todayISO(now), to: addDays(todayISO(now), 91) }, [], todayISO(now));
     }
     else if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
-    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync, ...(rec ? { lastReconcile: rec } : {}) } } : {}) }).where(eq(properties.id, p.id));
+    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, candidates, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync, ...(rec ? { lastReconcile: rec } : {}) } } : {}) }).where(eq(properties.id, p.id));
+    if (drift.length) await recordAudit(tx, { tenantId, actor: "system", type: "integration.pricelabs_listing_changed", entity: "Property", entityId: p.id, summary: `L'annonce PriceLabs de ${p.name} a changé : ${drift.join(" ; ")}. Vérifiez le mapping.`, payload: { changes: drift } });
     // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une version, tracée avec son avant/après (US-023)
     const res = await commitStrategy(tx, { tenantId, propertyId: p.id, next: (cur) => ({ ...cur, basePriceCents: listing.baseCents ?? cur.basePriceCents ?? null, minPriceCents: listing.minCents ?? cur.minPriceCents ?? null, maxPriceCents: listing.maxCents ?? cur.maxPriceCents ?? null, maxDiscountStackPct: cur.maxDiscountStackPct ?? 20, maxPriceChangePct: cur.maxPriceChangePct ?? 5 }), source: "PRICELABS_SYNC", createdBy: "system" });
     if (res) {
@@ -187,6 +194,34 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   });
   await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}${shLastSync?.ok ? `, SuperHote lu (${(shLastSync as any).autoChannels} canaux relevés)` : shLastSync ? ` ; SuperHote non lu : ${(shLastSync as any).error}` : ""}.` });
   return { days: days.length, reservations: confirmed.length };
+}
+
+/**
+ * Test de connexion : lit un petit échantillon (annonces, 7 jours de prix, marché, 60 jours de réservations) pour dire ce que la clé permet de lire.
+ * Ne modifie ni la grille, ni le marché, ni les réservations ; seul le résultat du test est mémorisé (`pricelabs.lastCheck`).
+ */
+export async function testPriceLabsConnection(tenantId: string, propertyId: string, actor: string): Promise<ConnectionReport> {
+  const p = await getProp(tenantId, propertyId);
+  const pl = p.pricelabs;
+  if (!pl?.apiKeyEnc) throw new SyncError("Aucune clé PriceLabs sur ce logement.");
+  let apiKey: string;
+  try { apiKey = decryptSecret(pl.apiKeyEnc); } catch { throw new SyncError("La clé enregistrée est illisible (APP_SECRET a changé ?). Saisissez-la de nouveau."); }
+  const now = new Date();
+  const report = await runConnectionCheck(priceLabsFor(apiKey), pl.listingId && pl.pms ? { listingId: pl.listingId, pms: pl.pms } : null, now, todayISO(now));
+  // Écriture ciblée et conditionnelle : si la clé a été supprimée ou remplacée pendant le test, on ne ressuscite rien et on ne mémorise rien.
+  const saved = await db.transaction(async (tx) => {
+    const rows = await tx.update(properties).set({ pricelabs: sql`jsonb_set(${properties.pricelabs}, '{lastCheck}', ${JSON.stringify(report)}::jsonb)` })
+      .where(and(eq(properties.id, p.id), sql`${properties.pricelabs}->>'apiKeyEnc' = ${pl.apiKeyEnc}`)).returning({ id: properties.id });
+    if (!rows.length) return false;
+    await auditTest(tx);
+    return true;
+  });
+  if (!saved) throw new SyncError("La connexion a changé pendant le test : relancez-le.");
+  return report;
+  async function auditTest(tx: typeof db) {
+  const bad = report.checks.filter((c) => c.status === "FAIL" || c.status === "WARN").length;
+  await recordAudit(tx, { tenantId, actor, type: "integration.pricelabs_tested", entity: "Property", entityId: p.id, summary: `Test de connexion PriceLabs pour ${p.name} : ${report.ok === null ? "clé valide, annonce à rattacher" : report.ok ? "essentiel disponible" : "échec"}${bad ? `, ${bad} point${bad > 1 ? "s" : ""} à vérifier` : ""}.`, payload: { ok: report.ok, capabilities: report.capabilities } });
+  }
 }
 
 /** Avant une revue lancée à la main : relit PriceLabs si la dernière lecture a plus de trois heures. */

@@ -64,3 +64,57 @@ test("PriceLabs (faux serveur) : clé refusée, message lisible et aucun rattach
   await expect(page.getByText("Rattachement à confirmer")).toHaveCount(0);
   await expectNoHorizontalOverflow(page, "onglet PriceLabs (clé refusée)");
 });
+
+// US-040 : test de connexion (clé, annonce, prix, marché, réservations) depuis l'onglet PriceLabs, sur bureau et mobile.
+async function linked(page: Page, info: TestInfo, scenario: string, label: string) {
+  const id = await createViaApi(page, `PL ${label} ${suffix(info)}`);
+  await page.goto(`/logements/${id}?tab=pricelabs`);
+  await page.getByLabel(/Clé API PriceLabs/).fill(`fake-${scenario}-${suffix(info)}`);
+  await page.getByRole("button", { name: "Vérifier et connecter" }).click();
+  await page.getByRole("button", { name: /rattacher/i }).click();
+  return id;
+}
+
+test("PriceLabs (faux serveur) : le test de connexion détaille ce que la clé permet de lire, sans rien écrire", async ({ page }, info) => {
+  const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  await linked(page, info, "nominal", "test ok");
+  await expect(page.getByText("réussie")).toBeVisible();
+  const before = (await calls(page)).length;
+  await page.getByRole("button", { name: "Tester la connexion" }).click();
+  const result = page.getByTestId("pricelabs-check");
+  await expect(result).toBeVisible();
+  await expect(result.getByText("Essentiel disponible")).toBeVisible();
+  for (const label of ["Clé API", "Annonce rattachée", "Synchronisation PriceLabs", "Grille de prix", "Marché", "Réservations"]) await expect(result.getByText(label, { exact: true })).toBeVisible();
+  await expect(result.getByText("disponible", { exact: true })).toHaveCount(6);
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (résultat du test)");
+  const made = (await calls(page)).slice(before);
+  expect(made.length).toBeGreaterThanOrEqual(4);
+  expect(made.filter((c) => c.write)).toEqual([]);
+  // le résultat est mémorisé : il est toujours là après rechargement
+  await page.reload();
+  await expect(page.getByTestId("pricelabs-check").getByText("Essentiel disponible")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("PriceLabs (faux serveur) : marché indisponible, le test le signale sans bloquer l'essentiel", async ({ page }, info) => {
+  await linked(page, info, "market-down", "test marché");
+  await page.getByRole("button", { name: "Tester la connexion" }).click();
+  const result = page.getByTestId("pricelabs-check");
+  await expect(result.getByText("Essentiel disponible")).toBeVisible();
+  await expect(result.getByText("à vérifier", { exact: true })).toBeVisible();
+  await expect(result.getByText(/Non bloquant/)).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (test avec avertissement)");
+});
+
+test("PriceLabs (faux serveur) : test de connexion avant rattachement, la clé est dite valide sans alarme", async ({ page }, info) => {
+  const id = await createViaApi(page, `PL test sans annonce ${suffix(info)}`);
+  await page.goto(`/logements/${id}?tab=pricelabs`);
+  await page.getByLabel(/Clé API PriceLabs/).fill(`fake-nominal-${suffix(info)}`);
+  await page.getByRole("button", { name: "Vérifier et connecter" }).click();
+  await expect(page.getByText("Rattachement à confirmer")).toBeVisible();
+  await page.getByRole("button", { name: "Tester la connexion" }).click();
+  const result = page.getByTestId("pricelabs-check");
+  await expect(result.getByText("Clé valide, annonce à rattacher")).toBeVisible();
+  await expect(result.getByText("Lecture impossible")).toHaveCount(0);
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (test sans annonce)");
+});

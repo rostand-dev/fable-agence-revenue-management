@@ -26,7 +26,7 @@ type Make = (scenario: ScenarioName) => PriceLabsPort;
 const idOf = async (port: PriceLabsPort) => (await port.listListings())[0].id;
 const ADAPTERS: [string, Make, ScenarioName[]][] = [
   ["FAKE (mémoire)", (s) => new FakePriceLabs(buildScenario(s, TODAY)), [...SCENARIO_NAMES]],
-  ["HTTP (faux serveur)", (s) => new HttpPriceLabs(key(s)), [...SCENARIO_NAMES]],
+  ["HTTP (faux serveur)", (s) => new HttpPriceLabs(key(s), { sleep: async () => {} }), [...SCENARIO_NAMES]],
   // le rejeu ne contient que le scénario nominal : il ne sait pas simuler une panne
   ["REPLAY (fixture)", () => ReplayPriceLabs.fromFile(FIXTURE), ["nominal"]],
 ];
@@ -116,6 +116,8 @@ describe.each(ADAPTERS)("contrat du port PriceLabs : %s", (_label, make, scenari
     });
     it("scénario flaky : la première lecture échoue (503), la suivante réussit", async () => {
       const port = make("flaky");
+      // l'adaptateur HTTP retente tout seul la panne passagère ; les adaptateurs en mémoire la laissent voir
+      if (port.adapter === "HTTP") { expect(await port.listListings()).toHaveLength(1); return; }
       await expect(port.listListings()).rejects.toMatchObject({ status: 503 });
       expect(await port.listListings()).toHaveLength(1);
     });
@@ -174,9 +176,9 @@ describe("adaptateur HTTP : pagination des réservations", () => {
     } finally { spy.mockRestore(); }
   });
   it("traduit une réponse illisible et une coupure réseau en erreurs lisibles", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("pas du json", { status: 200 })).mockRejectedValueOnce(new Error("ECONNREFUSED"));
+    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response("pas du json", { status: 200 })).mockRejectedValue(new Error("ECONNREFUSED"));
     try {
-      const p = new HttpPriceLabs("k".repeat(24));
+      const p = new HttpPriceLabs("k".repeat(24), { sleep: async () => {} });
       await expect(p.listListings()).rejects.toThrow("Réponse PriceLabs illisible.");
       await expect(p.listListings()).rejects.toThrow("injoignable");
     } finally { spy.mockRestore(); }

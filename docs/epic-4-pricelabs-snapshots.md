@@ -24,3 +24,17 @@ Blueprint §19 (E4), §7.4 (fraîcheur et lineage), §8.1 (payload brut immuable
 - **Tests** : contrat commun aux trois adaptateurs (50 vérifications), pagination et erreurs réseau de l'adaptateur HTTP, anonymisation ; 11 tests d'intégration du service de lecture sur base réelle (connexion, rattachement, relecture idempotente, échec qui conserve les données, annonce déjà prise, isolation entre propriétaires, détachement, marché en panne, grille partielle) ; 3 parcours E2E navigateur (bureau, mobile 390 et 360 px).
 - **Garde-fous** : `usePriceLabsAdapter()` est refusé en production. `PRICELABS_API_BASE` n'accepte que l'API officielle ou une adresse locale (127.0.0.1, localhost) ; toute autre valeur est ignorée avec un avertissement, pour qu'une variable mal posée ne puisse pas envoyer les clés des propriétaires ailleurs. L'anonymiseur de l'enregistreur fonctionne par liste blanche de champs.
 - **Staging (Coolify)** : aucune variable ni migration nouvelle à poser. En CI, `PRICELABS_API_BASE` pointe vers le faux serveur local lancé par Playwright.
+
+## US-040 — Connexion, annonce et mapping
+
+**Ce qui change**
+- Le port PriceLabs HTTP **retente** les pannes passagères (429, 502, 503, 504 et coupures réseau) jusqu'à 2 fois, avec une attente croissante (0,4 s, 1,2 s…, plafonnée à 5 s) qui respecte `Retry-After`. Jamais de nouvelle tentative sur 401, 403, 404, 500 ni sur un délai dépassé : une erreur de configuration doit se voir tout de suite.
+- Bouton **« Tester la connexion »** (onglet PriceLabs du logement) : lit un petit échantillon (annonces, 7 jours de prix, marché, 60 jours de réservations) et affiche une ligne par lecture (disponible / à vérifier / en échec / non vérifié, toujours en toutes lettres). Le test ne modifie ni la grille, ni le marché, ni les réservations ; seul son résultat est mémorisé dans `properties.pricelabs.lastCheck` (jamais la clé). Les « capacités » constatées (annonces, prix, marché, réservations) serviront aux imports US-041 et US-042.
+- Marché et réservations sont **non bloquants** pour le test (SuperHote fait foi pour les réservations) ; clé refusée, annonce disparue ou grille illisible rendent le test en échec.
+- **Changement chez PriceLabs** : à chaque lecture, nom, ville et chambres de l'annonce rattachée sont comparés à la lecture précédente. Un écart est journalisé (`integration.pricelabs_listing_changed`) et signalé par un bandeau « Annonce modifiée chez PriceLabs » dans l'onglet (`lastSync.listingChanges`, jusqu'à la lecture suivante) ; il n'est jamais silencieux. Le rattachement n'est pas défait : l'utilisateur revérifie la correspondance.
+- Le résultat mémorisé est écrit de façon ciblée et conditionnelle : si la clé est supprimée ou remplacée pendant le test, rien n'est mémorisé ni ressuscité. Sans annonce rattachée, le résultat dit « clé valide, annonce à rattacher » (ni échec, ni alarme).
+- Limites connues : pas de budget de durée global sur une lecture (chaque appel est borné à 45 s, reprises comprises) ; un `Retry-After` au format date n'est pas interprété (attente de base de 0,4 s).
+- Nouveaux évènements d'audit : `integration.pricelabs_tested`, `integration.pricelabs_listing_changed`.
+- Aucune migration de base, aucune nouvelle variable d'environnement.
+
+**Tests** : unitaires (`pricelabs-check.test.ts` : 8 cas de test de connexion, 2 de dérive, 7 de reprise sur panne), base (`pricelabs-sync.db.test.ts` : 7 cas, dont non-écriture, isolation locataire, absence de clé dans le résultat), E2E faux serveur sur bureau, mobile 390 et 360 sans débordement horizontal.

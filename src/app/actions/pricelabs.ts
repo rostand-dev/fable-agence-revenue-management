@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
-import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, setChannelOverrides, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
+import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, setChannelOverrides, SyncError, syncPriceLabs, testPriceLabsConnection } from "@/lib/services/pricelabs-sync";
 import { runDailyReview } from "@/lib/services/review";
 
 /** `sensitive` : formulaire d'une action qui touche à une clé API ; une session rétablie par « Rester connecté » doit d'abord confirmer le mot de passe. */
@@ -43,4 +43,7 @@ export async function channelOverridesAction(_: FormState, fd: FormData) {
     await runDailyReview(u.tenantId, "MANUAL");
     return `${n} réservation${n > 1 ? "s" : ""} précisée${n > 1 ? "s" : ""}. Lecture et revue relancées.`;
   });
+}
+export async function testPriceLabsAction(_: FormState, fd: FormData) {
+  return run(async (u) => { const r = await testPriceLabsConnection(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return r.ok === null ? "Clé valide. Rattachez une annonce pour tester la lecture des prix." : r.ok ? "Test terminé : l'essentiel est disponible." : "Test terminé : un point bloque la lecture, voir le détail ci-dessous."; });
 }
