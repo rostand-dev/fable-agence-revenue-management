@@ -1,17 +1,28 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect as baseExpect, test, type Page, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+
+// Chaque lecture PriceLabs est suivie de la revue du portefeuille démo, qui ralentit quand d'autres tests y ont laissé des logements : attentes généreuses.
+const expect = baseExpect.configure({ timeout: 30_000 });
+test.setTimeout(120_000);
 
 // US-044 : le parcours PriceLabs (clé, rattachement, lecture) passe par le faux serveur de l'API PriceLabs, sans réseau ni clé réelle.
 // Le scénario est choisi par la clé saisie : fake-<scénario>-<suffixe alphanumérique>.
 const FAKE = (() => { try { const u = new URL(process.env.PRICELABS_API_BASE ?? ""); return u.hostname === "127.0.0.1" ? u.origin : null; } catch { return null; } })();
 const suffix = (info: TestInfo) => `${info.project.name.replace(/[^a-z0-9]/gi, "")}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.padEnd(12, "0");
+// Les logements créés sont supprimés en fin de test : la revue du portefeuille démo suit chaque lecture et ralentit avec le nombre de logements.
+const created: { id: string; name: string }[] = [];
 async function createViaApi(page: Page, name: string) {
   const res = await page.request.post("/api/v1/properties", { data: { name, city: "Châtillon", kind: "T3", bedrooms: 2, capacity: 4 } });
   expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).id as string;
+  const id = (await res.json()).id as string;
+  created.push({ id, name });
+  return id;
 }
 const calls = async (page: Page): Promise<{ method: string; path: string; scenario: string | null; write: boolean }[]> => (await page.request.get(`${FAKE}/__calls`)).json();
 
+test.afterEach(async ({ page }) => {
+  for (const c of created.splice(0)) await page.request.delete(`/api/v1/properties/${c.id}`, { data: { confirmName: c.name } }).catch(() => {});
+});
 test.beforeEach(() => { test.skip(!FAKE, "Faux serveur PriceLabs : PRICELABS_API_BASE doit pointer vers 127.0.0.1."); });
 
 test("PriceLabs (faux serveur) : clé vérifiée, rattachement confirmé, grille, marché et réservations lus, sans aucune écriture", async ({ page }, info) => {
