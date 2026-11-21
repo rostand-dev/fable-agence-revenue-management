@@ -332,6 +332,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     related: ["plancher-strategique", "contribution"],
   },
   {
+    id: "seuil-rentabilite", term: "Seuil de rentabilité", aka: ["Point mort", "Break-even"], category: "garde",
+    plain: "Le nombre de nuits à vendre dans le mois, à un prix donné, pour couvrir toutes vos charges et ne pas perdre d'argent. Ou l'inverse : le prix minimum de la nuit si vous en vendez un nombre donné. C'est un objectif du mois, pas un prix plancher par nuit.",
+    example: "900 € de charges fixes par mois, une nuit qui laisse 60 € après commission et ménage : il faut vendre 15 nuits pour atteindre l'équilibre. À 10 nuits seulement, il faudrait que chaque nuit laisse 90 €.",
+    seeIn: { label: "Coûts et seuils d'un logement", href: "/logements" },
+    related: ["charges-fixes", "plancher-strategique", "contribution"],
+  },
+  {
     id: "plancher-absolu", term: "Plancher absolu", aka: ["Seuil de dérangement", "Contribution minimale absolue"], category: "garde",
     plain: "Le prix minimal en dessous duquel vous ne voulez pas accueillir quelqu'un, car la nuit ne couvre même pas ses coûts et le dérangement. L'agence ne propose jamais d'action sous ce prix, et l'auditeur y oppose son veto.",
     example: "Si votre seuil est de 30 € de contribution par nuit, le plancher absolu est le prix vendu qui laisse 30 € après commission, ménage et coûts variables. En dessous, vous perdriez de l'argent à accueillir.",

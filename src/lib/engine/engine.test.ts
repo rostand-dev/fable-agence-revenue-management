@@ -146,7 +146,8 @@ describe("métriques", () => {
 });
 void auditCandidate;
 
-import { answersFromModel, modelFromAnswers, parseNum, variablePerNight } from "./costs";
+import { answersFromModel, fixedMonthly, modelFromAnswers, parseNum, variablePerNight } from "./costs";
+import { breakEvenNights, breakEvenPriceCents, contributionPerNightCents } from "./economics";
 describe("parcours Coûts et seuils", () => {
   it("déduit le modèle des réponses concrètes", () => {
     const m = modelFromAnswers({ airbnbPct: "17,6", bookingPct: "16,3", bookingFeePct: "1,4", cleaningFee: "55", cleaningCost: "62", linenMode: "included", nightMode: "calc", energyYear: "900", waterYear: "300", nightsYear: "200", consumablesStay: "9", avgStay: "3", hard: "20", rent: "900", insurance: "30", nightsMonth: "15", goalMonth: "600", provisional: ["hard", "inconnu"] });
@@ -201,5 +202,53 @@ describe("capacités d'exécution (US-002)", () => {
     const v = auditCandidate(draft, { ...ctx, capabilities: { "pricelabs.write": false } });
     expect(v.rules.find((r) => r.code === "CAPABILITY")!.outcome).toBe("FAIL");
     expect(v.verdict).toBe("REJECT");
+  });
+});
+
+describe("charges du mois et seuil de rentabilité", () => {
+  const a = { airbnbPct: "20", cleaningFee: "50", cleaningCost: "50", linenMode: "included" as const, nightMode: "included" as const, hard: "20", rent: "600", insurance: "0", nightsMonth: "20" };
+  it("« déjà dans mes charges du mois » est un zéro déclaré, pas une valeur manquante", () => {
+    expect(variablePerNight({ nightMode: "included" })).toBe(0);
+    expect(modelFromAnswers(a).nightlyVariableCostCents).toBe(0);
+    expect(missingEconomics(modelFromAnswers(a))).toHaveLength(0);
+  });
+  it("le loyer ou le crédit se compte par défaut et se décoche", () => {
+    expect(fixedMonthly({ rent: "600", coop: "100" })).toBe(700);
+    expect(fixedMonthly({ rent: "600", coop: "100", rentCounted: "yes" })).toBe(700);
+    expect(fixedMonthly({ rent: "600", coop: "100", rentCounted: "no" })).toBe(100);
+    expect(fixedMonthly({ rent: "600", rentCounted: "no" })).toBe(0); // loyer seul et décoché : choix déclaré, pas une inconnue
+    expect(fixedMonthly({ rentCounted: "no" })).toBeNull();            // rien de saisi : inconnu
+    expect(modelFromAnswers({ ...a, insurance: undefined, rentCounted: "no" }).strategyContributionPerNightCents).toBe(2000);
+    expect(modelFromAnswers({ ...a, rentCounted: "no" }).strategyContributionPerNightCents).toBe(2000); // retombe sur le seuil de dérangement
+  });
+  it("calcule les nuits à vendre à un prix, et le prix minimum pour un nombre de nuits", () => {
+    const m = modelFromAnswers(a);
+    expect(contributionPerNightCents(m, "AIRBNB", 2, 10000)).toBe(7500); // 100 × 0,8 − (ménage non récupéré 10 € ÷ 2 nuits)
+    expect(breakEvenNights(m, "AIRBNB", 2, 10000, 60000)).toBe(8);
+    expect(breakEvenPriceCents(m, "AIRBNB", 2, 20, 60000)).toBe(4375);
+    expect(breakEvenNights(m, "AIRBNB", 2, 500, 60000)).toBeNull(); // à 5 € la nuit ne laisse rien
+  });
+  it("ignore une estimation provisoire du coût par nuit quand il est déjà dans les charges", () => {
+    expect(modelFromAnswers({ ...a, provisional: ["variable", "hard"] }).provisional).toEqual(["seuil de dérangement"]);
+  });
+  it("cas limites du seuil de rentabilité : charges nulles, ménage en marge, arrondi", () => {
+    const m = modelFromAnswers({ ...a, cleaningFee: "100", cleaningCost: "50" }); // ménage en marge : coût de séjour négatif
+    expect(breakEvenNights(m, "AIRBNB", 2, 10000, 0)).toBe(0);
+    expect(breakEvenPriceCents(m, "AIRBNB", 7, 15, 60000)).toBeGreaterThan(0);
+    expect(breakEvenNights(m, "AIRBNB", 7, 1999, 60000)).toBeGreaterThan(0);
+    expect(() => breakEvenPriceCents(m, "AIRBNB", 2, 0, 60000)).toThrow();
+    expect(modelFromAnswers({ ...a, linenMode: "service", linenCost: "10" }).nightlyVariableCostCents).toBe(0); // linge et coût par nuit restent indépendants
+  });
+  it("« couvrir les coûts de la nuit me suffit » est un seuil de dérangement à 0, déclaré", () => {
+    const m = modelFromAnswers({ ...a, hard: "30", hardMode: "none", provisional: ["hard"] });
+    expect(m.hardContributionPerNightCents).toBe(0);                 // la valeur saisie est ignorée
+    expect(m.provisional).toEqual([]);
+    expect(m.strategyContributionPerNightCents).toBe(3000);          // 600 € ÷ 20 nuits, plus de plancher de dérangement
+    expect(missingEconomics(m)).toHaveLength(0);
+    expect(modelFromAnswers({ ...a, hard: "30", hardMode: "set" }).hardContributionPerNightCents).toBe(3000);
+    // le retour au mode « set » retrouve la valeur saisie ; un dossier repris garde son choix
+    expect(answersFromModel({ ...model, answers: { hard: "30", hardMode: "none" } as any })).toMatchObject({ hard: "30", hardMode: "none" });
+    expect(answersFromModel({ ...model, hardContributionPerNightCents: 3000 }).hardMode).toBeUndefined();
+    expect(modelFromAnswers({ ...a, hard: "", hardMode: "set" }).hardContributionPerNightCents).toBeNull(); // sans choix ni valeur : inconnu
   });
 });

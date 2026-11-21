@@ -302,9 +302,22 @@ export const MONEY_DICTIONARY: MoneyField[] = [
     taxes: declaredTax, fees: { cleaning: INC, commission: EXC, paymentFee: EXC }, currency: "EUR", sign: "SIGNED", signNote: "Négatif = le ménage dégage une marge.", nullable: false, toVerify: VAT_DECLARED_TO_VERIFY,
   }),
   f({
+    id: "economics.fixed_monthly", label: "Charges fixes du mois (seuil de rentabilité)", names: ["fixedMonthlyCents", "fixedCents"], group: "ECONOMICS",
+    location: "paramètre des fonctions de seuil de rentabilité (economics.ts), calculé depuis les réponses du parcours « Charges fixes » (properties.economics.answers, en euros)", sources: ["OWNER_INPUT", "COMPUTED"], derivation: "DERIVED",
+    definition: "Somme des charges mensuelles saisies : loyer ou mensualité de crédit (comptée seulement si le propriétaire ne l'a pas décochée), copropriété, assurance, abonnements, taxes, autres. Sert uniquement au seuil de rentabilité du mois, jamais à baisser un prix.",
+    taxes: declaredTax, fees: noFee, currency: "EUR", sign: "NON_NEGATIVE", nullable: true, toVerify: VAT_DECLARED_TO_VERIFY,
+  }),
+  f({
     id: "floor.gross_nightly", label: "Plancher brut par nuit (dur, stratégique)", names: ["floorGrossNightlyCents", "hardFloorCents", "strategyFloorCents", "hardCents", "strategyCents"], group: "FLOOR_SIMULATION",
     location: "fonctions de economics.ts · floorGrid", sources: ["COMPUTED"], derivation: "DERIVED",
     definition: "Prix de vente minimal par nuit (hébergement, avant commission) pour atteindre la contribution visée sur un séjour de n nuits, formule du blueprint §8.3. Arrondi à l'unité supérieure.",
+    taxes: { cityTax: EXC, vat: UNK }, fees: { cleaning: EXC, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: false,
+    caveats: ["Comparable à un prix d'hébergement brut, pas au prix catalogue PriceLabs tant que ses inclusions restent inconnues."], toVerify: VAT_DECLARED_TO_VERIFY,
+  }),
+  f({
+    id: "floor.break_even", label: "Prix minimal du seuil de rentabilité (prix brut par nuit)", names: ["breakEvenPriceCents", "grossNightlyCents"], group: "FLOOR_SIMULATION",
+    location: "fonctions breakEvenPriceCents · breakEvenNights · contributionPerNightCents (economics.ts)", sources: ["COMPUTED"], derivation: "DERIVED",
+    definition: "Prix brut par nuit (hébergement, avant commission) qui, multiplié par le nombre de nuits vendues dans le mois, couvre les charges fixes du mois. Entrée du calcul inverse : prix brut saisi pour obtenir le nombre de nuits à vendre. Objectif de pilotage mensuel, pas un plancher.",
     taxes: { cityTax: EXC, vat: UNK }, fees: { cleaning: EXC, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: false,
     caveats: ["Comparable à un prix d'hébergement brut, pas au prix catalogue PriceLabs tant que ses inclusions restent inconnues."], toVerify: VAT_DECLARED_TO_VERIFY,
   }),
