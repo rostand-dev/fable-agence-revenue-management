@@ -48,6 +48,7 @@ export const AUDIT_TYPES = {
   "listing.archived": { category: "CONFIGURATION", label: "Annonce archivée" },
   "listing.restored": { category: "CONFIGURATION", label: "Annonce rétablie" },
   "listing.deleted": { category: "CONFIGURATION", label: "Annonce supprimée" },
+  "mapping.confirmed": { category: "CONFIGURATION", label: "Mapping des identifiants confirmé" },
   "tenant.renamed": { category: "CONFIGURATION", label: "Espace renommé" },
   "flag.changed": { category: "CONFIGURATION", label: "Fonction activée ou désactivée" },
   "settings.agents_renamed": { category: "CONFIGURATION", label: "Prénoms de l'équipe modifiés" },

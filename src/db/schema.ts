@@ -79,6 +79,8 @@ export const properties = pgTable("properties", {
   pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
   /** Connexion SuperHote (lecture seule) propre au logement : jeton chiffré, logement rattaché, canaux relevés, comparaison de prix */
   superhote: jsonb("superhote").$type<Record<string, any>>(),
+  /** Confirmation du mapping des identifiants externes (US-021) : { fingerprint, at, by, acknowledged }. Périmée dès que l'empreinte des identifiants change. */
+  mapping: jsonb("mapping").$type<{ fingerprint: string; at: string; by: string; warnings: string[] }>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
   channelMarkups: jsonb("channel_markups").$type<{ key: string; label: string; pct: number | null }[]>().notNull().default([]),
   /** Parcours de création (funnel) : étape où reprendre, étapes validées et reportées, heure du dernier enregistrement « à faire plus tard ». null = logement créé avant le funnel ou parcours terminé */

@@ -168,6 +168,12 @@ Le jeton API se saisit par logement, à la création du logement (étape 2 du pa
 - **API REST** (session du cockpit, jamais de clé ni de réglage interne dans les réponses ; erreurs `{ error: { code, message } }`) : `GET|POST /api/v1/owners`, `PATCH|DELETE /api/v1/owners/{id}`, `GET|POST /api/v1/properties`, `GET|PATCH|DELETE /api/v1/properties/{id}` (DELETE : `{ "confirmName": "<nom exact>" }`), `GET|POST /api/v1/properties/{id}/listings`, `PATCH|DELETE /api/v1/properties/{id}/listings/{listingId}` (PATCH : `externalId`, `url`, `title`, `status` ACTIVE|ARCHIVED). Une requête qui modifie depuis une autre origine est refusée.
 - Code : règles pures `src/lib/portfolio.ts`, services `src/lib/services/portfolio.ts` (utilisés par les écrans et l'API), actions `src/app/actions/portfolio.ts`, routes `src/app/api/v1/`.
 
+## Mapping des identifiants externes (US-021)
+
+Page `/logements/{id}/mapping` : pour chaque logement, ce que désignent PriceLabs, SuperHote, Airbnb et Booking.com, les écarts détectés (ville, chambres, capacité, incohérence entre outils) et une **confirmation par une personne**, tracée (`mapping.confirmed`). L'annonce PriceLabs est obligatoire pour confirmer ; les autres sont facultatives et restent vides tant qu'elles sont inconnues. La confirmation est **périmée** dès qu'un identifiant change (empreinte des identifiants). Un écart détecté n'interdit pas la confirmation mais exige que la personne déclare l'avoir vérifié ; les écarts sont gardés dans le journal.
+
+API : `GET` et `POST /api/v1/properties/{id}/mapping` (session). Migration `0015_property_mapping` : une colonne `properties.mapping`, idempotente. Aucune nouvelle variable d'environnement.
+
 ## Développement
 
 ```bash
