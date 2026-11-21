@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { calendarStateOf, evaluateQuality, pricesProblem, type QualityFacts } from "./quality";
 
-const ok: QualityFacts = { identityOk: true, pricelabsLinked: true, calendar: { status: "OK", days: 90, at: new Date().toISOString() }, economicsMissing: 0, mappingStatus: "CONFIRMED", prices: { basePriceCents: 12000, minPriceCents: 8000, maxPriceCents: 20000 }, superhoteLinked: true, provisionalCount: 0, shadow: { status: "OK", days: 20, readyAt: null }, floors: { status: "OK", by: "Rosy", at: "2026-11-01T10:00:00Z" }, reconciliation: { status: "OK", sampleSize: 12, maxGapPct: 0.4, by: "Rosy", at: "2026-11-01T10:00:00Z" } };
+const ok: QualityFacts = { identityOk: true, pricelabsLinked: true, calendar: { status: "OK", days: 90, at: new Date().toISOString() }, economicsMissing: 0, mappingStatus: "CONFIRMED", prices: { basePriceCents: 12000, minPriceCents: 8000, maxPriceCents: 20000 }, superhoteLinked: true, provisionalCount: 0, shadow: { status: "OK", days: 20, readyAt: null, minDays: 14 }, floors: { status: "OK", by: "Rosy", at: "2026-11-01T10:00:00Z" }, reconciliation: { status: "OK", sampleSize: 12, maxGapPct: 0.4, by: "Rosy", at: "2026-11-01T10:00:00Z" } };
 
 describe("checklist de qualité (US-024)", () => {
   it("dossier complet : activable, aucun avertissement", () => {
@@ -45,8 +45,8 @@ describe("checklist de qualité (US-024)", () => {
   });
   it("observation, planchers et rapprochement bloquent l'activation avec un détail précis", () => {
     const cases: [Partial<QualityFacts>, string, RegExp][] = [
-      [{ shadow: { status: "WAITING", days: 3, readyAt: "2026-12-01T00:00:00Z" } }, "shadow", /3 jours sur 14/],
-      [{ shadow: { status: "UNKNOWN", days: null, readyAt: null } }, "shadow", /inconnue/],
+      [{ shadow: { status: "WAITING", days: 3, readyAt: "2026-12-01T00:00:00Z", minDays: 14 } }, "shadow", /3 jours sur 14/],
+      [{ shadow: { status: "UNKNOWN", days: null, readyAt: null, minDays: 14 } }, "shadow", /inconnue/],
       [{ floors: { status: "NONE", by: null, at: null } }, "floors", /non validée/],
       [{ floors: { status: "STALE", by: "Rosy", at: "2026-11-01T10:00:00Z" } }, "floors", /ont changé/],
       [{ floors: { status: "INCOMPLETE", by: null, at: null } }, "floors", /incomplet/],
@@ -56,5 +56,9 @@ describe("checklist de qualité (US-024)", () => {
     ];
     for (const [patch, key, re] of cases) { const r = evaluateQuality({ ...ok, ...patch }); expect(r.canActivate, key).toBe(false); expect(r.blockers, key).toEqual([key]); expect(r.items.find((i) => i.key === key)?.detail, key).toMatch(re); }
     expect(evaluateQuality({ ...ok, floors: { status: "INCOMPLETE", by: null, at: null } }).items.find((i) => i.key === "floors")?.fix).toBe("couts");
+  });
+  it("libellé selon la durée configurée, y compris 0", () => {
+    const label = (minDays: number) => evaluateQuality({ ...ok, shadow: { status: "OK", days: 1, readyAt: null, minDays } }).items.find((i) => i.key === "shadow")?.label;
+    expect(label(14)).toBe("Observation d'au moins 14 jours"); expect(label(1)).toBe("Observation d'au moins 1 jour"); expect(label(0)).toBe("Observation lancée");
   });
 });

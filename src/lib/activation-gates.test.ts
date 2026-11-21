@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { emptyEconomics } from "./engine/economics";
-import { floorFingerprint, floorsState, parseReconciliation, reconciliationState, shadowState } from "./activation-gates";
+import { floorFingerprint, floorsState, parseReconciliation, reconciliationState, shadowMinDays, shadowState } from "./activation-gates";
 import type { EconomicModel } from "./engine/types";
 
 const econ = (over: Partial<EconomicModel> = {}): EconomicModel => ({ ...emptyEconomics(), cleaningFeeChargedCents: 5000, cleaningCostCents: 4000, linenCostCents: 1000, nightlyVariableCostCents: 500, hardContributionPerNightCents: 3000, strategyContributionPerNightCents: 4000, channels: { AIRBNB: { commissionPct: 15.5, paymentFeePct: 0 } } as never, ...over });
@@ -13,6 +13,22 @@ describe("observation d'au moins 14 jours", () => {
     expect(shadowState("2026-11-10T12:00:00Z", NOW)).toMatchObject({ status: "WAITING", days: 11, readyAt: "2026-11-24T12:00:00.000Z" });
     expect(shadowState("2026-11-07T12:00:00Z", NOW)).toMatchObject({ status: "OK", days: 14 });
     expect(shadowState("2026-11-07T12:00:01Z", NOW).status).toBe("WAITING");
+  });
+});
+
+describe("durée minimale d'observation configurable (ACTIVATION_SHADOW_MIN_DAYS)", () => {
+  it("14 par défaut ; valeur invalide ou hors plage : retour à 14, jamais un délai raccourci", () => {
+    expect(shadowMinDays(undefined)).toBe(14);
+    for (const bad of ["", " ", "abc", "-1", "1.5", "7 jours", "91", "9999", "1e1", "0x7"]) expect(shadowMinDays(bad), bad).toBe(14);
+    expect(shadowMinDays("7")).toBe(7); expect(shadowMinDays(" 30 ")).toBe(30); expect(shadowMinDays("90")).toBe(90); expect(shadowMinDays("0")).toBe(0);
+  });
+  it("durée paramétrable ; 0 : satisfaite dès le lancement, mais une date inconnue ne valide jamais", () => {
+    const launch = "2026-11-21T11:59:00Z";
+    expect(shadowState(launch, NOW, 14).status).toBe("WAITING");
+    expect(shadowState(launch, NOW, 7)).toMatchObject({ status: "WAITING", minDays: 7, readyAt: "2026-11-28T11:59:00.000Z" });
+    expect(shadowState(launch, NOW, 0)).toMatchObject({ status: "OK", minDays: 0 });
+    expect(shadowState("2026-11-21T12:00:01Z", NOW, 0).status).toBe("WAITING"); // lancement dans le futur
+    expect(shadowState(null, NOW, 0).status).toBe("UNKNOWN");
   });
 });
 

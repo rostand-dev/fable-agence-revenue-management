@@ -123,4 +123,21 @@ describe("validations avant activation (US-024)", () => {
     await db.update(schema.properties).set({ onboarding: { step: "verification", completedAt: new Date(Date.now() + 86_400_000).toISOString() } as never }).where(eq(schema.properties.id, id));
     expect((await getQuality(a.tenantId, id)).blockers).toContain("shadow");
   });
+  it("ACTIVATION_SHADOW_MIN_DAYS : 0 lève le délai (floors et rapprochement restent exigés), valeur invalide = 14, durée appliquée tracée", async () => {
+    const saved = process.env.ACTIVATION_SHADOW_MIN_DAYS;
+    try {
+      const id = await shadow(a, "Délai nul", 1);
+      process.env.ACTIVATION_SHADOW_MIN_DAYS = "abc";
+      expect((await getQuality(a.tenantId, id)).blockers).toEqual(["shadow", "floors", "reconciliation"]);
+      process.env.ACTIVATION_SHADOW_MIN_DAYS = "0";
+      expect((await getQuality(a.tenantId, id)).blockers).toEqual(["floors", "reconciliation"]); // seul le délai disparaît
+      await validateFloors(a.actor, id, fp(), ""); await recordReconciliation(a.actor, id, { sampleSize: "10", maxGapPct: "0", source: "SuperHote" });
+      await activateProperty(a.actor, id);
+      const ev = (await events(a, "property.activated")).find((e) => e.entityId === id)!;
+      expect((ev.payload as { shadowMinDays: number }).shadowMinDays).toBe(0);
+      const none = await shadow(a, "Sans date", 1);
+      await db.update(schema.properties).set({ onboarding: { step: "verification" } as never }).where(eq(schema.properties.id, none));
+      expect((await getQuality(a.tenantId, none)).items.find((i) => i.key === "shadow")?.ok).toBe(false); // date de lancement inconnue : même à 0
+    } finally { if (saved === undefined) delete process.env.ACTIVATION_SHADOW_MIN_DAYS; else process.env.ACTIVATION_SHADOW_MIN_DAYS = saved; }
+  });
 });
