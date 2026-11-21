@@ -1,0 +1,93 @@
+# NuitSignal : intégration continue.
+# Dépôt public : les runners GitHub standard sont gratuits et sans limite de minutes.
+# Ce workflow ne reçoit aucun secret et ne déploie rien : le déploiement reste assuré par Coolify.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Lecture seule du dépôt, aucune autre permission.
+permissions:
+  contents: read
+
+# Un nouveau push sur une PR annule l'exécution précédente de cette PR (jamais celles de main).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+
+jobs:
+  # Types TypeScript et tests purs (moteur, règles, cumul, correspondances d'intégrations, idempotence statique des migrations).
+  typecheck-tests:
+    name: Typecheck et tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Le jeton Git n'a pas besoin de rester dans .git/config : aucun job ne pousse quoi que ce soit.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  # Tests d'intégration sur une vraie base PostgreSQL 16 jetable, y compris le rejeu double des migrations
+  # (src/lib/migrations.db.test.ts) : une migration non rejouable fait échouer la CI.
+  tests-base-de-donnees:
+    name: Tests base de données
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # Le nom doit contenir « test » : le lanceur de tests refuse de vider une autre base.
+          POSTGRES_DB: nuitsignal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nuitsignal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      # Base jetable du service ci-dessus, vidée puis migrée à chaque lancement des tests.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nuitsignal_test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Le jeton Git n'a pas besoin de rester dans .git/config : aucun job ne pousse quoi que ce soit.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:db
+
+  # Compilation de production de Next.js : détecte les erreurs que le typecheck seul ne voit pas.
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Le jeton Git n'a pas besoin de rester dans .git/config : aucun job ne pousse quoi que ce soit.
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
