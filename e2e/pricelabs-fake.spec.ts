@@ -1,0 +1,66 @@
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expectNoHorizontalOverflow } from "./helpers/layout";
+
+// US-044 : le parcours PriceLabs (clé, rattachement, lecture) passe par le faux serveur de l'API PriceLabs, sans réseau ni clé réelle.
+// Le scénario est choisi par la clé saisie : fake-<scénario>-<suffixe alphanumérique>.
+const FAKE = (() => { try { const u = new URL(process.env.PRICELABS_API_BASE ?? ""); return u.hostname === "127.0.0.1" ? u.origin : null; } catch { return null; } })();
+const suffix = (info: TestInfo) => `${info.project.name.replace(/[^a-z0-9]/gi, "")}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.padEnd(12, "0");
+async function createViaApi(page: Page, name: string) {
+  const res = await page.request.post("/api/v1/properties", { data: { name, city: "Châtillon", kind: "T3", bedrooms: 2, capacity: 4 } });
+  expect(res.status(), await res.text()).toBe(201);
+  return (await res.json()).id as string;
+}
+const calls = async (page: Page): Promise<{ method: string; path: string; scenario: string | null; write: boolean }[]> => (await page.request.get(`${FAKE}/__calls`)).json();
+
+test.beforeEach(() => { test.skip(!FAKE, "Faux serveur PriceLabs : PRICELABS_API_BASE doit pointer vers 127.0.0.1."); });
+
+test("PriceLabs (faux serveur) : clé vérifiée, rattachement confirmé, grille, marché et réservations lus, sans aucune écriture", async ({ page }, info) => {
+  const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  const id = await createViaApi(page, `PL fake ${suffix(info)}`), key = `fake-nominal-${suffix(info)}`;
+  await page.goto(`/logements/${id}?tab=pricelabs`);
+  await expect(page.getByText("PriceLabs n'est pas connecté à ce logement")).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (non connecté)");
+
+  await page.getByLabel(/Clé API PriceLabs/).fill(key);
+  await page.getByRole("button", { name: "Vérifier et connecter" }).click();
+  await expect(page.getByText("Rattachement à confirmer")).toBeVisible();
+  await expect(page.getByText("Châtillon (jeu fictif)")).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (rattachement)");
+
+  await page.getByRole("button", { name: /rattacher/i }).click();
+  await expect(page.getByText("réussie")).toBeVisible();
+  await expect(page.getByText(/91 jours/).first()).toBeVisible();
+  await expect(page.getByText(/120 annonces comparables/)).toBeVisible();
+  await expect(page.getByText(/3 confirmées · 1 annulées ou remplacées/)).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (lu)");
+
+  // l'onglet « 90 jours » reflète la grille lue
+  await page.goto(`/logements/${id}?tab=calendrier`);
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet 90 jours");
+
+  const made = await calls(page);
+  expect(made.some((c) => c.scenario === "nominal" && c.path === "/listing_prices")).toBe(true);
+  expect(made.filter((c) => c.write), "aucune écriture chez PriceLabs").toEqual([]);
+  expect(errors).toEqual([]);
+});
+
+test("PriceLabs (faux serveur) : synchronisation désactivée chez PriceLabs, l'erreur est expliquée", async ({ page }, info) => {
+  const id = await createViaApi(page, `PL off ${suffix(info)}`);
+  await page.goto(`/logements/${id}?tab=pricelabs`);
+  await page.getByLabel(/Clé API PriceLabs/).fill(`fake-toggle-off-${suffix(info)}`);
+  await page.getByRole("button", { name: "Vérifier et connecter" }).click();
+  await page.getByRole("button", { name: /rattacher/i }).click();
+  await expect(page.getByText(/désactivée dans PriceLabs/).first()).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (erreur de lecture)");
+});
+
+test("PriceLabs (faux serveur) : clé refusée, message lisible et aucun rattachement", async ({ page }, info) => {
+  const id = await createViaApi(page, `PL 401 ${suffix(info)}`);
+  await page.goto(`/logements/${id}?tab=pricelabs`);
+  await page.getByLabel(/Clé API PriceLabs/).fill(`fake-unauthorized-${suffix(info)}`);
+  await page.getByRole("button", { name: "Vérifier et connecter" }).click();
+  await expect(page.getByText(/Clé API refusée par PriceLabs/)).toBeVisible();
+  await expect(page.getByText("Rattachement à confirmer")).toHaveCount(0);
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (clé refusée)");
+});
