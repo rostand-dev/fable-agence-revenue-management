@@ -47,7 +47,7 @@ export function mapPlatform(name: unknown): ShChannel {
 
 export type ShFeeLine = { type: string; label: string; cents: number; vatRate: number | null };
 export type ShReservation = {
-  id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean; bookedAt: ISODate | null;
+  id: string; externalId: string | null; rentalId: string; channel: ShChannel; platformName: string | null; checkIn: ISODate; checkOut: ISODate; nights: number; canceled: boolean; bookedAt: ISODate | null; /** `updated_at` SuperHote (ISO), null si absent : sert à ignorer un événement plus ancien que l'état connu. */ updatedAt: string | null;
   /** Montants (centimes), null = non transmis. `total_price` : payé par le voyageur ; `host_payout` : net versé à l'hôte. */
   totalCents: number | null; hostPayoutCents: number | null; cityTaxCents: number | null; cleaningCents: number | null;
   /** Somme des lignes retenues à l'hôte (`host_fees`, en valeur absolue : frais de plateforme + TVA hôte) ; null = lignes absentes de la réponse. */
@@ -82,6 +82,7 @@ export function mapReservation(r: any): ShReservation | null {
     channel: mapPlatform(r.platform_name), platformName: typeof r.platform_name === "string" ? r.platform_name : null,
     checkIn: String(r.checkin).slice(0, 10), checkOut: String(r.checkout).slice(0, 10), nights: Number(r.nights) || 0,
     canceled: !!r.canceled_at || label.startsWith("CANCEL") || label === "NO_SHOW", bookedAt: typeof (r.booked_at ?? r.created_at) === "string" ? String(r.booked_at ?? r.created_at).slice(0, 10) : null,
+    updatedAt: typeof r.updated_at === "string" && !Number.isNaN(Date.parse(r.updated_at)) ? r.updated_at : null,
     totalCents: cents(r.total_price), hostPayoutCents: cents(r.host_payout), cityTaxCents: sumOf(isCityTax), cleaningCents: sumOf((l) => l?.type === "cleaning_fee"),
     // SuperHote renvoie les lignes `host_fees` en montants POSITIFS (59.52 = frais retenus) ; la valeur absolue couvre aussi un éventuel signe négatif
     hostFeesCents: Array.isArray(r.host_fees) ? totalHostFees(feeLines) : null, feeLines,

@@ -134,6 +134,13 @@
       "when": 1795259253006,
       "tag": "0018_activation_validations",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795264879001,
+      "tag": "0019_reservation_nights",
+      "breakpoints": true
     }
   ]
 }

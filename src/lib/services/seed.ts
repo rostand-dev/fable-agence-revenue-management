@@ -8,6 +8,7 @@ import type { DetectedOpportunity } from "../engine/types";
 import { capabilitiesOf, capabilityFlags, PROVIDERS } from "../integrations/capabilities";
 import { deterministicNarrative } from "./narrative";
 import { ensureDefaultOwner } from "./portfolio";
+import { insertReservations } from "./reservations-store";
 import { dedupeKey, oppRow, runDailyReview } from "./review";
 
 const s = schema;
@@ -38,7 +39,7 @@ export async function seedDemo(tenantId: string): Promise<void> {
   for (const p of demo) {
     const id = newId("prop"); ids[p.key] = id;
     await db.insert(s.properties).values({ id, tenantId, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, ownerId: demoOwnerId, status: "ACTIVE", isDemo: true, profile: p.profile, economics: p.economics, strategy: p.strategy });
-    await db.insert(s.reservations).values(p.reservations.map((r) => ({ id: newId("res"), tenantId, propertyId: id, ...r, source: "DEMO" })));
+    await insertReservations(db, tenantId, id, p.reservations.map((r) => ({ ...r, status: "CONFIRMED" as const, commissionEstimated: false })), "DEMO");
     await db.insert(s.calendarDays).values(p.days.map((d) => ({ propertyId: id, tenantId, date: d.date, priceCents: d.priceCents, sentPriceCents: d.state === "FREE" ? d.priceCents : null, minStay: d.minStay, state: d.state, rule: d.rule, observedAt: now })));
     await db.insert(s.marketDays).values(p.days.map((d) => ({ propertyId: id, tenantId, date: d.date, marketOccupancy: d.marketOccupancy, marketAdrCents: d.marketAdrCents, pricePercentile: d.pricePercentile, event: d.event, observedAt: now })));
     await db.insert(s.promotions).values(p.promos.map((x) => ({ id: newId("promo"), tenantId, propertyId: id, channel: x.channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.fromOffset === null ? null : addDays(today, x.fromOffset), stayTo: x.toOffset === null ? null : addDays(today, x.toOffset), status: "ACTIVE", source: "DEMO", verifiedAt: new Date(+now - x.verifiedDaysAgo * 86400000) })));

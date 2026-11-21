@@ -36,7 +36,7 @@ export function shReservations(rows: ShReservation[], model: EconomicModel | nul
       // une réservation en direct ne supporte aucune commission de plateforme
       commissionCents: channel === "DIRECT" ? 0 : given !== null ? given : rate && status === "CONFIRMED" ? Math.round(gross * rate.commissionPct / 100) : null,
       paymentFeeCents: channel === "DIRECT" ? 0 : exactPaymentFee !== null ? exactPaymentFee : rate && status === "CONFIRMED" ? Math.round(gross * rate.paymentFeePct / 100) : null,
-      status, bookedAt: r.bookedAt ?? r.checkIn, commissionEstimated: channel !== "DIRECT" && given === null && !!rate && status === "CONFIRMED",
+      status, bookedAt: r.bookedAt ?? r.checkIn, sourceUpdatedAt: r.updatedAt, commissionEstimated: channel !== "DIRECT" && given === null && !!rate && status === "CONFIRMED",
     });
   }
   return dedupeConfirmed(out);

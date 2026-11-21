@@ -138,7 +138,52 @@ export const reservations = pgTable("reservations", {
   status: text("status").notNull().default("CONFIRMED"),
   bookedAt: date("booked_at", { mode: "string" }).notNull(),
   source: text("source").notNull().default("DEMO"),
+  /** Dernière modification connue chez la source (`updated_at` SuperHote) : un événement plus ancien que celle-ci est ignoré (US-031). null = inconnue. */
+  sourceUpdatedAt: ts("source_updated_at"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("reservations_ext").on(t.propertyId, t.externalId), index("reservations_prop").on(t.tenantId, t.propertyId, t.checkIn)]);
+
+/**
+ * Allocation d'une réservation sur ses nuits (US-031, blueprint §12.2 « Reservation 1─* ReservationNight »). Une ligne par nuit vendue ou bloquée ;
+ * une réservation annulée ou doublon n'a aucune nuit (ses dates sont rouvertes). La somme des nuits égale toujours le montant de la réservation
+ * (reste réparti, un centime par nuit, sur les premières nuits). Le ménage n'est pas alloué : il n'est pas du revenu d'hébergement.
+ */
+export const reservationNights = pgTable("reservation_nights", {
+  reservationId: text("reservation_id").notNull().references(() => reservations.id, { onDelete: "cascade" }),
+  night: date("night", { mode: "string" }).notNull(),
+  tenantId: text("tenant_id").notNull(),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull(),
+  /** CONFIRMED | BLOCKED */
+  status: text("status").notNull(),
+  grossRoomCents: integer("gross_room_cents").notNull(),
+  commissionCents: integer("commission_cents"),
+  paymentFeeCents: integer("payment_fee_cents"),
+}, (t) => [primaryKey({ columns: [t.reservationId, t.night] }), index("reservation_nights_property_night").on(t.propertyId, t.night), index("reservation_nights_tenant").on(t.tenantId)]);
+
+/**
+ * Historique des changements d'une réservation (US-031, blueprint §12.4) : création, modification, annulation, réactivation, avec ce qui a changé.
+ * Rattaché à (logement, identifiant externe) et non à la ligne de réservation, que la relecture complète recrée. Jamais modifié ni supprimé
+ * par l'application (le rôle applicatif n'a que SELECT et INSERT). Aucune donnée de voyageur : seulement dates, canal, statut et montants.
+ */
+export const reservationChanges = pgTable("reservation_changes", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  externalId: text("external_id").notNull(),
+  /** CREATED | MODIFIED | CANCELLED | REACTIVATED */
+  kind: text("kind").notNull(),
+  /** WEBHOOK | RECONCILE */
+  source: text("source").notNull(),
+  /** Identifiant de livraison SuperHote (`X-Superhote-Delivery`) quand le changement vient d'un webhook. */
+  deliveryId: text("delivery_id"),
+  /** Date de la modification chez la source. */
+  occurredAt: ts("occurred_at"),
+  before: jsonb("before").$type<Record<string, any> | null>(),
+  after: jsonb("after").$type<Record<string, any>>().notNull(),
+  changes: jsonb("changes").$type<{ key: string; label: string; from: string | null; to: string | null }[]>().notNull().default([]),
+  createdAt: created(),
+}, (t) => [index("reservation_changes_property").on(t.propertyId, t.createdAt), index("reservation_changes_resa").on(t.propertyId, t.externalId, t.createdAt), index("reservation_changes_tenant").on(t.tenantId)]);
 
 export const calendarDays = pgTable("calendar_days", {
   propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
