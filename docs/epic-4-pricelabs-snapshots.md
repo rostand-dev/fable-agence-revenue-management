@@ -38,3 +38,20 @@ Blueprint §19 (E4), §7.4 (fraîcheur et lineage), §8.1 (payload brut immuable
 - Aucune migration de base, aucune nouvelle variable d'environnement.
 
 **Tests** : unitaires (`pricelabs-check.test.ts` : 8 cas de test de connexion, 2 de dérive, 7 de reprise sur panne), base (`pricelabs-sync.db.test.ts` : 7 cas, dont non-écriture, isolation locataire, absence de clé dans le résultat), E2E faux serveur sur bureau, mobile 390 et 360 sans débordement horizontal.
+
+## US-043 — Snapshot immuable, fraîcheur et lineage
+
+**Ce qui change**
+- **Table `source_snapshots`** (migration `0021_source_snapshots`, idempotente) : à chaque lecture PriceLabs réussie, la réponse brute est conservée telle quelle — un snapshot `PRICING` (grille) et, si le marché est lisible, un snapshot `MARKET`. Chacun porte la source, l'**adaptateur** (HTTP, FAKE ou REPLAY : jamais d'ambiguïté réel/simulé), l'horodatage d'observation, la fenêtre de validité, un score de qualité (0 à 100), l'empreinte SHA-256 du contenu et son lineage (annonce, PMS, plage).
+- **Immuable** : un déclencheur refuse tout `UPDATE`/`DELETE` direct, même pour le propriétaire de la table (la suppression en cascade d'un logement ou d'un locataire passe) ; le rôle applicatif n'a de plus que `SELECT` et `INSERT` ; isolation par locataire (RLS `tenant_isolation`, table ajoutée à `TENANT_TABLES`). Seule la suppression du logement les emporte (cascade).
+- **Déduplication** : l'empreinte ignore les champs que PriceLabs change à chaque lecture sans que les données changent (`last_refreshed_at`…). Une lecture identique à la précédente n'est pas dupliquée. Elle crée une ligne légère sans payload qui pointe la première (`unchanged_of`) et fait avancer la fraîcheur.
+- **Lineage** : `calendar_days.snapshot_id` et `market_days.snapshot_id` désignent le snapshot d'où vient chaque ligne. Pour les prix, c'est la grille PriceLabs ; le `lineage` du snapshot précise `priceSource`, `pricesFromSuperhote` et `blockedNights` quand SuperHote complète ou remplace une partie des prix. La date d'observation est prise sous le verrou du logement : deux lectures concurrentes s'écrivent dans l'ordre réel. Le dernier snapshot de chaque nature est cherché à part de l'historique, qui n'est jamais chargé avec ses payloads.
+- **Fraîcheur** (`src/lib/freshness.ts`, seuils du blueprint §7.4) : réservations 24 h, disponibilité 6 h, prix 24 h, marché 48 h, promotions 7 jours. L'onglet PriceLabs affiche, pour les prix et le marché, « à jour / périmé / jamais lu » en toutes lettres, la date de lecture, l'origine et la qualité. Le moteur de décision s'appuiera sur ces seuils (épic 6).
+- **API** : `GET /api/v1/properties/{id}/snapshots` (dernier snapshot par nature, fraîcheur, historique, sans payload) et `GET /api/v1/snapshots/{snapshotId}` (réponse brute, 404 hors du locataire).
+- Une lecture en échec n'écrit aucun snapshot ; un marché illisible ne produit pas de snapshot de marché.
+- **Staging (Coolify)** : une migration à appliquer (`0021_source_snapshots`, rejouable sans risque ; elle crée aussi le déclencheur d'immuabilité), aucune variable d'environnement nouvelle. Le rôle `nuitsignal_app` reçoit ses droits via la migration si le rôle existe.
+- Limites connues : les événements `pricing.snapshot.created` / `market.snapshot.created` du blueprint §13.2 ne sont pas émis (l'outbox transactionnel n'existe pas encore) ; pas de purge des snapshots (règle de rétention à définir, US-123).
+
+**Tests** : unitaires (fraîcheur, empreinte canonique), base (`snapshots.db.test.ts` : création, déduplication, changement, lineage, marché absent, lecture en échec, fraîcheur dans le temps, métadonnées sans payload, isolation locataire, immuabilité par le rôle applicatif, cascade), E2E faux serveur (bureau, mobile 390 et 360, sans débordement) incluant l'API.
+
+Limite supplémentaire : la fraîcheur affichée pour les prix est celle de la lecture PriceLabs ; quand SuperHote fournit le prix, sa propre fraîcheur (dernière lecture SuperHote) s'applique aussi.

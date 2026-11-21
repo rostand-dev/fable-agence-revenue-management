@@ -2,6 +2,7 @@ import { channelOverridesAction, connectPriceLabsAction, detachListingAction, di
 import { fmtDate, fmtDateTime, fmtDay } from "@/lib/dates";
 import { euro } from "@/lib/format";
 import { ActionForm, Submit } from "./forms";
+import type { getSnapshotState } from "@/lib/services/snapshots";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner, Recap, State, Vq } from "./ui";
 
@@ -29,10 +30,39 @@ function ConnectionCheckResult({ check }: { check: Record<string, any> }) {
   );
 }
 
+type SnapshotState = Awaited<ReturnType<typeof getSnapshotState>>;
+const FRESH_WORD = { FRESH: "à jour", STALE: "périmé", MISSING: "jamais lu" } as const;
+const FRESH_ROLE = { FRESH: "sain", STALE: "attention", MISSING: "neutre" } as const;
+const KIND_LABEL = { PRICING: "Prix", MARKET: "Marché" } as const;
+const ADAPTER_LABEL: Record<string, string> = { HTTP: "PriceLabs", FAKE: "jeu de données simulé", REPLAY: "rejeu d'une fixture" };
+
+/** Fraîcheur des données lues (seuils du blueprint §7.4) : date du dernier snapshot, état en toutes lettres, origine réelle ou simulée. */
+function SnapshotFreshness({ state }: { state: SnapshotState }) {
+  return (
+    <div className="stack" style={{ gap: 6 }} data-testid="pricelabs-snapshots">
+      <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Fraîcheur des données lues</h2>
+      <ul role="list" style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 6 }}>
+        {(["PRICING", "MARKET"] as const).map((k) => {
+          const snap = state.latest[k], f = state.freshness[k];
+          return (
+            <li key={k} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "baseline" }}>
+              <span style={{ minWidth: 70, fontWeight: 600 }}>{KIND_LABEL[k]}</span>
+              <State role={FRESH_ROLE[f.state]}>{FRESH_WORD[f.state]}</State>
+              <span className="muted" style={{ flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }}>
+                {snap ? <>Lu le {fmtDateTime(new Date(snap.observedAt))} · {ADAPTER_LABEL[snap.adapter] ?? snap.adapter} · qualité {snap.qualityScore} %{snap.unchangedOf ? " · identique à la lecture précédente" : ""} · à renouveler après {f.maxHours} h</> : "Aucun snapshot : la première lecture n'a pas eu lieu."}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
 /** Connexion PriceLabs d'un logement : saisie de la clé, choix de l'annonce, état de la dernière lecture. */
 export type NoChannel = { externalId: string; checkIn: string; checkOut: string; nights: number; grossRoomCents: number; commissionCents: number | null; choice: string };
 
-export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken, noChannel = [], costsMissing = 0 }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string>; noChannel?: NoChannel[]; costsMissing?: number }) {
+export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo, pl, error, taken, noChannel = [], costsMissing = 0, snapshots = null }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; pl: Record<string, any> | null; error?: string; taken: Record<string, string>; noChannel?: NoChannel[]; costsMissing?: number; snapshots?: SnapshotState | null }) {
   if (isDemo) return <Banner role="tech" title="Logement de démonstration">Ses données sont simulées : il ne se connecte pas à PriceLabs. Ajoutez votre propre logement pour brancher votre clé.</Banner>;
   const ls = pl?.lastSync, cands: any[] = pl?.candidates ?? [];
   return (
@@ -143,6 +173,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
               </section>
             );
           })()}
+          {snapshots && <SnapshotFreshness state={snapshots} />}
           {ls?.listingChanges?.length > 0 && <Banner role="attention" title="Annonce modifiée chez PriceLabs">{ls.listingChanges.join(" ; ")}. Vérifiez que l'annonce correspond toujours à ce logement.</Banner>}
           {pl.lastCheck && <ConnectionCheckResult check={pl.lastCheck} />}
           <div className="row-wrap">

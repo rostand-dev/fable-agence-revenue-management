@@ -13,6 +13,7 @@ import { shReservations } from "../integrations/superhote-reservations";
 import { replaceReservations } from "./reservations-store";
 import { applyCalendarEffect, lockProperty, reconcileReservations, type ReconcileResult } from "./reservation-ingest";
 import { withTenant } from "@/db/tenant";
+import { recordSnapshot } from "./snapshots";
 import { snapshotSuperhote } from "./superhote-read";
 
 const { properties, calendarDays, marketDays, reservations, agentRuns } = schema;
@@ -173,10 +174,18 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   let rec: ReconcileResult | null = null;
   await withTenant(tenantId, async (tx) => {
     await lockProperty(tx, p.id); // même ordre de verrous que les webhooks : verrou du logement d'abord, puis calendrier
+    // US-043 : ce que PriceLabs a répondu est conservé tel quel (immuable) ; les projections ci-dessous pointent leur snapshot.
+    // le lineage dit aussi d'où vient le prix affiché : snapshot_id des projections = la grille PriceLabs, que SuperHote peut compléter ou remplacer (priceSource)
+    const lineage = { listingId: pl.listingId, pms: pl.pms, range: { from: h.from, to: h.to }, priceSource, pricesFromSuperhote, blockedNights: blocked.size };
+    const rawDays = mapPrices(priceItem).filter((d) => d.date >= h.from && d.date <= h.to);
+    const priceSnap = await recordSnapshot(tx, { tenantId, propertyId: p.id, kind: "PRICING", source: "PRICELABS", adapter: port.adapter, observedAt: now, validFrom: h.from, validTo: h.to, payload: priceItem,
+      qualityScore: rawDays.length ? (100 * rawDays.filter((d) => d.state !== "FREE" || d.priceCents !== null).length) / rawDays.length : 0, lineage });
+    const marketSnap = market ? await recordSnapshot(tx, { tenantId, propertyId: p.id, kind: "MARKET", source: "PRICELABS", adapter: port.adapter, observedAt: now, validFrom: h.from, validTo: h.to, payload: market,
+      qualityScore: mk.market.length ? (100 * mk.market.filter((m) => m.marketOccupancy !== null).length) / mk.market.length : 0, lineage }) : null;
     await tx.delete(calendarDays).where(eq(calendarDays.propertyId, p.id));
     await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
-    await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now })));
-    await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
+    await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now, snapshotId: priceSnap.id })));
+    await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now, snapshotId: marketSnap?.id ?? null })));
     if (toWrite && source === "SUPERHOTE" && sh?.ok) {
       rec = await reconcileReservations(tx, { tenantId, propertyId: p.id, model, reservations: sh.reservations, readAt: new Date(sh.at) });
       // le calendrier reflète les réservations réellement enregistrées (webhook plus récent, doublon, lecture suspecte), pas seulement la lecture brute

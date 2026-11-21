@@ -1,17 +1,28 @@
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect as baseExpect, test, type Page, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+
+// Chaque lecture PriceLabs est suivie de la revue du portefeuille démo, qui ralentit quand d'autres tests y ont laissé des logements : attentes généreuses.
+const expect = baseExpect.configure({ timeout: 30_000 });
+test.setTimeout(120_000);
 
 // US-044 : le parcours PriceLabs (clé, rattachement, lecture) passe par le faux serveur de l'API PriceLabs, sans réseau ni clé réelle.
 // Le scénario est choisi par la clé saisie : fake-<scénario>-<suffixe alphanumérique>.
 const FAKE = (() => { try { const u = new URL(process.env.PRICELABS_API_BASE ?? ""); return u.hostname === "127.0.0.1" ? u.origin : null; } catch { return null; } })();
 const suffix = (info: TestInfo) => `${info.project.name.replace(/[^a-z0-9]/gi, "")}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.padEnd(12, "0");
+// Les logements créés sont supprimés en fin de test : la revue du portefeuille démo suit chaque lecture et ralentit avec le nombre de logements.
+const created: { id: string; name: string }[] = [];
 async function createViaApi(page: Page, name: string) {
   const res = await page.request.post("/api/v1/properties", { data: { name, city: "Châtillon", kind: "T3", bedrooms: 2, capacity: 4 } });
   expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).id as string;
+  const id = (await res.json()).id as string;
+  created.push({ id, name });
+  return id;
 }
 const calls = async (page: Page): Promise<{ method: string; path: string; scenario: string | null; write: boolean }[]> => (await page.request.get(`${FAKE}/__calls`)).json();
 
+test.afterEach(async ({ page }) => {
+  for (const c of created.splice(0)) await page.request.delete(`/api/v1/properties/${c.id}`, { data: { confirmName: c.name } }).catch(() => {});
+});
 test.beforeEach(() => { test.skip(!FAKE, "Faux serveur PriceLabs : PRICELABS_API_BASE doit pointer vers 127.0.0.1."); });
 
 test("PriceLabs (faux serveur) : clé vérifiée, rattachement confirmé, grille, marché et réservations lus, sans aucune écriture", async ({ page }, info) => {
@@ -117,4 +128,33 @@ test("PriceLabs (faux serveur) : test de connexion avant rattachement, la clé e
   await expect(result.getByText("Clé valide, annonce à rattacher")).toBeVisible();
   await expect(result.getByText("Lecture impossible")).toHaveCount(0);
   await expectNoHorizontalOverflow(page, "onglet PriceLabs (test sans annonce)");
+});
+
+// US-043 : snapshots immuables, fraîcheur visible dans l'onglet et lisible par l'API, sur bureau et mobile.
+test("PriceLabs (faux serveur) : fraîcheur et snapshots visibles après la lecture, sans fuite de la réponse brute", async ({ page }, info) => {
+  const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  const id = await linked(page, info, "nominal", "snapshots");
+  await expect(page.getByText("réussie")).toBeVisible();
+  const box = page.getByTestId("pricelabs-snapshots");
+  await expect(box).toBeVisible();
+  await expect(box.getByText("à jour", { exact: true })).toHaveCount(2);
+  await expect(box.getByText(/Lu le .* · PriceLabs · qualité/).first()).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (fraîcheur)");
+
+  // relecture à l'identique : le snapshot est signalé comme identique, rien n'est dupliqué
+  await page.getByRole("button", { name: "Relire PriceLabs maintenant" }).click();
+  await expect(page.getByTestId("pricelabs-snapshots").getByText(/identique à la lecture précédente/).first()).toBeVisible();
+
+  const res = await page.request.get(`/api/v1/properties/${id}/snapshots`);
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.latest.PRICING).toMatchObject({ kind: "PRICING", source: "PRICELABS", adapter: "HTTP" });
+  expect(body.freshness.PRICING.state).toBe("FRESH");
+  expect(JSON.stringify(body)).not.toContain('"payload"');
+  const raw = await page.request.get(`/api/v1/snapshots/${body.history.find((h: any) => !h.unchangedOf && h.kind === "PRICING").id}`);
+  expect(raw.status()).toBe(200);
+  expect((await raw.json()).payload).toBeTruthy();
+  expect((await page.request.get(`/api/v1/snapshots/snap_inconnu`)).status()).toBe(404);
+  expect((await page.request.get(`/api/v1/properties/prop_inconnu/snapshots`)).status()).toBe(404);
+  expect(errors).toEqual([]);
 });
