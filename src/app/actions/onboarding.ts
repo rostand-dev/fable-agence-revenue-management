@@ -9,7 +9,7 @@ import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
-import { advance, isStep, launchBlockers, stepLabel, type OnboardingState, type StepKey } from "@/lib/onboarding";
+import { advance, identityComplete, isStep, launchBlockers, stepLabel, type OnboardingState, type StepKey } from "@/lib/onboarding";
 import { parseMarkupList } from "@/lib/pricing/published";
 import { createPropertyDraft, PortfolioError } from "@/lib/services/portfolio";
 import { selectListing, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
@@ -151,10 +151,12 @@ export async function launchAction(_: FormState, fd: FormData): Promise<FormStat
     const p = await load(u.tenantId, txt(fd, "propertyId"));
     if (txt(fd, "intent") === "quit") { await setState(p.id, advance(p.onboarding, "verification", "stay")); return QUIT; }
     const missing = missingEconomics(p.economics as EconomicModel).length;
-    const blockers = launchBlockers({ identityOk: p.name.length >= 2 && p.city.length >= 2 && !!p.kind, superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: missing, onboarding: p.onboarding });
+    const blockers = launchBlockers({ identityOk: identityComplete(p), superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: missing, onboarding: p.onboarding });
     if (blockers.length) throw new SyncError(`Avant de lancer l'observation, complétez : ${blockers.map(stepLabel).join(", ")}.`);
     const now = new Date();
-    await db.update(schema.properties).set({ status: "SHADOW", onboarding: { ...advance(p.onboarding, "verification", "stay", now), completedAt: now.toISOString() } }).where(eq(schema.properties.id, p.id));
+    // Garde sur le statut : un lancement rejoué (ancien onglet, double envoi) ne rétrograde jamais un logement déjà lancé ou actif.
+    const launched = await db.update(schema.properties).set({ status: "SHADOW", onboarding: { ...advance(p.onboarding, "verification", "stay", now), completedAt: now.toISOString() } }).where(and(eq(schema.properties.id, p.id), eq(schema.properties.tenantId, u.tenantId), eq(schema.properties.status, "ONBOARDING"))).returning({ id: schema.properties.id });
+    if (!launched.length) throw new SyncError("Ce logement est déjà lancé : modifiez-le depuis sa fiche.");
     await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: `${p.name} : dossier complet, observation lancée${p.superhote?.rentalId ? "" : " (SuperHote à connecter : réservations lues via PriceLabs)"}.` });
     await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.launched", entity: "Property", entityId: p.id, summary: `${u.name} lance l'observation de ${p.name}.`, payload: { superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId } });
     // les commissions estimées et la taxe de séjour dépendent du modèle : PriceLabs est relu avant la première revue

@@ -40,6 +40,7 @@ export const AUDIT_TYPES = {
   "property.costs_validated": { category: "CONFIGURATION", label: "Coûts et seuils validés" },
   "property.strategy_synced": { category: "CONFIGURATION", label: "Stratégie relue depuis PriceLabs" },
   "property.launched": { category: "CONFIGURATION", label: "Observation lancée" },
+  "property.activated": { category: "CONFIGURATION", label: "Logement activé" },
   "property.deleted": { category: "CONFIGURATION", label: "Logement supprimé" },
   "owner.created": { category: "CONFIGURATION", label: "Propriétaire créé" },
   "owner.updated": { category: "CONFIGURATION", label: "Propriétaire modifié" },

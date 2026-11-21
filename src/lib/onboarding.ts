@@ -16,6 +16,9 @@ export type StepStatus = "done" | "skipped" | "current" | "todo";
 /** `costQ` : question de « Coûts et seuils » où reprendre (0 à 7). */
 export type OnboardingState = { step: string; reached?: string; done?: string[]; skipped?: string[]; savedAt?: string | null; completedAt?: string | null; costQ?: number };
 
+/** Identité minimale d'un logement : partagée par le lancement et la checklist de qualité. */
+export const identityComplete = (p: { name: string; city: string; kind: string | null }) => p.name.length >= 2 && p.city.length >= 2 && !!p.kind;
+
 /** Ce dont le calcul a besoin, sans dépendre de la base. */
 export type FunnelFacts = {
   identityOk: boolean;
