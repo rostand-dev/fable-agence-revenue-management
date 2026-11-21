@@ -5,3 +5,8 @@ node_modules
 *.tsbuildinfo
 next-env.d.ts
 coverage
+
+# Tests E2E (Playwright)
+e2e/.auth
+test-results
+playwright-report

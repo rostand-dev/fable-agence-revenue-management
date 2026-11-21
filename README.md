@@ -175,6 +175,8 @@ npm run db:idempotent       # obligatoire juste après db:generate : rend la mig
 
 Le workflow `.github/workflows/ci.yml` s'exécute sur chaque pull request et chaque push sur `main`, avec trois contrôles indépendants : **Typecheck et tests** (`npm run typecheck` et `npm test`), **Tests base de données** (`npm run test:db` sur un PostgreSQL 16 jetable, qui rejoue aussi chaque migration deux fois) et **Build** (`npm run build`). Le workflow n'utilise aucun secret et ne déploie rien : le déploiement reste assuré par Coolify. Pour lancer les mêmes tests en local, créez une base dont le nom contient « test » et exportez `TEST_DATABASE_URL` avant `npm run test:db`.
 
+Un quatrième contrôle, **Tests E2E (Playwright)**, ouvre l'application dans un vrai navigateur, sur écran de bureau et sur mobile (390 px et 360 px), avec le compte de démo. Il vérifie que les pages principales s'ouvrent sans défiler horizontalement et que la frise du cycle reste lisible (`e2e/`, assistants de mesure dans `e2e/helpers/layout.ts`). Le rapport HTML et les captures sont joints à l'exécution GitHub. En local : construire l'application (`npm run build`), démarrer avec le compte de démo configuré (voir « Compte de démo »), puis `E2E_EMAIL=… E2E_PASSWORD=… npm run e2e` (variables décrites dans `.env.example`). Tout nouvel écran ou toute modification d'interface doit s'accompagner d'un test dans `e2e/`.
+
 ## Déploiement sur Coolify
 
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
