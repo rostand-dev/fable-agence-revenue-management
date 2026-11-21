@@ -1,0 +1,114 @@
+# NuitSignal : test de fumée de la Preview Coolify d'une pull request.
+# Coolify déploie la Preview (protégée par mot de passe) ; ce workflow attend qu'elle affiche le commit de la PR, lance les tests E2E dessus
+# (bureau et mobile) puis commente le résultat sur la PR. Il ne déploie rien et ne modifie rien dans Coolify.
+#
+# Réglages à poser dans GitHub (Settings > Secrets and variables > Actions) :
+#   Variable : PREVIEW_URL_TEMPLATE        adresse d'une preview, avec {pr} à la place du numéro de PR (ex. https://{pr}.nuit-signal.rosyops.io)
+#   Secrets  : PREVIEW_BASIC_AUTH_USER / PREVIEW_BASIC_AUTH_PASSWORD   identifiants HTTP de la preview (les mêmes que dans les variables « Preview Deployment » de Coolify)
+#              PREVIEW_DEMO_EMAIL / PREVIEW_DEMO_PASSWORD               compte de démo de la preview (DEMO_ACCOUNT_EMAIL / DEMO_ACCOUNT_PASSWORD de Coolify)
+# Tant qu'un de ces réglages manque, le workflow se termine sans échec en le signalant. Il ne tourne jamais pour une PR venant d'un fork (pas d'accès aux secrets).
+name: Preview smoke
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write # uniquement pour commenter le résultat sur la PR
+
+# Un nouveau push sur la PR annule l'attente et les tests de l'exécution précédente.
+concurrency:
+  group: preview-smoke-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview-smoke:
+    name: Test de fumée de la Preview
+    # Pas de PR de fork : les secrets n'y sont pas transmis et le code n'est pas de confiance.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      PR_SHA: ${{ github.event.pull_request.head.sha }}
+      PREVIEW_URL_TEMPLATE: ${{ vars.PREVIEW_URL_TEMPLATE }}
+      E2E_HTTP_USER: ${{ secrets.PREVIEW_BASIC_AUTH_USER }}
+      E2E_HTTP_PASSWORD: ${{ secrets.PREVIEW_BASIC_AUTH_PASSWORD }}
+      E2E_EMAIL: ${{ secrets.PREVIEW_DEMO_EMAIL }}
+      E2E_PASSWORD: ${{ secrets.PREVIEW_DEMO_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Vérifier les réglages
+        id: config
+        run: |
+          missing=""
+          [ -n "$PREVIEW_URL_TEMPLATE" ] || missing="$missing PREVIEW_URL_TEMPLATE(variable)"
+          [ -n "$E2E_HTTP_USER" ] || missing="$missing PREVIEW_BASIC_AUTH_USER"
+          [ -n "$E2E_HTTP_PASSWORD" ] || missing="$missing PREVIEW_BASIC_AUTH_PASSWORD"
+          [ -n "$E2E_EMAIL" ] || missing="$missing PREVIEW_DEMO_EMAIL"
+          [ -n "$E2E_PASSWORD" ] || missing="$missing PREVIEW_DEMO_PASSWORD"
+          case "$PREVIEW_URL_TEMPLATE" in ''|*'{pr}'*) ;; *) missing="$missing PREVIEW_URL_TEMPLATE(doit contenir {pr})";; esac
+          if [ -n "$missing" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Test de fumée de la Preview ignoré::Réglages manquants :$missing"
+            echo "Test de fumée ignoré, réglages GitHub manquants :$missing" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "PREVIEW_URL=${PREVIEW_URL_TEMPLATE//\{pr\}/$PR_NUMBER}" >> "$GITHUB_ENV"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.config.outputs.run == 'true'
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        if: steps.config.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.config.outputs.run == 'true'
+        run: npm ci
+      - if: steps.config.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Attendre que la Preview affiche le commit de la PR
+        if: steps.config.outputs.run == 'true'
+        run: |
+          # Coolify construit puis déploie la Preview : on interroge /api/health (ouvert sans mot de passe) jusqu'à y lire le commit de la PR.
+          echo "Preview attendue : $PREVIEW_URL (commit $PR_SHA)"
+          last=""
+          SECONDS=0
+          while [ "$SECONDS" -lt 1200 ]; do
+            body=$(curl -fsS -m 10 "$PREVIEW_URL/api/health" 2>/dev/null || true)
+            last="$body"
+            if echo "$body" | grep -q "\"commit\":\"$PR_SHA\""; then echo "Preview à jour après $SECONDS s."; exit 0; fi
+            sleep 15
+          done
+          echo "::error title=Preview non à jour::Après 20 min, /api/health n'affiche pas le commit $PR_SHA. Dernière réponse : ${last:-aucune}. Vérifier que la Preview est déployée dans Coolify et que APP_COMMIT (SOURCE_COMMIT) est bien transmis au conteneur."
+          exit 1
+      - name: Tests E2E sur la Preview
+        if: steps.config.outputs.run == 'true'
+        env:
+          E2E_BASE_URL: ${{ env.PREVIEW_URL }}
+        run: npm run e2e
+      # Dépôt public : un artefact est téléchargeable par tout le monde. On ne joint donc que les captures d'écran (données de démonstration),
+      # jamais les traces ni le rapport HTML, qui peuvent contenir l'en-tête Authorization et le mot de passe saisi.
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.config.outputs.run == 'true' }}
+        with:
+          name: preview-smoke-captures
+          path: test-results/**/*.png
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Commenter le résultat sur la PR
+        if: ${{ !cancelled() && steps.config.outputs.run == 'true' }}
+        env:
+          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "$RESULT" = "success" ]; then icon="✅"; text="Test de fumée réussi sur la Preview (bureau, mobile 390 px et 360 px)."; else icon="❌"; text="Test de fumée en échec sur la Preview."; fi
+          marker='<!-- nuitsignal-preview-smoke -->'
+          printf '%s\n%s **Preview** : %s\n\nCommit testé : `%s`\nDétail des tests : %s (captures d'"'"'écran dans l'"'"'artefact « preview-smoke-captures »)\n' "$marker" "$icon" "$text" "${PR_SHA:0:7}" "$RUN_URL" > comment.md
+          # Met à jour notre propre commentaire (repéré par son marqueur, jamais celui d'un autre workflow) ou en crée un.
+          id=$(gh api "repos/$GH_REPO/issues/$PR_NUMBER/comments" --paginate --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | contains(\"$marker\"))) | .id" | head -n 1)
+          if [ -n "$id" ]; then gh api -X PATCH "repos/$GH_REPO/issues/comments/$id" -F body=@comment.md >/dev/null; else gh pr comment "$PR_NUMBER" --body-file comment.md; fi
