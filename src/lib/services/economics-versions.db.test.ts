@@ -55,8 +55,24 @@ describe("versions du modèle économique (US-022)", () => {
   it("numéros uniques même avec deux enregistrements simultanés", async () => {
     const id = await makeProperty(a.tenantId, "Course");
     await Promise.all([save(a, id, { airbnbPct: "10" }), save(a, id, { airbnbPct: "11" })]);
-    const nums = (await listEconomicsVersions(a.tenantId, id)).map((x) => x.version).sort();
+    const vs = await listEconomicsVersions(a.tenantId, id);
+    const nums = vs.map((x) => x.version).sort();
     expect(new Set(nums).size).toBe(nums.length);
+    // la version en vigueur contient bien le modèle enregistré, et le diff de la dernière est calculé contre la précédente
+    const cur = await db.select().from(schema.economicModelVersions).where(and(eq(schema.economicModelVersions.propertyId, id), eq(schema.economicModelVersions.version, (await prop(id)).economicsVersion)));
+    expect((cur[0].model as any).channels.AIRBNB.commissionPct).toBe(((await prop(id)).economics as any).channels.AIRBNB.commissionPct);
+    expect(vs[0].changes).toEqual([{ key: "channels.AIRBNB.commissionPct", label: "Commission Airbnb", from: vs[0].changes[0].from, to: vs[0].changes[0].to }]);
+    expect(vs[0].changes[0].from).not.toBeNull();
+  });
+});
+describe("logement lancé avec un modèle existant mais sans version", () => {
+  it("la première version ne compte comme changé que ce qui change vraiment", async () => {
+    const id = await makeProperty(a.tenantId, "Ancien modèle");
+    await db.update(schema.properties).set({ economics: { channels: {}, cleaningFeeChargedCents: null, cleaningCostCents: 4500, linenCostCents: null, nightlyVariableCostCents: null, hardContributionPerNightCents: null, strategyContributionPerNightCents: null, targetContributionPerNightCents: null, origin: "DECLARED" } as any }).where(eq(schema.properties.id, id));
+    await save(a, id, { airbnbPct: "15", cleaningCost: "45" });
+    const v = await listEconomicsVersions(a.tenantId, id);
+    expect(v).toHaveLength(1);
+    expect(v[0].changes.map((c) => c.key)).toEqual(["channels.AIRBNB.commissionPct", "channels.AIRBNB.paymentFeePct"]); // le coût du ménage valait déjà 45 €
   });
 });
 describe("migration 0016 (versions du modèle économique)", () => {
@@ -70,6 +86,11 @@ describe("migration 0016 (versions du modèle économique)", () => {
     expect(v).toHaveLength(1);
     expect(v[0]).toMatchObject({ version: 1, createdBy: "system" });
     expect((v[0].model as any).answers).toBeUndefined();
+    // un logement encore en création n'est pas repris
+    const draft = await makeProperty(t.tenantId, "En création");
+    await db.update(schema.properties).set({ status: "ONBOARDING", economics: { channels: { AIRBNB: { commissionPct: 15, paymentFeePct: 0 } }, origin: "DECLARED" } as any }).where(eq(schema.properties.id, draft));
+    for (const s of st) await db.execute(sql.raw(s));
+    expect(await db.select().from(schema.economicModelVersions).where(eq(schema.economicModelVersions.propertyId, draft))).toHaveLength(0);
     expect((await prop(id)).economicsVersion).toBe(1);
   });
 });

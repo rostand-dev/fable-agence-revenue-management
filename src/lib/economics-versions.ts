@@ -25,7 +25,8 @@ export function diffEconomics(prev: EconomicModel | null | undefined, next: Econ
   }
   for (const [k, label] of MONEY) push(k, label, fmtEuro(prev?.[k] as number | null | undefined), fmtEuro(next[k] as number | null | undefined));
   push("touristTaxPct", "Taxe de séjour dans les montants", fmtPct(prev?.touristTaxPct), fmtPct(next.touristTaxPct));
-  push("origin", "Origine des valeurs", prev?.origin === "DEMO" ? "démonstration" : prev ? "déclarées" : null, next.origin === "DEMO" ? "démonstration" : "déclarées");
+  // l'origine ne se compare que si on la connaissait : jamais d'« avant » inventé
+  if (prev?.origin && prev.origin !== next.origin) push("origin", "Origine des valeurs", prev.origin === "DEMO" ? "démonstration" : "déclarées", next.origin === "DEMO" ? "démonstration" : "déclarées");
   return out;
 }
 

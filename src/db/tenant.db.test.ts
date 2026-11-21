@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import { beforeAll, describe, expect, it } from "vitest";
-import { db, schema } from "@/db";
+import { db, newId, schema } from "@/db";
 import { makeProperty, makeTenant } from "@/test/db";
 import { recordAudit } from "@/lib/audit/log";
 import { isolationStatus, TENANT_TABLES, withTenant } from "./tenant";
@@ -69,6 +69,16 @@ describe("isolation par la base (RLS, US-011)", () => {
   it("le journal d'audit reste en ajout seul pour le rôle applicatif (ni modification ni suppression)", async () => {
     await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`update audit_events set summary = 'x'`), { enforce: true })).rejects.toThrow();
     await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`delete from audit_events`), { enforce: true })).rejects.toThrow();
+  });
+
+  it("les versions du modèle économique sont en ajout seul pour le rôle applicatif, et la suppression d'un logement passe quand même", async () => {
+    const pid = newId("prop");
+    await db.insert(schema.properties).values({ id: pid, tenantId: a.tenantId, name: "Versions RLS", city: "Paris", kind: "T2", status: "ACTIVE" });
+    await withTenant(a.tenantId, (tx) => tx.insert(schema.economicModelVersions).values({ id: newId("ecv"), tenantId: a.tenantId, propertyId: pid, version: 1, model: {}, changes: [], createdBy: "t" }), { enforce: true });
+    await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`update economic_model_versions set created_by = 'x'`), { enforce: true })).rejects.toThrow();
+    await expect(withTenant(a.tenantId, (tx) => tx.execute(sql`delete from economic_model_versions`), { enforce: true })).rejects.toThrow();
+    await withTenant(a.tenantId, (tx) => tx.delete(schema.properties).where(sql`id = ${pid}`), { enforce: true });
+    expect(await db.select().from(schema.economicModelVersions).where(sql`property_id = ${pid}`)).toHaveLength(0);
   });
 
   it("sans propriétaire défini, la base ne montre rien (échec fermé)", async () => {

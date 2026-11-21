@@ -8,9 +8,13 @@ const model = (o: Partial<EconomicModel> = {}): EconomicModel => ({ ...emptyEcon
 describe("versions du modèle économique (US-022)", () => {
   it("première version : tout ce qui est renseigné est listé, l'inconnu n'est pas inventé", () => {
     const c = diffEconomics(null, model());
-    expect(c.map((x) => x.key)).toEqual(["channels.AIRBNB.commissionPct", "channels.AIRBNB.paymentFeePct", "channels.BOOKING.commissionPct", "channels.BOOKING.paymentFeePct", "cleaningFeeChargedCents", "origin"]);
+    expect(c.map((x) => x.key)).toEqual(["channels.AIRBNB.commissionPct", "channels.AIRBNB.paymentFeePct", "channels.BOOKING.commissionPct", "channels.BOOKING.paymentFeePct", "cleaningFeeChargedCents"]);
     expect(c.find((x) => x.key === "channels.AIRBNB.commissionPct")).toMatchObject({ from: null, to: "15,5 %" });
     expect(c.some((x) => x.key === "cleaningCostCents")).toBe(false);
+  });
+  it("l'origine n'est comparée que si elle était connue : pas d'« avant » inventé", () => {
+    expect(diffEconomics({} as EconomicModel, model()).some((x) => x.key === "origin")).toBe(false);
+    expect(diffEconomics(model({ origin: "DEMO" }), model())).toContainEqual({ key: "origin", label: "Origine des valeurs", from: "démonstration", to: "déclarées" });
   });
   it("aucun changement : rien à versionner ; un seul changement : une seule ligne, en clair", () => {
     expect(diffEconomics(model(), model())).toEqual([]);

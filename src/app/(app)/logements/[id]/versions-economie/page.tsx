@@ -31,14 +31,14 @@ export default async function VersionsEconomie({ params }: { params: Promise<{ i
         : <div className="stack" data-testid="economics-versions">
           {versions.map((v) => (
             <details className="fold" key={v.id} data-testid="economics-version" open={v.version === p.current}>
-              <summary>
+              <summary style={{ flexWrap: "wrap", rowGap: 6 }}>
                 <span>Version {v.version}</span>
                 <span className="muted">{when(v.createdAt)} · {v.author}</span>
                 <span style={{ marginLeft: "auto" }}>{v.version === p.current ? <State role="sain">en vigueur</State> : <State role="neutre">ancienne</State>}</span>
               </summary>
               <div className="fold-body">
                 {v.changes.length === 0 ? <p style={{ margin: 0 }}>Modèle repris tel quel lors de la mise en place du versionnage.</p> : (
-                  <ul className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: 10 }} aria-label={`Changements de la version ${v.version}`}>
+                  <ul role="list" className="stack" style={{ listStyle: "none", margin: 0, padding: 0, gap: 10 }} aria-label={`Changements de la version ${v.version}`}>
                     {v.changes.map((c) => (
                       <li key={c.key} style={{ display: "flex", flexWrap: "wrap", gap: "2px 12px", alignItems: "baseline", justifyContent: "space-between" }}>
                         <strong>{c.label}</strong>

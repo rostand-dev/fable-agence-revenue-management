@@ -32,12 +32,12 @@ BEGIN
 	REVOKE ALL ON "economic_model_versions" FROM nuitsignal_app;
 	GRANT SELECT, INSERT ON "economic_model_versions" TO nuitsignal_app;
 END $$;--> statement-breakpoint
--- Reprise : chaque logement réel qui a déjà un modèle économique reçoit une version 1 (auteur « system »), sans détail de changements.
+-- Reprise : chaque logement réel déjà lancé (hors création en cours) qui a déjà un modèle économique reçoit une version 1 (auteur « system »), sans détail de changements.
 -- Rejouable : seuls les logements sans version sont repris.
 INSERT INTO "economic_model_versions" ("id", "tenant_id", "property_id", "version", "model", "changes", "created_by")
 SELECT 'ecv_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20), p."tenant_id", p."id", 1, p."economics" - 'answers', '[]'::jsonb, 'system'
 FROM "properties" p
-WHERE NOT p."is_demo" AND p."economics" IS NOT NULL AND p."economics" <> '{}'::jsonb AND (p."economics"->'channels') <> '{}'::jsonb
+WHERE NOT p."is_demo" AND p."status" <> 'ONBOARDING' AND p."economics" IS NOT NULL AND p."economics" <> '{}'::jsonb AND (p."economics"->'channels') <> '{}'::jsonb
   AND NOT EXISTS (SELECT 1 FROM "economic_model_versions" v WHERE v."property_id" = p."id");--> statement-breakpoint
 UPDATE "properties" p SET "economics_version" = 1
 WHERE "economics_version" = 0 AND EXISTS (SELECT 1 FROM "economic_model_versions" v WHERE v."property_id" = p."id");
