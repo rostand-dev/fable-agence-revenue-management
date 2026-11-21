@@ -12,7 +12,7 @@ import { db } from "./index";
  * Sinon (défaut), seul le filtre applicatif protège ; le statut est visible dans /api/health.
  * Limite : la RLS protège d'un filtre `tenant_id` oublié, pas d'une injection SQL arbitraire (la connexion peut réinitialiser son rôle).
  */
-export const TENANT_TABLES = ["users", "properties", "reservations", "calendar_days", "market_days", "promotions", "opportunities", "revenue_actions", "agent_runs", "audit_events", "integrations", "feature_flags", "llm_credentials", "review_runs", "chat_messages", "owners", "listings", "economic_model_versions", "strategy_versions"] as const;
+export const TENANT_TABLES = ["users", "properties", "reservations", "calendar_days", "market_days", "promotions", "opportunities", "revenue_actions", "agent_runs", "audit_events", "integrations", "feature_flags", "llm_credentials", "review_runs", "chat_messages", "owners", "listings", "economic_model_versions", "strategy_versions", "activation_validations"] as const;
 export const rlsRequired = () => (process.env.TENANT_RLS ?? "").trim().toLowerCase() === "on";
 
 export type TenantTx = Parameters<Parameters<typeof db.transaction>[0]>[0];

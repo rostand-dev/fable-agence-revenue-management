@@ -403,3 +403,23 @@ export const strategyVersions = pgTable("strategy_versions", {
   note: text("note"),
   createdAt: created(),
 }, (t) => [uniqueIndex("strategy_versions_property_version").on(t.propertyId, t.version), index("strategy_versions_tenant").on(t.tenantId)]);
+
+/**
+ * Validations humaines nécessaires à l'activation d'un logement (US-024) : floors validés, échantillon de réservations rapproché.
+ * Ajout seul : on ne modifie ni ne supprime une validation, la dernière de chaque type fait foi.
+ */
+export const activationValidations = pgTable("activation_validations", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  /** FLOORS | RECONCILIATION */
+  kind: text("kind").notNull(),
+  /** FLOORS : empreinte de la grille de planchers validée. RECONCILIATION : vide. */
+  fingerprint: text("fingerprint"),
+  /** FLOORS : la grille validée. RECONCILIATION : { sampleSize, maxGapPct, source, note }. */
+  payload: jsonb("payload").$type<Record<string, any>>().notNull(),
+  validatedBy: text("validated_by").notNull(),
+  validatedByName: text("validated_by_name").notNull(),
+  note: text("note"),
+  createdAt: created(),
+}, (t) => [index("activation_validations_property_kind").on(t.propertyId, t.kind, t.createdAt), index("activation_validations_tenant").on(t.tenantId)]);

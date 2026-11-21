@@ -18,6 +18,7 @@ const FIX = (id: string, k: QualityFix) => ({
   superhote: { href: `/logements/${id}?tab=superhote`, label: "Ouvrir SuperHote" },
   couts: { href: `/logements/${id}/couts`, label: "Compléter les coûts" },
   mapping: { href: `/logements/${id}/mapping`, label: "Confirmer le mapping" },
+  validations: { href: `/logements/${id}/validations`, label: "Ouvrir les validations" },
 })[k];
 
 /** Checklist de qualité (US-024) : ce qu'il faut pour qu'un logement en observation puisse être activé. */
