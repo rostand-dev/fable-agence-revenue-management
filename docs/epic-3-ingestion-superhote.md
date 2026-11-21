@@ -28,3 +28,11 @@ Le **journal d'audit** retire en plus les clés d'identité d'un voyageur (`gues
 Ce qui est masqué : e-mails, téléphones (formats international et français), IBAN (clé modulo 97), cartes bancaires (clé de Luhn), secrets (`whsec_…`, `sk-…`, `Bearer …`, jeton dans l'adresse du webhook, `clé = valeur`). Ce qui ne l'est **pas** : dates, montants, identifiants, horodatages (tests de non-faux-positifs). Un téléphone écrit sans `+` ni zéro initial français n'est pas reconnu : la barrière 1 (liste blanche) est la protection de fond, les deux autres sont des filets.
 
 Variable : `LOG_PII_MASKING` (`on` par défaut ; `off` désactive le masquage des journaux, pour un débogage local seulement).
+
+## US-031 — Normalisation `Reservation` / `ReservationNight`
+
+- **Nuits** (`reservation_nights`) : une ligne par nuit (départ exclu) pour les réservations `CONFIRMED` ou `BLOCKED` de 1 à 400 nuits. Montant d'hébergement, commission et frais de paiement sont répartis en centimes entiers, le reste d'un centime allant aux premières nuits : la somme des nuits égale exactement la réservation. Une annulation ou un doublon ne produit aucune nuit (dates rouvertes).
+- **Historique** (`reservation_changes`, en ajout seul) : création, modification, annulation, réactivation, avec ce qui a changé (libellés français), la source (`WEBHOOK` ou `RECONCILE`) et l'identifiant de livraison SuperHote.
+- **Écriture unitaire** (`applyReservation`, `src/lib/services/reservation-ingest.ts`) : seul chemin d'écriture pour US-030 et US-032. Idempotente (même état rejoué = aucune écriture), protégée contre l'ordre d'arrivée (un `updated_at` plus ancien que l'état connu est ignoré, `STALE`) et transactionnelle (réservation, nuits, historique ensemble). Les chevauchements sont réévalués par la règle commune `dedupeConfirmed` (la plus récemment réservée l'emporte) ; une réservation redevenue seule redevient confirmée.
+- **Migration `0019`** : tables, colonnes, RLS (nuits en CRUD, historique en SELECT/INSERT) et reprise des nuits des réservations existantes ; rejouable.
+- **Déploiement Staging** : aucune variable d'environnement nouvelle ; la migration est appliquée au démarrage comme les précédentes.
