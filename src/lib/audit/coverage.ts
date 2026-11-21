@@ -82,6 +82,9 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   detachRentalAction: { events: ["integration.superhote_rental_unlinked"] },
   syncSuperhoteAction: { exempt: "Relecture des réservations en lecture seule : les données lues remplacent les précédentes (ingestion), aucune décision ni réglage ne change." },
   disconnectSuperhoteAction: { events: ["integration.superhote_disconnected"] },
+  replayDeliveryAction: { events: ["integration.webhook_replayed"] },
+  replayAllDeliveriesAction: { events: ["integration.webhook_replayed"] },
+  dismissDeliveryAction: { events: ["integration.webhook_dismissed"] },
   enableWebhookAction: { events: ["integration.superhote_webhook_registered"] },
   disableWebhookAction: { events: ["integration.superhote_webhook_removed"] },
 };
