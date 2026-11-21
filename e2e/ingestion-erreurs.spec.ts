@@ -23,7 +23,7 @@ test("Erreurs d'ingestion : rejeu, mise à l'écart et lectures en échec, lisib
   const u = uid(info).replace(/[^a-z0-9]/gi, "");
   const id = await createViaApi(page, `Erreurs ${u}`);
   const token = `tok-${u}-aaaaaaaaaaaaaaaaaaaaaaaa`, endpoint = `whk_${u}`;
-  await sql("update properties set superhote = $2::jsonb where id = $1", [id, JSON.stringify({ apiKeyEnc: encryptSecret(token), keyHint: "••••" + token.slice(-4), rentalId: "7", rentalName: "Logement E2E", candidates: [], lastSync: { ok: false, at: new Date().toISOString(), error: "Lecture SuperHote incomplète (e2e)" } })]);
+  await sql("update properties set superhote = $2::jsonb where id = $1", [id, JSON.stringify({ apiKeyEnc: encryptSecret(token), keyHint: "••••" + token.slice(-4), rentalId: "7", rentalName: "Logement E2E", candidates: [], lastSync: { ok: false, at: new Date().toISOString(), error: `Lecture SuperHote incomplète (${u})` } })]);
   const [{ tenant_id }] = await sql("select tenant_id from properties where id = $1", [id]);
   await sql("insert into superhote_webhooks (id, tenant_id, token_fingerprint, remote_id, secret_enc, url, events, created_by) values ($1,$2,$3,$4,$5,$6,$7::jsonb,$8)", [endpoint, tenant_id, fingerprintToken(token), "1", encryptSecret("whsec_e2e"), `https://e2e.example/api/webhooks/superhote/${endpoint}`, "[]", "e2e"]);
   const seed = (key: string, ext: string, payload: Record<string, unknown>, attempts: number, error: string) =>
@@ -42,7 +42,7 @@ test("Erreurs d'ingestion : rejeu, mise à l'écart et lectures en échec, lisib
   await expect(card(`E${rid}1`)).toContainText("Abandonnée");
   await expect(card(`E${rid}2`)).toContainText("En échec");
   await expect(card(`E${rid}2`)).toContainText("Panne passagère (e2e)");
-  await expect(page.getByTestId("read-failures")).toContainText("Lecture SuperHote incomplète (e2e)");
+  await expect(page.getByTestId("read-failures")).toContainText(`Lecture SuperHote incomplète (${u})`);
   await expectNoHorizontalOverflow(page, "/integrations/erreurs (échecs)");
 
   // rejeu d'une livraison abandonnée : la réservation est créée, la carte disparaît
@@ -58,13 +58,13 @@ test("Erreurs d'ingestion : rejeu, mise à l'écart et lectures en échec, lisib
 
   // un rejeu qui échoue encore reste visible, avec sa raison
   await card(`E${rid}3`).getByRole("button", { name: "Rejouer" }).click();
+  await expect.poll(async () => (await sql("select status, attempts from webhook_deliveries where id = $1", [`dl_${u}c`]))[0]).toEqual({ status: "FAILED", attempts: 2 });
   await expect(card(`E${rid}3`)).toContainText("Charge utile illisible");
-  expect(await sql("select status from webhook_deliveries where id = $1", [`dl_${u}c`])).toEqual([{ status: "FAILED" }]);
   await expectNoHorizontalOverflow(page, "/integrations/erreurs (après actions)");
 
   // lecture rétablie : la section des lectures en échec disparaît
   await sql("update properties set superhote = superhote || $2::jsonb where id = $1", [id, JSON.stringify({ lastSync: { ok: true, at: new Date().toISOString() } })]);
   await page.reload();
-  await expect(page.getByTestId("read-failures").filter({ hasText: "Lecture SuperHote incomplète (e2e)" })).toHaveCount(0);
+  await expect(page.getByTestId("read-failures").filter({ hasText: `Lecture SuperHote incomplète (${u})` })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
