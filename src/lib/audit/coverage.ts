@@ -19,7 +19,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   requestPasswordResetAction: { exempt: "Crée un lien à usage unique sans changer le compte ; réponse identique que l'adresse existe ou non, donc rien à consigner par propriétaire." },
   resetPasswordAction: { events: ["account.password_changed"] },
   // actions/costs.ts
-  saveCostsAction: { events: ["property.costs_validated"] },
+  saveCostsAction: { events: ["property.costs_validated", "property.economics_versioned"] },
   // actions/decisions.ts
   approveAction: { events: ["action.approved", "opportunity.no_action"] },
   rejectAction: { events: ["opportunity.rejected"] },

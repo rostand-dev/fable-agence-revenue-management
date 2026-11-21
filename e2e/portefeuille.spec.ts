@@ -151,7 +151,7 @@ test("API REST : session obligatoire, origine contrôlée, erreurs lisibles, auc
   const mine = list.properties.find((p: any) => p.id === id);
   expect(mine).toMatchObject({ name, status: "ONBOARDING", bedrooms: 2, capacity: 4, isDemo: false });
   // jamais de clé ni de réglage interne dans la réponse
-  expect(Object.keys(mine).sort()).toEqual(["bedrooms", "capacity", "city", "createdAt", "id", "isDemo", "kind", "name", "ownerId", "status", "strategyVersion"]);
+  expect(Object.keys(mine).sort()).toEqual(["bedrooms", "capacity", "city", "createdAt", "economicsVersion", "id", "isDemo", "kind", "name", "ownerId", "status", "strategyVersion"]);
   expect((await page.request.patch(`/api/v1/properties/${id}`, { data: { city: "Roubaix", capacity: null } })).status()).toBe(200);
   expect(await (await page.request.get(`/api/v1/properties/${id}`)).json()).toMatchObject({ city: "Roubaix", capacity: null });
   const l = await page.request.post(`/api/v1/properties/${id}/listings`, { data: { channel: "BOOKING", externalId: numeric(info) } });

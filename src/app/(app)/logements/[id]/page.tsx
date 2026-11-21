@@ -219,6 +219,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
 
       {tab === "economie" && (
         <section className="stack">
+          {!p.isDemo && p.economicsVersion > 0 && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/versions-economie`}><Icon name="history" />Versions du modèle économique (en vigueur : v{p.economicsVersion})</Link></p>}
           {!p.isDemo && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/couts`}><Icon name="chat" />{miss.length ? "Renseigner" : "Revoir"} coûts et seuils avec {agentName("onboarding", names)}</Link></p>}
           {(model.provisional?.length ?? 0) > 0 && <Banner role="tech" title={`Planchers provisoires : ${model.provisional!.length} valeur${model.provisional!.length > 1 ? "s" : ""} à confirmer`}>{model.provisional!.join(", ")}. Les planchers ci-dessous en dépendent ; les dossiers ouverts portent la même mention.</Banner>}
           <Recap rows={[

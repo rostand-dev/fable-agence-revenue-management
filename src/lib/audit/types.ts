@@ -36,6 +36,7 @@ export const AUDIT_TYPES = {
   "property.draft_saved": { category: "CONFIGURATION", label: "Saisie enregistrée" },
   "property.updated": { category: "CONFIGURATION", label: "Logement modifié" },
   "property.rules_saved": { category: "CONFIGURATION", label: "Règles de vente enregistrées" },
+  "property.economics_versioned": { category: "CONFIGURATION", label: "Version du modèle économique enregistrée" },
   "property.costs_validated": { category: "CONFIGURATION", label: "Coûts et seuils validés" },
   "property.strategy_synced": { category: "CONFIGURATION", label: "Stratégie relue depuis PriceLabs" },
   "property.launched": { category: "CONFIGURATION", label: "Observation lancée" },

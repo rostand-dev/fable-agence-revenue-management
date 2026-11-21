@@ -79,6 +79,8 @@ export const properties = pgTable("properties", {
   pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
   /** Connexion SuperHote (lecture seule) propre au logement : jeton chiffré, logement rattaché, canaux relevés, comparaison de prix */
   superhote: jsonb("superhote").$type<Record<string, any>>(),
+  /** Numéro de la version courante du modèle économique (US-022) ; 0 = aucune version enregistrée. Les versions sont dans economic_model_versions. */
+  economicsVersion: integer("economics_version").notNull().default(0),
   /** Confirmation du mapping des identifiants externes (US-021) : { fingerprint, at, by, warnings }. Périmée dès que l'empreinte des identifiants change. */
   mapping: jsonb("mapping").$type<{ fingerprint: string; at: string; by: string; warnings: string[] }>(),
   /** Majorations SuperHote par canal, saisies par le propriétaire : [{ key, label, pct }], pct null = inconnue */
@@ -359,3 +361,22 @@ export const signupConfirmations = pgTable("signup_confirmations", {
   usedAt: ts("used_at"),
   createdAt: created(),
 }, (t) => [uniqueIndex("signup_confirmations_token").on(t.tokenHash), index("signup_confirmations_email").on(t.email)]);
+
+/**
+ * Versions du modèle économique d'un logement (US-022) : commissions, frais de paiement, coûts, seuils, taxe de séjour.
+ * Chaque changement crée une version horodatée avec son auteur et la liste de ce qui a changé ; une version n'est jamais modifiée
+ * ni supprimée par l'application (le rôle applicatif n'a que SELECT et INSERT). Les montants sont en centimes, les pourcentages en %.
+ */
+export const economicModelVersions = pgTable("economic_model_versions", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  /** Modèle complet à cette version (sans les réponses brutes du parcours). */
+  model: jsonb("model").$type<Record<string, any>>().notNull(),
+  /** Ce qui a changé par rapport à la version précédente : [{ key, label, from, to }] (texte lisible, null = inconnu). */
+  changes: jsonb("changes").$type<{ key: string; label: string; from: string | null; to: string | null }[]>().notNull().default([]),
+  /** Auteur : identifiant de l'utilisateur, ou « system » (reprise des logements existants). */
+  createdBy: text("created_by").notNull(),
+  createdAt: created(),
+}, (t) => [uniqueIndex("economic_versions_property_version").on(t.propertyId, t.version), index("economic_versions_tenant").on(t.tenantId)]);
