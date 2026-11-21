@@ -120,6 +120,13 @@
       "when": 1795237242462,
       "tag": "0016_economic_versions",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795238250266,
+      "tag": "0017_strategy_versions",
+      "breakpoints": true
     }
   ]
 }

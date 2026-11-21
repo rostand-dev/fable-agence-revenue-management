@@ -79,6 +79,8 @@ export const properties = pgTable("properties", {
   pricelabs: jsonb("pricelabs").$type<Record<string, any>>(),
   /** Connexion SuperHote (lecture seule) propre au logement : jeton chiffré, logement rattaché, canaux relevés, comparaison de prix */
   superhote: jsonb("superhote").$type<Record<string, any>>(),
+  /** Brouillon du Strategy Builder (US-023) : réglages proposés, version de la stratégie sur laquelle il repose, auteur, date. null = pas de brouillon. */
+  strategyDraft: jsonb("strategy_draft").$type<{ values: Record<string, unknown>; baseVersion: number; by: string; at: string }>(),
   /** Numéro de la version courante du modèle économique (US-022) ; 0 = aucune version enregistrée. Les versions sont dans economic_model_versions. */
   economicsVersion: integer("economics_version").notNull().default(0),
   /** Confirmation du mapping des identifiants externes (US-021) : { fingerprint, at, by, warnings }. Périmée dès que l'empreinte des identifiants change. */
@@ -380,3 +382,24 @@ export const economicModelVersions = pgTable("economic_model_versions", {
   createdBy: text("created_by").notNull(),
   createdAt: created(),
 }, (t) => [uniqueIndex("economic_versions_property_version").on(t.propertyId, t.version), index("economic_versions_tenant").on(t.tenantId)]);
+
+/**
+ * Versions de la stratégie d'un logement (US-023) : prix de base, minimum, maximum, séjour minimum, objectif, positionnement, garde-fous.
+ * Une version naît à chaque changement, quelle qu'en soit l'origine (Strategy Builder, formulaire du dossier, relecture PriceLabs,
+ * action approuvée, restauration). Jamais modifiée ni supprimée par l'application (le rôle applicatif n'a que SELECT et INSERT).
+ */
+export const strategyVersions = pgTable("strategy_versions", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  /** Même numéro que properties.strategy_version au moment de la version. */
+  version: integer("version").notNull(),
+  strategy: jsonb("strategy").$type<Record<string, any>>().notNull(),
+  changes: jsonb("changes").$type<{ key: string; label: string; from: string | null; to: string | null }[]>().notNull().default([]),
+  /** BUILDER | FORM | PRICELABS_SYNC | ACTION | ACTION_ROLLBACK | ROLLBACK | SYSTEM */
+  source: text("source").notNull(),
+  /** Auteur : identifiant de l'utilisateur, ou « system ». */
+  createdBy: text("created_by").notNull(),
+  note: text("note"),
+  createdAt: created(),
+}, (t) => [uniqueIndex("strategy_versions_property_version").on(t.propertyId, t.version), index("strategy_versions_tenant").on(t.tenantId)]);

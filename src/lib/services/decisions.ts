@@ -1,3 +1,4 @@
+import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
@@ -163,10 +164,10 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
           await tx.update(calendarDays).set(patch).where(and(eq(calendarDays.propertyId, p.id), eq(calendarDays.date, d.date)));
         }
         if (a.type === "BASE_PRICE_CHANGE" && a.parameters.basePriceCents) {
-          await tx.update(properties).set({ strategy: { ...p.strategy, basePriceCents: a.parameters.basePriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
+          await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, basePriceCents: a.parameters.basePriceCents }), source: "ACTION", createdBy: actor.id });
         }
         if (a.type === "MIN_PRICE_CHANGE" && a.parameters.minPriceCents) {
-          await tx.update(properties).set({ strategy: { ...p.strategy, minPriceCents: a.parameters.minPriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
+          await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, minPriceCents: a.parameters.minPriceCents }), source: "ACTION", createdBy: actor.id });
         }
         execution = { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: p.strategy?.basePriceCents ?? null, previousMinPriceCents: p.strategy?.minPriceCents ?? null, baseline };
       } else if (mode === "MANUAL_RUNBOOK") {
@@ -234,11 +235,11 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
       for (const d of a.execution.before ?? []) await tx.update(calendarDays).set({ priceCents: d.priceCents, minStay: d.minStay, rule: d.rule }).where(and(eq(calendarDays.propertyId, a.propertyId), eq(calendarDays.date, d.date)));
       if (a.type === "BASE_PRICE_CHANGE" && a.execution.previousBasePriceCents) {
         const [p] = await tx.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
-        await tx.update(properties).set({ strategy: { ...p.strategy, basePriceCents: a.execution.previousBasePriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
+        await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, basePriceCents: a.execution.previousBasePriceCents }), source: "ACTION_ROLLBACK", createdBy: actor.id });
       }
       if (a.type === "MIN_PRICE_CHANGE" && a.execution.previousMinPriceCents) {
         const [p] = await tx.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
-        await tx.update(properties).set({ strategy: { ...p.strategy, minPriceCents: a.execution.previousMinPriceCents }, strategyVersion: p.strategyVersion + 1 }).where(eq(properties.id, p.id));
+        await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, minPriceCents: a.execution.previousMinPriceCents }), source: "ACTION_ROLLBACK", createdBy: actor.id });
       }
     } else if (a.execution?.mode === "MANUAL_DECLARED") {
       if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED" }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));

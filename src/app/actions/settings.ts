@@ -1,4 +1,5 @@
 "use server";
+import { commitStrategy } from "@/lib/services/strategy";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
@@ -69,11 +70,16 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
     if (!o) return { error: "Ce propriétaire n'existe pas dans votre espace." };
   }
   const old = p.strategy as Strategy;
-  const strategy: Strategy = { ...old, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: old.maxDiscountStackPct ?? 20, maxPriceChangePct: old.maxPriceChangePct ?? 5 };
   const name = v.name || p.name || "Logement sans nom";
-  await db.update(schema.properties).set({
-    name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, ...(requestedOwner ? { ownerId: requestedOwner } : {}), strategy, channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
-  }).where(eq(schema.properties.id, p.id));
+  // le dossier et la version de stratégie s'écrivent ensemble : minStay, objectif et positionnement sont des réglages versionnés (US-023)
+  let strategy = old;
+  await db.transaction(async (tx) => {
+    await tx.update(schema.properties).set({
+      name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, ...(requestedOwner ? { ownerId: requestedOwner } : {}), channelMarkups: mk.markups, profile: { ...p.profile, positioning: v.positioning ?? null },
+    }).where(eq(schema.properties.id, p.id));
+    const res = await commitStrategy(tx, { tenantId: u.tenantId, propertyId: p.id, next: (s) => ({ ...s, minStay: v.minStay, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: s.maxDiscountStackPct ?? 20, maxPriceChangePct: s.maxPriceChangePct ?? 5 }), source: "FORM", createdBy: u.id });
+    if (res) strategy = res.strategy;
+  });
   const next: Record<string, unknown> = { name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity };
   const changed: string[] = Object.keys(next).filter((k) => ((p as Record<string, unknown>)[k] ?? null) !== (next[k] ?? null));
   if (requestedOwner && requestedOwner !== p.ownerId) changed.push("ownerId");

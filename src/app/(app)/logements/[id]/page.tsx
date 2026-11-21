@@ -212,6 +212,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
             ["Cumul de remises maximal", `${strat.maxDiscountStackPct ?? 20} %`, true], ["Variation de prix sans validation renforcée", `± ${strat.maxPriceChangePct ?? 5} %`, true],
             ["Version", `v${p.strategyVersion}`, true],
           ]} />
+          {!p.isDemo && p.status !== "ONBOARDING" && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/strategie`}><Icon name="sliders" />Strategy Builder : brouillon, publication, historique</Link></p>}
           <Banner role="tech" title="PriceLabs reste le moteur de prix">L'agence règle les paramètres transmis à PriceLabs ; elle ne recalcule pas ses prix journaliers. Une seule hypothèse structurante est testée à la fois.</Banner>
           <p><Byline agent="pricing" names={names} what="tient cette stratégie et propose ses évolutions" /></p>
         </section>

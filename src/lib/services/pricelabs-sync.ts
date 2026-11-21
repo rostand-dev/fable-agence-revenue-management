@@ -1,3 +1,4 @@
+import { commitStrategy } from "./strategy";
 import { and, eq, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
@@ -142,8 +143,6 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   const mk = mapMarket(market, bedrooms, days);
 
   const strat = p.strategy as Strategy;
-  const strategy: Strategy = { ...strat, basePriceCents: listing.baseCents ?? strat.basePriceCents ?? null, minPriceCents: listing.minCents ?? strat.minPriceCents ?? null, maxPriceCents: listing.maxCents ?? strat.maxPriceCents ?? null, maxDiscountStackPct: strat.maxDiscountStackPct ?? 20, maxPriceChangePct: strat.maxPriceChangePct ?? 5 };
-  const changed = strategy.basePriceCents !== strat.basePriceCents || strategy.minPriceCents !== strat.minPriceCents || strategy.maxPriceCents !== strat.maxPriceCents;
   const confirmed = resas.filter((r) => r.status === "CONFIRMED");
   // taux réellement constatés quand le PMS transmet la commission : proposés au propriétaire, jamais appliqués d'office
   const observedCommission: Record<string, { pct: number; n: number }> = {};
@@ -168,11 +167,12 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now })));
     await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now })));
     if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
-    await tx.update(properties).set({ strategy, strategyVersion: changed ? p.strategyVersion + 1 : p.strategyVersion, bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync } } : {}) }).where(eq(properties.id, p.id));
-    // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une modification, tracée avec son avant/après
-    if (changed) {
+    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync } } : {}) }).where(eq(properties.id, p.id));
+    // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une version, tracée avec son avant/après (US-023)
+    const res = await commitStrategy(tx, { tenantId, propertyId: p.id, next: (cur) => ({ ...cur, basePriceCents: listing.baseCents ?? cur.basePriceCents ?? null, minPriceCents: listing.minCents ?? cur.minPriceCents ?? null, maxPriceCents: listing.maxCents ?? cur.maxPriceCents ?? null, maxDiscountStackPct: cur.maxDiscountStackPct ?? 20, maxPriceChangePct: cur.maxPriceChangePct ?? 5 }), source: "PRICELABS_SYNC", createdBy: "system" });
+    if (res) {
       const cents = (s: Strategy) => ({ basePriceCents: s.basePriceCents ?? null, minPriceCents: s.minPriceCents ?? null, maxPriceCents: s.maxPriceCents ?? null });
-      await recordAudit(tx, { tenantId, actor: "system", type: "property.strategy_synced", entity: "Property", entityId: p.id, summary: `Prix de base, minimum ou maximum de ${p.name} relus depuis PriceLabs (stratégie version ${p.strategyVersion + 1}).`, payload: { from: cents(strat), to: cents(strategy), strategyVersion: p.strategyVersion + 1 } });
+      await recordAudit(tx, { tenantId, actor: "system", type: "property.strategy_synced", entity: "Property", entityId: p.id, summary: `Prix de base, minimum ou maximum de ${p.name} relus depuis PriceLabs (stratégie version ${res.version}).`, payload: { from: cents(res.previous), to: cents(res.strategy), strategyVersion: res.version } });
     }
   });
   await db.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "onboarding", operation: "syncPriceLabs", mode: "DETERMINISTIC", summary: `${p.name} : PriceLabs lu — ${days.length} jours de grille, ${confirmed.length} réservations${lastSync.duplicates ? ` (${lastSync.duplicates} doublon${lastSync.duplicates > 1 ? "s" : ""} écarté${lastSync.duplicates > 1 ? "s" : ""})` : ""}, marché sur ${lastSync.marketDays} jours${marketError ? " (marché indisponible : " + marketError + ")" : ""}${lastSync.estimatedCommissions ? `, ${lastSync.estimatedCommissions} commissions estimées au taux déclaré` : ""}${shLastSync?.ok ? `, SuperHote lu (${(shLastSync as any).autoChannels} canaux relevés)` : shLastSync ? ` ; SuperHote non lu : ${(shLastSync as any).error}` : ""}.` });
