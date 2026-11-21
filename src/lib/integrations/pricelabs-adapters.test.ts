@@ -1,7 +1,7 @@
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { addDays } from "../dates";
-import { HttpPriceLabs, PriceLabsError, priceLabsFor, usePriceLabsAdapter } from "./pricelabs";
+import { apiBase, HttpPriceLabs, PriceLabsError, priceLabsFor, usePriceLabsAdapter } from "./pricelabs";
 import { FakePriceLabs, ReplayPriceLabs } from "./pricelabs-fake";
 import { startFakePriceLabsServer, type FakeServer } from "./pricelabs-fake-server";
 import { mapListing, mapMarket, mapPrices, mapReservations } from "./pricelabs-map";
@@ -198,15 +198,33 @@ describe("sélection de l'adaptateur", () => {
   });
 });
 
+describe("adresse de l'API", () => {
+  it("n'accepte que l'API officielle ou une adresse locale : une autre adresse ne reçoit jamais la clé", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      expect(apiBase("")).toBe("https://api.pricelabs.co/v1");
+      expect(apiBase("http://127.0.0.1:4010/v1/")).toBe("http://127.0.0.1:4010/v1");
+      expect(apiBase("http://localhost:4010/v1")).toBe("http://localhost:4010/v1");
+      for (const bad of ["https://evil.example/v1", "http://api.pricelabs.co.evil.example/v1", "http://10.0.0.5/v1", "pas une adresse"]) expect(apiBase(bad)).toBe("https://api.pricelabs.co/v1");
+      expect(warn).toHaveBeenCalledTimes(4);
+    } finally { warn.mockRestore(); }
+  });
+  it("une annonce inconnue donne la même erreur avec le faux en mémoire et avec le faux serveur", async () => {
+    const mem = new FakePriceLabs(buildScenario("nominal", TODAY)), http = new HttpPriceLabs(key("nominal"));
+    const a = await mem.getPrices("inconnue", "superhote", TODAY, TODAY).catch((e) => e.message), b = await http.getPrices("inconnue", "superhote", TODAY, TODAY).catch((e) => e.message);
+    expect(a).toMatch(/LISTING_NOT_PRESENT/); expect(a).toBe(b);
+  });
+});
+
 describe("enregistreur : anonymisation", () => {
   it("remplace noms, groupes, étiquettes et identifiants de façon cohérente, et garde dates et montants", () => {
     const raw = buildScenario("nominal", TODAY);
     raw.listings[0] = { ...raw.listings[0], id: "REAL-77", name: "Chez Mme Dupont", group: "Clients", tags: ["vip"], notes: "code 1234", latitude: 48.8 };
     raw.prices["REAL-77"] = { ...raw.prices[FAKE_LISTING_ID], id: "REAL-77" }; delete raw.prices[FAKE_LISTING_ID];
     raw.neighborhood["REAL-77"] = raw.neighborhood[FAKE_LISTING_ID]; delete raw.neighborhood[FAKE_LISTING_ID];
-    raw.reservations["REAL-77"] = raw.reservations[FAKE_LISTING_ID].map((r) => ({ ...r, listing_id: "REAL-77", guest_name: "Jean" })); delete raw.reservations[FAKE_LISTING_ID];
+    raw.reservations["REAL-77"] = raw.reservations[FAKE_LISTING_ID].map((r) => ({ ...r, listing_id: "REAL-77", guest_name: "Jean", listing_name: "Chez Mme Dupont", guest_phone: "+33612345678", champ_futur: "secret-xyz" })); delete raw.reservations[FAKE_LISTING_ID];
     const out = anonymizeScenario(raw), text = JSON.stringify(out);
-    for (const secret of ["REAL-77", "Dupont", "Clients", "vip", "1234", "Jean"]) expect(text).not.toContain(secret);
+    for (const secret of ["REAL-77", "Dupont", "Clients", "vip", "1234", "Jean", "33612345678", "secret-xyz", "latitude"]) expect(text).not.toContain(secret);
     expect(out.listings[0]).toMatchObject({ id: "fake-1001", min: 83, base: 116 });
     expect(Object.keys(out.prices)).toEqual(["fake-1001"]); expect(out.prices["fake-1001"].id).toBe("fake-1001");
     expect(out.reservations["fake-1001"].map((r) => r.reservation_id)).toEqual(["FAKE-R1", "FAKE-R2", "FAKE-R3", "FAKE-R4"]);

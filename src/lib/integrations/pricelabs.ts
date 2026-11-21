@@ -6,7 +6,19 @@ import type { PriceLabsPort, PriceLabsPortFactory } from "./pricelabs-port";
 export class PriceLabsError extends Error {
   constructor(message: string, public status: number | null = null) { super(message); }
 }
-const base = () => (process.env.PRICELABS_API_BASE || "https://api.pricelabs.co/v1").replace(/\/$/, "");
+const DEFAULT_BASE = "https://api.pricelabs.co/v1";
+/**
+ * Adresse de l'API. PRICELABS_API_BASE ne peut désigner que la machine locale (faux serveur de test) : la clé API de chaque propriétaire
+ * est envoyée à cette adresse, une valeur posée par erreur sur un serveur ne doit pas pouvoir l'exfiltrer. Toute autre valeur est ignorée.
+ */
+export function apiBase(env: string | undefined = process.env.PRICELABS_API_BASE): string {
+  const v = (env ?? "").trim().replace(/\/$/, "");
+  if (!v) return DEFAULT_BASE;
+  try { const u = new URL(v); if (u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost" || u.hostname === "[::1]")) return v; } catch { /* adresse illisible : ignorée */ }
+  if (v !== DEFAULT_BASE) console.warn("[pricelabs] PRICELABS_API_BASE ignorée : seule une adresse locale (http://127.0.0.1…) est acceptée.");
+  return DEFAULT_BASE;
+}
+const base = () => apiBase();
 
 /** Erreur lisible pour un statut HTTP d'échec ; partagée avec le faux adaptateur pour que les deux disent la même chose. */
 export function errorForStatus(status: number): PriceLabsError {

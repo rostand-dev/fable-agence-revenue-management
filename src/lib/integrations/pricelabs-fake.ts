@@ -31,7 +31,9 @@ export class FakePriceLabs implements PriceLabsPort {
   async getPrices(id: string, pms: string, from: ISODate, to: ISODate): Promise<any> {
     this.gate("prices", [id, pms, from, to]);
     const item = this.scenario.prices[id];
-    if (!item || item.error_status || item.error) return unwrapPriceItem(item ? [item] : [], id);
+    // même réponse que le faux serveur pour une annonce inconnue
+    if (!item) return unwrapPriceItem([{ id, pms, error: "Listing not found", error_status: "LISTING_NOT_PRESENT" }], id);
+    if (item.error_status || item.error) return unwrapPriceItem([item], id);
     return unwrapPriceItem([{ ...item, data: (item.data ?? []).filter((d: any) => d.date >= from && d.date <= to) }], id);
   }
   async getNeighborhood(id: string, _pms: string): Promise<any> { this.gate("neighborhood", [id]); return this.scenario.neighborhood[id] ?? null; }

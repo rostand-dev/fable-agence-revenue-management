@@ -4,8 +4,7 @@
 // identifiants d'annonce et de réservations sont remplacés par des identifiants fictifs. À lancer sur votre poste : le serveur de développement n'a pas accès à PriceLabs.
 import fs from "node:fs";
 import { todayISO } from "../src/lib/dates";
-import { HttpPriceLabs } from "../src/lib/integrations/pricelabs";
-import { horizon } from "../src/lib/integrations/pricelabs";
+import { horizon, HttpPriceLabs } from "../src/lib/integrations/pricelabs";
 import { anonymizeScenario } from "../src/lib/integrations/pricelabs-record";
 import type { Scenario } from "../src/lib/integrations/pricelabs-scenarios";
 
