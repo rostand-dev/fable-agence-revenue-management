@@ -34,6 +34,11 @@ describe("masquage des secrets dans le journal", () => {
     expect(out.nested.list[0].fine).toBe(1);
     expect(out.keyHint).toBe("…1234");
   });
+  it("US-034 : l'identité d'un voyageur n'entre pas dans le journal, mais l'e-mail d'un propriétaire (consigné à dessein) et les compteurs restent", () => {
+    const out = redactPayload({ guest: { first_name: "Anne" }, guest_email: "a@b.fr", private_notes: "code", owner: { email: "p@x.fr" }, guests_count: 2 }) as any;
+    expect(out.guest).toBe(MASKED); expect(out.guest_email).toBe(MASKED); expect(out.private_notes).toBe(MASKED);
+    expect(out.owner.email).toBe("p@x.fr"); expect(out.guests_count).toBe(2);
+  });
   it("laisse intacts les valeurs simples et ne plante pas sur les cycles profonds", () => {
     expect(redactPayload(null)).toBeNull();
     expect(redactPayload("a")).toBe("a");

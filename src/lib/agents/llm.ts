@@ -3,6 +3,8 @@
  * Sans clé API, ou si le fournisseur échoue, l'application continue en mode déterministe :
  * ingestion, métriques et garde-fous ne dépendent jamais d'un LLM.
  */
+import { maskPii } from "../privacy/pii";
+
 export const PROMPT_VERSION = "2026-11-v1";
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
 /** Modèle par défaut du serveur : variable d'environnement, sinon constante. */
@@ -60,9 +62,13 @@ export async function listAnthropicModels(apiKey: string): Promise<LlmModelInfo[
 export type LlmResult = { text: string; inputTokens: number | null; outputTokens: number | null; durationMs: number; model: string; stopReason: string | null; truncated: boolean };
 type LlmOpts = { system: string; messages: { role: "user" | "assistant"; content: string }[]; maxTokens?: number; timeoutMs?: number };
 
+/** US-034 : tout ce qui part vers un modèle passe ici. Les e-mails, téléphones, IBAN, cartes et secrets sont masqués avant l'appel (blueprint §14.3 et §16.3). */
+export const maskLlmInput = (opts: Pick<LlmOpts, "system" | "messages">): Pick<LlmOpts, "system" | "messages"> => ({ system: maskPii(opts.system), messages: opts.messages.map((m) => ({ role: m.role, content: maskPii(m.content) })) });
+
 export async function callLlm(config: LlmConfig, opts: LlmOpts): Promise<LlmResult> {
   const started = Date.now();
-  const data: any = await request(config.apiKey, "/v1/messages", { method: "POST", timeoutMs: opts.timeoutMs ?? 25000, body: { model: config.model, max_tokens: opts.maxTokens ?? 700, system: opts.system, messages: opts.messages } }, "d'utiliser ce modèle");
+  const safe = maskLlmInput(opts);
+  const data: any = await request(config.apiKey, "/v1/messages", { method: "POST", timeoutMs: opts.timeoutMs ?? 25000, body: { model: config.model, max_tokens: opts.maxTokens ?? 700, system: safe.system, messages: safe.messages } }, "d'utiliser ce modèle");
   const text = (data.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join("").trim();
   const stopReason = typeof data.stop_reason === "string" ? data.stop_reason : null;
   return { text, inputTokens: data.usage?.input_tokens ?? null, outputTokens: data.usage?.output_tokens ?? null, durationMs: Date.now() - started, model: config.model, stopReason, truncated: stopReason === "max_tokens" };
@@ -74,6 +80,7 @@ export async function callLlm(config: LlmConfig, opts: LlmOpts): Promise<LlmResu
  */
 export async function streamLlm(config: LlmConfig, opts: LlmOpts, onText: (chunk: string) => void): Promise<LlmResult> {
   const started = Date.now();
+  const safe = maskLlmInput(opts);
   const ctrl = new AbortController(), timeoutMs = opts.timeoutMs ?? 60000;
   let timer = setTimeout(() => ctrl.abort(), timeoutMs);
   let res: Response;
@@ -81,7 +88,7 @@ export async function streamLlm(config: LlmConfig, opts: LlmOpts, onText: (chunk
     res = await fetch(apiBase() + "/v1/messages", {
       method: "POST", signal: ctrl.signal, cache: "no-store",
       headers: { "x-api-key": config.apiKey, "anthropic-version": "2023-06-01", accept: "text/event-stream", "content-type": "application/json" },
-      body: JSON.stringify({ model: config.model, max_tokens: opts.maxTokens ?? 700, system: opts.system, messages: opts.messages, stream: true }),
+      body: JSON.stringify({ model: config.model, max_tokens: opts.maxTokens ?? 700, system: safe.system, messages: safe.messages, stream: true }),
     });
   } catch (e: any) {
     clearTimeout(timer);

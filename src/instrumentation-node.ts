@@ -1,9 +1,12 @@
 import { ensureMigrated } from "@/db";
 import { runDue } from "@/lib/services/scheduler";
 import { ensureDemoAccount } from "@/lib/services/demo-account";
+import { installLogMasking } from "@/lib/privacy/pii";
 
 /** Démarrage du serveur : migrations, puis planification interne — lectures et revues de chaque logement à son rythme. */
 export async function start() {
+  // US-034 : avant tout autre journal, pour qu'aucune donnée personnelle (e-mail, téléphone, IBAN, carte, secret) n'atteigne les logs du serveur
+  installLogMasking();
   if (!process.env.DATABASE_URL) return;
   try { await ensureMigrated(); } catch (e) { console.error("[démarrage] migrations en échec", e); return; }
   // Preview uniquement (DEMO_ACCOUNT_ENABLED + domaine autorisé) ; un échec ne doit jamais empêcher le démarrage.
