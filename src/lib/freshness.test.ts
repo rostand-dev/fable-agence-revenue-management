@@ -7,7 +7,7 @@ const ago = (h: number) => new Date(NOW.getTime() - h * 3_600_000);
 
 describe("fraîcheur (blueprint §7.4)", () => {
   it("seuils par défaut : réservations 24 h, disponibilité 6 h, prix 24 h, marché 48 h, promotions 7 jours", () => {
-    expect(MAX_AGE_HOURS).toEqual({ RESERVATIONS: 24, AVAILABILITY: 6, PRICING: 24, MARKET: 48, PROMOTIONS: 168 });
+    expect(MAX_AGE_HOURS).toEqual({ RESERVATIONS: 24, AVAILABILITY: 6, PRICING: 24, MARKET: 48, PROMOTIONS: 168, CONFIG: 24 });
   });
   it("frais juste avant le seuil, périmé au seuil", () => {
     expect(freshnessOf("PRICING", ago(23.9), NOW).state).toBe("FRESH");

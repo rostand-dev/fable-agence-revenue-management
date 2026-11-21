@@ -1,10 +1,10 @@
 /**
  * Fraîcheur des données (blueprint §7.4). Une opportunité financière exige par défaut : réservations < 24 h, disponibilité < 6 h, prix < 24 h,
- * marché < 48 h, promotions vérifiées < 7 jours. Au-delà, la confiance baisse ou l'exécution est bloquée (décidé par le moteur, pas ici).
+ * marché < 48 h, promotions vérifiées < 7 jours ; la configuration PriceLabs suit le rythme des prix (24 h). Au-delà, la confiance baisse ou l'exécution est bloquée (décidé par le moteur, pas ici).
  * Module pur : un seuil se change à un seul endroit.
  */
-export type FreshnessKind = "RESERVATIONS" | "AVAILABILITY" | "PRICING" | "MARKET" | "PROMOTIONS";
-export const MAX_AGE_HOURS: Record<FreshnessKind, number> = { RESERVATIONS: 24, AVAILABILITY: 6, PRICING: 24, MARKET: 48, PROMOTIONS: 168 };
+export type FreshnessKind = "RESERVATIONS" | "AVAILABILITY" | "PRICING" | "MARKET" | "PROMOTIONS" | "CONFIG";
+export const MAX_AGE_HOURS: Record<FreshnessKind, number> = { RESERVATIONS: 24, AVAILABILITY: 6, PRICING: 24, MARKET: 48, PROMOTIONS: 168, CONFIG: 24 };
 export type Freshness = { state: "FRESH" | "STALE" | "MISSING"; ageHours: number | null; maxHours: number };
 
 export function freshnessOf(kind: FreshnessKind, observedAt: Date | string | null | undefined, now: Date = new Date()): Freshness {

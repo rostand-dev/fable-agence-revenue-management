@@ -33,7 +33,7 @@ function ConnectionCheckResult({ check }: { check: Record<string, any> }) {
 type SnapshotState = Awaited<ReturnType<typeof getSnapshotState>>;
 const FRESH_WORD = { FRESH: "à jour", STALE: "périmé", MISSING: "jamais lu" } as const;
 const FRESH_ROLE = { FRESH: "sain", STALE: "attention", MISSING: "neutre" } as const;
-const KIND_LABEL = { PRICING: "Prix", MARKET: "Marché" } as const;
+const KIND_LABEL = { CONFIG: "Configuration", PRICING: "Prix", MARKET: "Marché" } as const;
 const ADAPTER_LABEL: Record<string, string> = { HTTP: "PriceLabs", FAKE: "jeu de données simulé", REPLAY: "rejeu d'une fixture" };
 
 /** Fraîcheur des données lues (seuils du blueprint §7.4) : date du dernier snapshot, état en toutes lettres, origine réelle ou simulée. */
@@ -42,11 +42,11 @@ function SnapshotFreshness({ state }: { state: SnapshotState }) {
     <div className="stack" style={{ gap: 6 }} data-testid="pricelabs-snapshots">
       <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Fraîcheur des données lues</h2>
       <ul role="list" style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 6 }}>
-        {(["PRICING", "MARKET"] as const).map((k) => {
+        {(["CONFIG", "PRICING", "MARKET"] as const).map((k) => {
           const snap = state.latest[k], f = state.freshness[k];
           return (
             <li key={k} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "baseline" }}>
-              <span style={{ minWidth: 70, fontWeight: 600 }}>{KIND_LABEL[k]}</span>
+              <span style={{ minWidth: 110, fontWeight: 600 }}>{KIND_LABEL[k]}</span>
               <State role={FRESH_ROLE[f.state]}>{FRESH_WORD[f.state]}</State>
               <span className="muted" style={{ flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }}>
                 {snap ? <>Lu le {fmtDateTime(new Date(snap.observedAt))} · {ADAPTER_LABEL[snap.adapter] ?? snap.adapter} · qualité {snap.qualityScore} %{snap.unchangedOf ? " · identique à la lecture précédente" : ""} · à renouveler après {f.maxHours} h</> : "Aucun snapshot : la première lecture n'a pas eu lieu."}
@@ -55,6 +55,30 @@ function SnapshotFreshness({ state }: { state: SnapshotState }) {
           );
         })}
       </ul>
+    </div>
+  );
+}
+
+/** Contrôle de la dernière grille lue : complétude et anomalies, avec les dates concernées (statut toujours en toutes lettres). */
+function GridReportView({ report }: { report: Record<string, any> }) {
+  const warns = (report.issues ?? []).filter((i: any) => i.severity === "WARN").length, clean = warns === 0; // une simple information ne rend pas la grille « à vérifier"
+  return (
+    <div className="stack" style={{ gap: 6 }} data-testid="pricelabs-grid-report">
+      <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Contrôle de la grille de prix</h2>
+      <p className="section-note" style={{ margin: 0 }}>
+        <State role={clean ? "sain" : "attention"}>{clean ? "Grille complète" : `${warns} point${warns > 1 ? "s" : ""} à vérifier`}</State>{" "}
+        {report.received} jour{report.received > 1 ? "s" : ""} lu{report.received > 1 ? "s" : ""} sur {report.expected} attendus · qualité {report.score} %.
+      </p>
+      {report.issues?.length > 0 && (
+        <ul role="list" style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 6 }}>
+          {report.issues.map((i: any) => (
+            <li key={i.code} style={{ overflowWrap: "anywhere", minWidth: 0 }}>
+              <State role={i.severity === "WARN" ? "attention" : "neutre"}>{i.severity === "WARN" ? "à vérifier" : "information"}</State>{" "}
+              {i.message}{i.dates?.length ? <span className="muted"> Dates : {i.dates.map((d: string) => fmtDay(d)).join(", ")}{(i.total ?? i.dates.length) > i.dates.length ? "…" : ""}.</span> : null}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -174,6 +198,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
             );
           })()}
           {snapshots && <SnapshotFreshness state={snapshots} />}
+          {ls?.ok && ls.gridReport && <GridReportView report={ls.gridReport} />}
           {ls?.listingChanges?.length > 0 && <Banner role="attention" title="Annonce modifiée chez PriceLabs">{ls.listingChanges.join(" ; ")}. Vérifiez que l'annonce correspond toujours à ce logement.</Banner>}
           {pl.lastCheck && <ConnectionCheckResult check={pl.lastCheck} />}
           <div className="row-wrap">

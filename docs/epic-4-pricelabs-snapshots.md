@@ -55,3 +55,15 @@ Blueprint §19 (E4), §7.4 (fraîcheur et lineage), §8.1 (payload brut immuable
 **Tests** : unitaires (fraîcheur, empreinte canonique), base (`snapshots.db.test.ts` : création, déduplication, changement, lineage, marché absent, lecture en échec, fraîcheur dans le temps, métadonnées sans payload, isolation locataire, immuabilité par le rôle applicatif, cascade), E2E faux serveur (bureau, mobile 390 et 360, sans débordement) incluant l'API.
 
 Limite supplémentaire : la fraîcheur affichée pour les prix est celle de la lecture PriceLabs ; quand SuperHote fournit le prix, sa propre fraîcheur (dernière lecture SuperHote) s'applique aussi.
+
+## US-041 — Import configuration et prix futurs
+
+**Ce qui change**
+- **Configuration PriceLabs importée** (`pricelabs-config.ts`, module pur) : prix de base, minimum, maximum, synchronisation des prix et devise, conservés en **snapshot `CONFIG`** (même magasin immuable que US-043, fraîcheur 24 h). Une lecture identique à la précédente ne duplique rien.
+- **Changement de configuration chez PriceLabs** : comparé à la lecture précédente, journalisé (`integration.pricelabs_config_changed`) avec l'avant/après en clair (« Prix minimum 83 € → 90 € »). L'historique des configurations se relit dans les snapshots.
+- **Contrôle de la grille D+0 à D+90** (`analyzeGrid`) à chaque lecture : jours manquants, nuits libres sans prix (restent **inconnues**, jamais zéro), prix sous le minimum ou au-dessus du maximum, bornes incohérentes (minimum > base, base > maximum, minimum > maximum), absence de bornes. Les nuits réservées ou bloquées ne sont jamais jugées. Le rapport (complétude, score de qualité, anomalies avec 10 dates au plus et le total) est mémorisé dans `lastSync.gridReport` et affiché dans l'onglet PriceLabs (« Contrôle de la grille de prix »), état en toutes lettres.
+- Le contrôle **signale, ne corrige pas** : la grille lue reste celle de PriceLabs.
+- L'onglet PriceLabs affiche aussi la fraîcheur de la configuration. API : `GET /api/v1/properties/{id}/snapshots` expose désormais `CONFIG` à côté de `PRICING` et `MARKET`.
+- Nouvel évènement d'audit : `integration.pricelabs_config_changed`. Aucune migration, aucune variable d'environnement nouvelle (la colonne `kind` accepte la nouvelle valeur).
+
+**Tests** : unitaires (`pricelabs-config.test.ts` : normalisation, différences, cas de grille dont doublons, bornes cumulées et scénarios fictifs), base (création et relecture légère du snapshot de configuration, changement avec avant/après, rapport mémorisé, grille partielle sans correction, fraîcheur), E2E faux serveur (grille complète, grille partielle, bornes incohérentes ; bureau, mobile 390 et 360).
