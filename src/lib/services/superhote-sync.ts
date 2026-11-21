@@ -8,7 +8,8 @@ import { observedCommission, observedPaymentFee } from "../integrations/superhot
 import { calendarPatches, shReservations } from "../integrations/superhote-reservations";
 import { todayISO } from "../dates";
 import { replaceReservations } from "./reservations-store";
-import { encryptSecret, secretHint } from "../secret";
+import { decryptSecret, encryptSecret, secretHint } from "../secret";
+import { cleanupWebhookForToken } from "./superhote-webhook";
 import { shErrorText, snapshotSuperhote } from "./superhote-read";
 import { SyncError, syncPriceLabs } from "./pricelabs-sync";
 
@@ -36,8 +37,10 @@ export async function connectSuperhote(tenantId: string, propertyId: string, tok
   let rentals;
   try { rentals = await listRentals(token); } catch (e) { throw new SyncError(shErrorText(e)); }
   if (rentals.length === 0) throw new SyncError("Le jeton est valide, mais ce compte SuperHote ne contient aucun logement visible avec ses droits.");
+  const previous = p.superhote?.apiKeyEnc ? (() => { try { return decryptSecret(p.superhote!.apiKeyEnc as string); } catch { return null; } })() : null;
   await db.update(properties).set({ superhote: { apiKeyEnc: encryptSecret(token), keyHint: secretHint(token), connectedAt: new Date().toISOString(), candidates: rentals.map((r) => ({ id: r.id, name: r.name, city: r.city, capacity: r.capacity })), rentalId: null, rentalName: null } }).where(eq(properties.id, p.id));
   await audit(tenantId, actor, "integration.superhote_connected", p.id, `Jeton API SuperHote enregistré pour ${p.name} (${secretHint(token)}), ${rentals.length} logement${rentals.length > 1 ? "s" : ""} visible${rentals.length > 1 ? "s" : ""}. Rattachement à confirmer.`);
+  if (previous && previous !== token) await cleanupWebhookForToken(tenantId, previous, p.id); // nouveau jeton : l'ancien webhook n'a plus d'usage (il occuperait l'une des 10 places du compte)
   return { rentals: rentals.length };
 }
 
@@ -63,7 +66,9 @@ export async function detachRental(tenantId: string, propertyId: string, actor: 
 
 export async function disconnectSuperhote(tenantId: string, propertyId: string, actor: string): Promise<void> {
   const p = await getProp(tenantId, propertyId);
+  const token = p.superhote?.apiKeyEnc ? (() => { try { return decryptSecret(p.superhote!.apiKeyEnc as string); } catch { return null; } })() : null;
   await db.update(properties).set({ superhote: null }).where(eq(properties.id, p.id));
+  if (token) await cleanupWebhookForToken(tenantId, token, p.id); // retire le webhook si plus aucun logement n'utilise ce jeton
   await audit(tenantId, actor, "integration.superhote_disconnected", p.id, `Jeton API SuperHote supprimé pour ${p.name}.`);
 }
 

@@ -36,3 +36,19 @@ Variable : `LOG_PII_MASKING` (`on` par défaut ; `off` désactive le masquage de
 - **Écriture unitaire** (`applyReservation`, `src/lib/services/reservation-ingest.ts`) : seul chemin d'écriture pour US-030 et US-032. Idempotente (même état rejoué = aucune écriture), protégée contre l'ordre d'arrivée (un `updated_at` plus ancien que l'état connu est ignoré, `STALE`) et transactionnelle (réservation, nuits, historique ensemble). Les chevauchements sont réévalués par la règle commune `dedupeConfirmed` (la plus récemment réservée l'emporte) ; une réservation redevenue seule redevient confirmée.
 - **Migration `0019`** : tables, colonnes, RLS (nuits en CRUD, historique en SELECT/INSERT) et reprise des nuits des réservations existantes ; rejouable.
 - **Déploiement Staging** : aucune variable d'environnement nouvelle ; la migration est appliquée au démarrage comme les précédentes.
+
+## US-030 — Endpoint webhook idempotent
+
+- **Route** `POST /api/webhooks/superhote/<identifiant opaque>` : sans session, authentifiée par la signature `X-Superhote-Signature` (HMAC-SHA256 du corps brut, comparaison à temps constant). 401 signature invalide, 404 point inconnu, 400 enveloppe invalide, 413 corps > 256 Ko, 200 sinon (y compris livraison déjà vue ou événement ignoré), 503 si la base est indisponible (SuperHote réessaie à 1 puis 5 minutes).
+- **Un webhook par jeton** (table `superhote_webhooks`) et non par logement : un compte SuperHote est limité à 10 webhooks. Le logement est retrouvé par le `rental_id` de la réservation et par l'empreinte du jeton. Le secret `whsec_…` (renvoyé une seule fois) est chiffré.
+- **Boîte de réception** `webhook_deliveries` : inscrite AVANT traitement, clé d'idempotence `(endpoint, X-Superhote-Delivery)`. Statuts RECEIVED / PROCESSED / IGNORED / FAILED. Réclamation par `UPDATE … status='PROCESSING'` (pas de double traitement, réclamation abandonnée après 1 min). Panne transitoire : 500, SuperHote réessaie et la livraison FAILED est reprise (3 tentatives) ; au-delà, 200 et FAILED visible (rejeu : US-033 ; rattrapage : US-032). Message d'erreur stocké générique (jamais de SQL).
+- **Traitement** : `applyReservation` (US-031) puis ajustement du calendrier déjà lu (nuits vendues ; jamais de libération sans confirmation de SuperHote, la réconciliation corrige). Annulation par l'API = `reservation.updated` avec `status_label` CANCELED.
+- **Activation** : onglet SuperHote de la fiche logement (« Activer / Désactiver les webhooks »), audit `integration.superhote_webhook_registered|removed`. Supprimer le dernier jeton d'un compte retire son webhook.
+- **Migration `0020`** : tables, RLS (livraisons : SELECT/INSERT/UPDATE), rejouable.
+
+### À prévoir sur Staging (Coolify) pour les webhooks
+1. L'application doit être joignable en **https public** : `APP_URL` (ou `SUPERHOTE_WEBHOOK_BASE_URL`, nouvelle variable facultative, vide = `APP_URL`). Sans cela, « Activer les webhooks » est refusé avec un message explicite. Une Preview protégée par mot de passe ne peut pas recevoir de webhooks.
+2. Ne pas poser `PREVIEW_BASIC_AUTH_*` sur Staging (le mot de passe bloquerait SuperHote).
+3. Le jeton API SuperHote doit porter le scope **`public-api:webhooks.manage`** (en plus des scopes de lecture).
+4. `APP_SECRET` chiffre les secrets de webhook et dérive l'empreinte des jetons : le changer invalide les webhooks déjà créés (les désactiver puis réactiver).
+5. `TENANT_RLS` : sans effet particulier ; la route traite chaque livraison sous l'isolation du propriétaire.
