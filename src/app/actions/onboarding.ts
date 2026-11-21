@@ -11,6 +11,7 @@ import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { advance, isStep, launchBlockers, stepLabel, type OnboardingState, type StepKey } from "@/lib/onboarding";
 import { parseMarkupList } from "@/lib/pricing/published";
+import { createPropertyDraft, PortfolioError } from "@/lib/services/portfolio";
 import { selectListing, SyncError, syncPriceLabs } from "@/lib/services/pricelabs-sync";
 import { runDailyReview } from "@/lib/services/review";
 import { selectRental } from "@/lib/services/superhote-sync";
@@ -22,7 +23,6 @@ import { selectRental } from "@/lib/services/superhote-sync";
 const txt = (fd: FormData, k: string) => String(fd.get(k) ?? "").trim();
 /** Champ vide = inconnu (null), jamais zéro. */
 const num = (fd: FormData, k: string): number | null => { const v = txt(fd, k).replace(",", "."); if (v === "") return null; const n = Number(v); return Number.isFinite(n) && n >= 0 ? n : null; };
-const EMPTY: EconomicModel = { channels: {}, cleaningFeeChargedCents: null, cleaningCostCents: null, linenCostCents: null, nightlyVariableCostCents: null, hardContributionPerNightCents: null, strategyContributionPerNightCents: null, targetContributionPerNightCents: null, origin: "DECLARED", touristTaxPct: null };
 const creation = (id: string, step: StepKey) => `/logements/${id}/creation?etape=${step}`;
 const QUIT = "/logements?enregistre=1";
 
@@ -41,7 +41,7 @@ async function guard(fn: (u: Awaited<ReturnType<typeof requireUser>>) => Promise
   const u = await requireUser();
   let to: string;
   try { to = await fn(u); } catch (e) {
-    if (e instanceof SyncError) return { error: e.message };
+    if (e instanceof SyncError || e instanceof PortfolioError) return { error: e.message };
     console.error("[creation]", e instanceof Error ? e.message : e);
     return { error: "Erreur technique. Votre saisie précédente est conservée." };
   }
@@ -64,18 +64,20 @@ export async function saveLogementAction(_: FormState, fd: FormData): Promise<Fo
     const how = quit ? "stay" : "next";
     if (!id0) {
       if (quit && !v.name && !v.city && !v.kind) return "/logements";
-      const id = newId("prop"), name = v.name || "Logement sans nom";
-      const strategy: Strategy = { basePriceCents: null, minPriceCents: null, maxPriceCents: null, minStay: null, objective: v.objective, positioning: v.positioning, maxDiscountStackPct: 20, maxPriceChangePct: 5 };
-      await db.insert(schema.properties).values({ id, tenantId: u.tenantId, name, city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity, status: "ONBOARDING", isDemo: false, profile: { positioning: v.positioning ?? null }, economics: EMPTY, strategy, channelMarkups: [], onboarding: advance(null, "logement", how) });
-      await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: u.tenantId, agentId: "onboarding", operation: "onboard", mode: "DETERMINISTIC", summary: `${name} : création du logement commencée.` });
-      await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.created", entity: "Property", entityId: id, summary: `${u.name} commence la création du logement ${name}.`, payload: { name, city: v.city, kind: v.kind } });
-      return quit ? QUIT : creation(id, "superhote");
+      // création partagée avec l'API (services/portfolio.ts) : propriétaire par défaut, audit, première trace de l'agent d'onboarding
+      const created = await createPropertyDraft(u, v, how, txt(fd, "ownerId") || undefined);
+      return quit ? QUIT : creation(created.id, "superhote");
     }
     const p = await load(u.tenantId, id0);
+    const requestedOwner = txt(fd, "ownerId");
+    if (requestedOwner) {
+      const [o] = await db.select({ id: schema.owners.id }).from(schema.owners).where(and(eq(schema.owners.id, requestedOwner), eq(schema.owners.tenantId, u.tenantId)));
+      if (!o) throw new PortfolioError("INVALID", "Ce propriétaire n'existe pas dans votre espace.");
+    }
     const old = p.strategy as Strategy;
     const next = advance(p.onboarding, "logement", how);
     await db.update(schema.properties).set({
-      name: v.name || p.name || "Logement sans nom", city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity,
+      ...(requestedOwner ? { ownerId: requestedOwner } : {}), name: v.name || p.name || "Logement sans nom", city: v.city, kind: v.kind, bedrooms: v.bedrooms, capacity: v.capacity,
       strategy: { ...old, objective: v.objective, positioning: v.positioning }, profile: { ...p.profile, positioning: v.positioning ?? null },
       onboarding: next,
     }).where(eq(schema.properties.id, p.id));

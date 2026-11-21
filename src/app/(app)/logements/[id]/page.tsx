@@ -7,6 +7,7 @@ import { BarChart } from "@/components/BarChart";
 import { CadencePanel } from "@/components/CadencePanel";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
+import { ListingsPanel } from "@/components/ListingsPanel";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { SuperhotePanel } from "@/components/SuperhotePanel";
 import { badgeHref, pricelabsBadge, superhoteBadge } from "@/lib/integrations/connection-badge";
@@ -25,6 +26,7 @@ import { estimateAllChannels, estimatePublishedPrice, pickDefaultChannel, sentMi
 import { loadEngineInput } from "@/lib/services/review";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
+import { listListings } from "@/lib/services/portfolio";
 
 async function noChannelRows(propertyId: string, overrides: Record<string, string>) {
   const rows = await db.select().from(schema.reservations).where(eq(schema.reservations.propertyId, propertyId));
@@ -32,7 +34,7 @@ async function noChannelRows(propertyId: string, overrides: Record<string, strin
     .map((r) => ({ externalId: r.externalId, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, choice: overrides[r.externalId] ?? "" }));
 }
 
-const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["pricelabs", "PriceLabs"], ["superhote", "SuperHote"]] as const;
+const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["annonces", "Annonces"], ["pricelabs", "PriceLabs"], ["superhote", "SuperHote"]] as const;
 
 export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string; erreurSh?: string; canal?: string; jour?: string; lance?: string }> }) {
   const user = await requireUser();
@@ -74,13 +76,15 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const stateLabel = (st: string) => (st === "BOOKED" ? "réservé" : st === "BLOCKED" ? "bloqué" : "libre");
   const detailDay = sp.jour ? input.days.find((d) => d.date === sp.jour) : undefined;
   const allPromos = await db.select().from(schema.promotions).where(eq(schema.promotions.propertyId, p.id));
+  const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
+  const listingRows = tab === "annonces" ? await listListings(user.tenantId, p.id) : [];
 
   return (
     <Page title={p.name} sub={`${[p.kind, p.city].filter(Boolean).join(" · ") || "dossier en cours de saisie"} · stratégie v${p.strategyVersion}`} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name }]}>
       <div className="idhead">
         <div>
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
-          <div className="idmeta"><span>{p.kind || "type non renseigné"}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city || "ville non renseignée"}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span></div>
+          <div className="idmeta"><span>{p.kind || "type non renseigné"}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city || "ville non renseignée"}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span>{owner && <span data-testid="property-owner">propriétaire : {owner.name}</span>}</div>
         </div>
         <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{([["pricelabs", pricelabsBadge(p.pricelabs, p.isDemo)], ["superhote", superhoteBadge(p.superhote, p.isDemo)]] as const).map(([k, b]) => b && <Link key={k} href={badgeHref(k, p.id, p.status)} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
@@ -89,12 +93,12 @@ export default async function Logement({ params, searchParams }: { params: Promi
         return missing.length ? <Banner role="attention" title="Majoration non renseignée" style={{ marginBottom: 16 }}>Majoration SuperHote manquante pour {missing.join(" et ")}. Sans elle, le prix vendu sur ce canal ne peut pas être calculé : il est exclu de la revue des agents. Saisissez-la dans « Modifier le dossier ».</Banner> : null;
       })()}
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
-      {!p.isDemo && p.status === "ONBOARDING" && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link></span></Banner>}
+      {!p.isDemo && p.status === "ONBOARDING" && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link> <Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce brouillon</Link></span></Banner>}
       {miss.length > 0 && !onboarding && <Banner role="attention" title="Modèle économique incomplet" style={{ marginBottom: 16 }}>Il manque : {miss.join(", ")}. Aucun plancher n'est calculé et aucune situation n'est ouverte tant que ces valeurs manquent ; une estimation provisoire suffit pour démarrer.{!p.isDemo && <> <Link href={`/logements/${p.id}/couts`}>Les renseigner pas à pas avec {agentName("onboarding", names)}</Link></>}</Banner>}
       {!hasCal && !onboarding && tab !== "pricelabs" && <Banner role="tech" title="Calendrier non connecté" style={{ marginBottom: 16 }}>La revue démarre dès que la clé API PriceLabs de ce logement est renseignée. <Link href={`/logements/${p.id}?tab=pricelabs`}>Connecter PriceLabs</Link></Banner>}
 
       {sp.lance && <Banner role="sain" title="Observation lancée" style={{ marginBottom: 16 }}>Le dossier est complet : l'équipe lit vos données et vous proposera ses premières situations, sans rien appliquer sans votre accord.</Banner>}
-      {!p.isDemo && p.status !== "ONBOARDING" && <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/modifier`}><Icon name="sliders" />Modifier le dossier</Link></p>}
+      {!p.isDemo && p.status !== "ONBOARDING" && <p className="row-wrap" style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/modifier`}><Icon name="sliders" />Modifier le dossier</Link><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer</Link></p>}
       <div className="subnav" role="tablist" aria-label="Sections du logement" style={{ marginBottom: 22 }}>
         {TABS.map(([k, l]) => <Link key={k} role="tab" aria-selected={tab === k} href={`/logements/${p.id}?tab=${k}`} scroll={false} className="subnav-link">{l}</Link>)}
       </div>
@@ -142,6 +146,8 @@ export default async function Logement({ params, searchParams }: { params: Promi
           </section>
         </>
       )}
+
+      {tab === "annonces" && <ListingsPanel propertyId={p.id} listings={listingRows} editable={!p.isDemo} />}
 
       {tab === "calendrier" && (hasCal ? (
         <section>

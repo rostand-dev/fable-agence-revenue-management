@@ -56,6 +56,15 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   renameAgentsAction: { events: ["settings.agents_renamed"] },
   setFlagAction: { events: ["flag.changed"] },
   killSwitchAction: { events: ["integration.kill_switch_on", "integration.kill_switch_off"] },
+  // actions/portfolio.ts (US-020)
+  createOwnerAction: { events: ["owner.created"] },
+  updateOwnerAction: { events: ["owner.updated"] },
+  deleteOwnerAction: { events: ["owner.deleted"] },
+  saveListingAction: { events: ["listing.created", "listing.updated"] },
+  setListingStatusAction: { events: ["listing.archived", "listing.restored"] },
+  deleteListingAction: { events: ["listing.deleted"] },
+  deletePropertyAction: { events: ["property.deleted"] },
+  renameTenantAction: { events: ["tenant.renamed"] },
   // actions/superhote.ts
   connectSuperhoteAction: { events: ["integration.superhote_connected"] },
   selectRentalAction: { events: ["integration.superhote_rental_linked"] },
@@ -69,5 +78,11 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/chat": { exempt: "Conversation avec un agent (flux) : aucune décision ni réglage n'est modifié." },
   "api/session/touch": { exempt: "Repousse l'échéance d'inactivité de la session ; aucune donnée métier." },
   "api/session/restore": { events: ["account.login_remembered"] },
+  "api/v1/owners": { events: ["owner.created"] },
+  "api/v1/owners/[id]": { events: ["owner.updated", "owner.deleted"] },
+  "api/v1/properties": { events: ["property.created"] },
+  "api/v1/properties/[id]": { events: ["property.updated", "property.deleted"] },
+  "api/v1/properties/[id]/listings": { events: ["listing.created"] },
+  "api/v1/properties/[id]/listings/[listingId]": { events: ["listing.updated", "listing.archived", "listing.restored", "listing.deleted"] },
   "api/session/end": { exempt: "Ferme la session après inactivité ; aucune donnée métier." },
 };

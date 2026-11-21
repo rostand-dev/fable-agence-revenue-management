@@ -3,6 +3,7 @@ import type { EconomicModel, Strategy } from "@/lib/engine/types";
 void (null as unknown as EconomicModel);
 import { ActionForm, Submit } from "./forms";
 import { MarkupsEditor } from "./MarkupsEditor";
+import { OwnerSelect } from "./OwnerSelect";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { SuperhoteGuide } from "./SuperhoteGuide";
 import type { ChannelMarkup } from "@/lib/pricing/published";
@@ -21,7 +22,7 @@ const SECTIONS: { title: string; note: string; fields: F[] }[] = [
   ] },
 ];
 
-type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean; hasShKey: boolean; channelMarkups: ChannelMarkup[] };
+type Existing = { id: string; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; economics: EconomicModel; strategy: Strategy; profile: Record<string, any>; hasKey: boolean; hasShKey: boolean; channelMarkups: ChannelMarkup[]; ownerId?: string | null };
 const n = (v: number | null | undefined) => (v === null || v === undefined ? "" : String(v).replace(".", ","));
 
 /** Une valeur inconnue repart vide ; rien n'est prérempli à la place du propriétaire. */
@@ -34,7 +35,7 @@ export function valuesOf(p: Existing): Record<string, string> {
 }
 
 /** Formulaire de modification du dossier d'un logement déjà lancé (la création passe par le parcours guidé). */
-export function PropertyForm({ existing }: { existing: Existing }) {
+export function PropertyForm({ existing, owners = [] }: { existing: Existing; owners?: { id: string; name: string; isDefault: boolean }[] }) {
   const v = valuesOf(existing);
   const total = SECTIONS.flatMap((s) => s.fields).length, filled = Object.values(v).filter((x) => x !== "").length;
   return (
@@ -44,6 +45,7 @@ export function PropertyForm({ existing }: { existing: Existing }) {
         <section className="section" key={s.title} style={{ marginTop: 28 }}>
           <h2>{s.title}</h2><p className="section-note">{s.note}</p>
           <div className="form-grid">
+            {s.title.startsWith("1") && <OwnerSelect owners={owners} value={existing.ownerId} />}
             {s.fields.map((f) => (
               <div className="field" key={f.name} style={f.full ? { gridColumn: "1 / -1" } : undefined}>
                 <label htmlFor={f.name}>{f.label}{f.unit && <span className="muted"> ({f.unit})</span>}{f.req && <span className="req" aria-hidden="true">*</span>}</label>

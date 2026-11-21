@@ -13,7 +13,8 @@ export function Submit({ children, className = "btn btn-primary", icon, pendingL
 }
 
 /** Formulaire relié à une action serveur : l'erreur revient près du formulaire, jamais en alerte de navigateur. */
-export function ActionForm({ action, children, hidden, style, className, id }: { action: ServerAction; children: React.ReactNode; hidden?: Record<string, string | number>; style?: React.CSSProperties; className?: string; id?: string }) {
+/** `resetOnOk` : formulaire d'ajout. Après un succès, les champs reviennent à leur valeur initiale (vide) au lieu de garder la saisie, pour ne pas ajouter deux fois la même chose. */
+export function ActionForm({ action, children, hidden, style, className, id, resetOnOk }: { action: ServerAction; children: React.ReactNode; hidden?: Record<string, string | number>; style?: React.CSSProperties; className?: string; id?: string; resetOnOk?: boolean }) {
   const [state, formAction, isPending] = useActionState(action, null);
   const reauthId = useId();
   const ref = useRef<HTMLFormElement>(null), sent = useRef<FormData | null>(null);
@@ -22,6 +23,7 @@ export function ActionForm({ action, children, hidden, style, className, id }: {
   useEffect(() => {
     const fd = sent.current, form = ref.current;
     if (!state || !fd || !form) return;
+    if (resetOnOk && state.ok) { form.reset(); return; }
     const seen: Record<string, number> = {};
     for (const el of Array.from(form.elements)) {
       if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) || !el.name) continue;
@@ -31,7 +33,7 @@ export function ActionForm({ action, children, hidden, style, className, id }: {
       if (el instanceof HTMLInputElement && ["checkbox", "radio", "hidden", "file", "submit", "button"].includes(el.type)) continue;
       if (el.value !== v) el.value = v;
     }
-  }, [state]);
+  }, [state, resetOnOk]);
   return (
     <form ref={ref} action={keep} style={style} className={className} id={id} data-pending={isPending ? "" : undefined} aria-busy={isPending || undefined}>
       {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
