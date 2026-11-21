@@ -40,8 +40,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS "listings_channel_external" ON "listings" USIN
 CREATE UNIQUE INDEX IF NOT EXISTS "listings_one_active_per_channel" ON "listings" USING btree ("property_id","channel") WHERE status = 'ACTIVE' and channel in ('AIRBNB', 'BOOKING');--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "owners_tenant" ON "owners" USING btree ("tenant_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "owners_one_default" ON "owners" USING btree ("tenant_id") WHERE is_default;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "owners_name_ci" ON "owners" USING btree ("tenant_id",lower("name"));--> statement-breakpoint
 DO $$ BEGIN
-	ALTER TABLE "properties" ADD CONSTRAINT "properties_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE restrict ON UPDATE no action;
+	ALTER TABLE "properties" ADD CONSTRAINT "properties_owner_id_owners_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."owners"("id") ON DELETE no action ON UPDATE no action;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;--> statement-breakpoint
 -- Isolation par la base (US-011) pour les deux nouvelles tables : même politique que les autres tables à tenant_id (voir 0011).

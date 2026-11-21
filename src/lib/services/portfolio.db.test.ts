@@ -109,6 +109,18 @@ describe("logements (US-020)", () => {
     const ev = (await audit(a, "property.deleted")).find((e) => e.entityId === c.id)!;
     expect(ev.payload).toMatchObject({ name: "À supprimer", reservations: 1, listings: 1, opportunities: 0 });
   });
+  it("suppression : les traces rattachées par simple identifiant (mesures, discussions, interrupteurs) partent aussi", async () => {
+    const pid = await makeProperty(a.tenantId, "Avec traces");
+    const oid = newId("opp");
+    await db.insert(schema.opportunities).values({ id: oid, tenantId: a.tenantId, propertyId: pid, code: "OPP-" + oid, playbook: "PB-01", reasonCode: "X", title: "t", stayFrom: "2026-12-01", stayTo: "2026-12-05", dedupeKey: "k" + oid, signals: {}, diagnosis: {}, candidates: [], expiresAt: "2026-12-31" });
+    await db.insert(schema.agentRuns).values({ id: newId("run"), tenantId: a.tenantId, agentId: "measure", operation: "measure", mode: "DETERMINISTIC", summary: "Mesure", opportunityId: oid });
+    await db.insert(schema.chatMessages).values({ id: newId("msg"), tenantId: a.tenantId, agentId: "revenue", opportunityId: oid, role: "user", content: "bonjour" });
+    await db.insert(schema.featureFlags).values({ id: newId("ff"), tenantId: a.tenantId, flag: "x", scope: "PROPERTY", scopeId: pid, enabled: true, updatedBy: "t" });
+    await deleteProperty(a.actor, pid, "Avec traces");
+    expect(await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.opportunityId, oid))).toHaveLength(0);
+    expect(await db.select().from(schema.chatMessages).where(eq(schema.chatMessages.opportunityId, oid))).toHaveLength(0);
+    expect(await db.select().from(schema.featureFlags).where(and(eq(schema.featureFlags.tenantId, a.tenantId), eq(schema.featureFlags.scopeId, pid)))).toHaveLength(0);
+  });
   it("suppression refusée tant qu'une action de revenu est en cours", async () => {
     const pid = await makeProperty(a.tenantId, "Avec action");
     const oid = newId("opp");
@@ -171,6 +183,28 @@ describe("annonces (US-020)", () => {
   });
 });
 
+describe("annonces : atomicité et espace (US-020)", () => {
+  it("modifier une annonce et son statut en une fois : si le statut échoue, rien n'est modifié", async () => {
+    const pid = (await createProperty(a.actor, { name: "Atomique", city: "Lille", kind: "T2" })).id;
+    const old = await createListing(a.actor, pid, { channel: "BOOKING", externalId: "7654321", title: "Ancien" });
+    await setListingStatus(a.actor, pid, old, "ARCHIVED");
+    await createListing(a.actor, pid, { channel: "BOOKING", externalId: "7654322" });
+    expect(await code(updateListing(a.actor, pid, old, { title: "Modifié" }, "ACTIVE"))).toMatch(/^CONFLICT/);
+    expect((await listListings(a.tenantId, pid)).find((l) => l.id === old)).toMatchObject({ title: "Ancien", status: "ARCHIVED" });
+  });
+  it("supprimer un espace entier avec propriétaires et logements n'est pas bloqué par la clé du propriétaire", async () => {
+    const t = await makeTenant("D-purge");
+    const owner = await createOwner(t.actor, { name: "Proprio D" });
+    await createProperty(t.actor, { name: "Bien D", city: "Lyon", kind: "T2", ownerId: owner });
+    await db.delete(schema.tenants).where(eq(schema.tenants.id, t.tenantId));
+    expect(await db.select().from(schema.owners).where(eq(schema.owners.tenantId, t.tenantId))).toHaveLength(0);
+  });
+  it("deux propriétaires de même nom, majuscules comprises, sont refusés par la base elle-même", async () => {
+    const t = await makeTenant("E-nom");
+    await db.insert(schema.owners).values({ id: newId("own"), tenantId: t.tenantId, name: "Dupont" });
+    await expect(db.insert(schema.owners).values({ id: newId("own"), tenantId: t.tenantId, name: "DUPONT" })).rejects.toThrow();
+  });
+});
 describe("espace (US-020)", () => {
   it("renommage tracé ; un nom identique n'écrit rien", async () => {
     await renameTenant(b.actor, "Nouveau nom B");
@@ -198,7 +232,7 @@ describe("isolation par la base (RLS) sur les nouvelles tables", () => {
 });
 
 describe("reprise des espaces existants (migration 0014)", () => {
-  const statements = fs.readFileSync(path.join(process.cwd(), "drizzle", "0014_owners_listings.sql"), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean).slice(-2);
+  const statements = fs.readFileSync(path.join(process.cwd(), "drizzle", "0014_owners_listings.sql"), "utf8").split("--> statement-breakpoint").map((x) => x.trim()).filter(Boolean);
   it("rattache un logement sans propriétaire au propriétaire par défaut créé pour son espace, sans doublon au second passage", async () => {
     const t = await makeTenant("C-reprise");
     const pid = newId("prop");

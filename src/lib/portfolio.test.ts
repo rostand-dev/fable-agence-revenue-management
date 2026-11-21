@@ -40,6 +40,8 @@ describe("identité d'un logement", () => {
     expect(r.identity).toMatchObject({ name: "T3 Châtillon", city: "Paris", bedrooms: 2 });
     expect(r.changed).toEqual(["city"]);
     expect(ok(parsePropertyPatch({ bedrooms: null }, cur)).changed).toEqual(["bedrooms"]);
+    // brouillon incomplet : un changement de propriétaire seul ne revalide pas l'identité
+    expect(ok(parsePropertyPatch({ ownerId: "own_1" }, { ...cur, city: "", kind: "" })).changed).toEqual([]);
     expect(ok(parsePropertyPatch({}, cur)).changed).toEqual([]);
     expect(err(parsePropertyPatch({ name: "" }, cur))).toMatch(/nom/);
   });
@@ -69,6 +71,8 @@ describe("annonce", () => {
     expect(err(parseListingUrl("AIRBNB", "http://www.airbnb.fr/rooms/12345678"))).toMatch(/https/);
     expect(err(parseListingUrl("AIRBNB", "https://www.booking.com/x"))).toMatch(/Airbnb/);
     expect(err(parseListingUrl("AIRBNB", "https://airbnb.evil.com/rooms/1"))).toMatch(/Airbnb/);
+    expect(err(parseListingUrl("AIRBNB", "https://airbnb.attacker.io/rooms/12345678"))).toMatch(/Airbnb/);
+    expect(ok(parseListingUrl("AIRBNB", "https://www.airbnb.co.uk/rooms/12345678"))).toBeTruthy();
     expect(err(parseListingUrl("BOOKING", "https://user:pass@booking.com/x"))).toMatch(/identifiant ni mot de passe/);
     expect(err(parseListingUrl("DIRECT", "pas une adresse"))).toMatch(/adresse web/);
     expect(ok(parseListingUrl("DIRECT", "https://mon-site.fr/chez-moi"))).toBe("https://mon-site.fr/chez-moi");

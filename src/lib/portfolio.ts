@@ -48,9 +48,12 @@ export function parsePropertyIdentity(raw: Record<string, unknown>): Parsed<Prop
 }
 /** Modification partielle : seuls les champs présents changent ; chacun suit les mêmes règles que la création. */
 export function parsePropertyPatch(raw: Record<string, unknown>, current: PropertyIdentity): Parsed<{ identity: PropertyIdentity; changed: string[] }> {
+  const keys = ["name", "city", "kind", "bedrooms", "capacity", "positioning", "objective"] as const;
+  // rien d'identitaire dans la demande (ex. changement de propriétaire seul) : on ne revalide pas un brouillon encore incomplet
+  if (!keys.some((k) => k in raw)) return { ok: true, value: { identity: current, changed: [] } };
   const merged: Record<string, unknown> = { ...current };
   const changed: string[] = [];
-  for (const k of ["name", "city", "kind", "bedrooms", "capacity", "positioning", "objective"] as const) if (k in raw) { merged[k] = raw[k]; }
+  for (const k of keys) if (k in raw) { merged[k] = raw[k]; }
   const r = parsePropertyIdentity(merged);
   if (!r.ok) return r;
   for (const k of Object.keys(r.value) as (keyof PropertyIdentity)[]) if ((r.value[k] ?? null) !== (current[k] ?? null)) changed.push(k);
@@ -58,7 +61,7 @@ export function parsePropertyPatch(raw: Record<string, unknown>, current: Proper
 }
 
 export type ListingInput = { channel: ListingChannel; externalId: string | null; url: string | null; title: string | null };
-const HOST: Record<ListingChannel, RegExp | null> = { AIRBNB: /(^|\.)airbnb\.[a-z]{2,}(\.[a-z]{2})?$/i, BOOKING: /(^|\.)booking\.com$/i, DIRECT: null };
+const HOST: Record<ListingChannel, RegExp | null> = { AIRBNB: /(^|\.)airbnb\.(com|[a-z]{2})(\.[a-z]{2})?$/i, BOOKING: /(^|\.)booking\.com$/i, DIRECT: null };
 const ID_SHAPE: Record<ListingChannel, { re: RegExp; hint: string }> = {
   AIRBNB: { re: /^\d{5,20}$/, hint: "L'identifiant d'une annonce Airbnb est un nombre (par exemple 12345678), visible dans son adresse après /rooms/." },
   BOOKING: { re: /^\d{3,12}$/, hint: "L'identifiant d'un établissement Booking.com est un nombre (visible dans l'extranet, rubrique Propriété)." },

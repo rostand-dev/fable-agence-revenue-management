@@ -54,13 +54,13 @@ export const owners = pgTable("owners", {
   isDefault: boolean("is_default").notNull().default(false),
   createdAt: created(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [index("owners_tenant").on(t.tenantId), uniqueIndex("owners_one_default").on(t.tenantId).where(sql`is_default`)]);
+}, (t) => [index("owners_tenant").on(t.tenantId), uniqueIndex("owners_one_default").on(t.tenantId).where(sql`is_default`), uniqueIndex("owners_name_ci").on(t.tenantId, sql`lower(${t.name})`)]);
 
 export const properties = pgTable("properties", {
   id: id(),
   tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
   /** Propriétaire du bien (US-020). Un propriétaire qui possède des logements ne peut pas être supprimé. */
-  ownerId: text("owner_id").references(() => owners.id, { onDelete: "restrict" }),
+  ownerId: text("owner_id").references(() => owners.id),
   name: text("name").notNull(),
   city: text("city").notNull(),
   kind: text("kind").notNull(),

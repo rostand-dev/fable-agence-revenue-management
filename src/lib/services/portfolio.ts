@@ -167,6 +167,11 @@ export async function deleteProperty(u: PortfolioActor, id: string, confirmName:
     if (Number(inFlight) > 0) throw new PortfolioError("CONFLICT", `${Number(inFlight)} action${Number(inFlight) > 1 ? "s de revenu sont" : " de revenu est"} en cours sur ce logement : terminez-les ou annulez-les avant de le supprimer.`);
     const cnt = async (t: typeof schema.reservations | typeof schema.opportunities | typeof schema.listings) => Number((await tx.select({ n: count() }).from(t as any).where(eq((t as any).propertyId, p.id)))[0].n);
     const lost = { reservations: await cnt(schema.reservations), opportunities: await cnt(schema.opportunities), listings: await cnt(schema.listings) };
+    // traces rattachées par simple identifiant (sans clé étrangère) : supprimées avec le logement, sinon elles en garderaient le contenu
+    const oppIds = tx.select({ id: schema.opportunities.id }).from(schema.opportunities).where(eq(schema.opportunities.propertyId, p.id));
+    await tx.delete(schema.agentRuns).where(and(eq(schema.agentRuns.tenantId, u.tenantId), inArray(schema.agentRuns.opportunityId, oppIds)));
+    await tx.delete(schema.chatMessages).where(and(eq(schema.chatMessages.tenantId, u.tenantId), inArray(schema.chatMessages.opportunityId, oppIds)));
+    await tx.delete(schema.featureFlags).where(and(eq(schema.featureFlags.tenantId, u.tenantId), eq(schema.featureFlags.scope, "PROPERTY"), eq(schema.featureFlags.scopeId, p.id)));
     await tx.delete(properties).where(and(eq(properties.id, p.id), eq(properties.tenantId, u.tenantId)));
     await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.deleted", entity: "Property", entityId: p.id, summary: `${u.name} supprime le logement ${p.name}.`, payload: { name: p.name, city: p.city, status: p.status, ...lost } });
   });
@@ -216,7 +221,7 @@ export async function createListing(u: PortfolioActor, propertyId: string, raw: 
   } catch (e) { throw (await duplicateError(e, u.tenantId, propertyId, p.value.channel, p.value.externalId)) ?? e; }
   return id;
 }
-export async function updateListing(u: PortfolioActor, propertyId: string, id: string, raw: Record<string, unknown>) {
+export async function updateListing(u: PortfolioActor, propertyId: string, id: string, raw: Record<string, unknown>, status?: "ACTIVE" | "ARCHIVED") {
   let channel: ListingChannel | null = null, externalId: string | null = null;
   try {
     await db.transaction(async (tx) => {
@@ -227,11 +232,19 @@ export async function updateListing(u: PortfolioActor, propertyId: string, id: s
       if (!p.ok) throw invalid(p.error);
       channel = p.value.channel; externalId = p.value.externalId;
       const changed = (["externalId", "url", "title"] as const).filter((k) => (l[k] ?? null) !== (p.value[k] ?? null));
-      if (!changed.length) return;
-      await tx.update(listings).set({ externalId: p.value.externalId, url: p.value.url, title: p.value.title, updatedAt: new Date() }).where(eq(listings.id, id));
-      await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "listing.updated", entity: "Listing", entityId: id, summary: `${u.name} modifie l'annonce ${LISTING_CHANNEL_LABEL[p.value.channel]} de ${prop.name}.`, payload: { propertyId, changed, externalId: { from: l.externalId, to: p.value.externalId } } });
+      if (changed.length) {
+        await tx.update(listings).set({ externalId: p.value.externalId, url: p.value.url, title: p.value.title, updatedAt: new Date() }).where(eq(listings.id, id));
+        await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "listing.updated", entity: "Listing", entityId: id, summary: `${u.name} modifie l'annonce ${LISTING_CHANNEL_LABEL[p.value.channel]} de ${prop.name}.`, payload: { propertyId, changed, externalId: { from: l.externalId, to: p.value.externalId } } });
+      }
+      // changement de statut dans la même transaction : tout passe ou rien ne passe
+      if (status) await applyListingStatus(tx, u, prop.name, l, status);
     });
   } catch (e) { if (channel) { const d = await duplicateError(e, u.tenantId, propertyId, channel, externalId); if (d) throw d; } throw e; }
+}
+async function applyListingStatus(tx: Tx, u: PortfolioActor, propertyName: string, l: typeof listings.$inferSelect, status: "ACTIVE" | "ARCHIVED") {
+  if (l.status === status) return;
+  await tx.update(listings).set({ status, updatedAt: new Date() }).where(eq(listings.id, l.id));
+  await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: status === "ARCHIVED" ? "listing.archived" : "listing.restored", entity: "Listing", entityId: l.id, summary: `${u.name} ${status === "ARCHIVED" ? "archive" : "rétablit"} l'annonce ${LISTING_CHANNEL_LABEL[l.channel as ListingChannel]} de ${propertyName}.`, payload: { propertyId: l.propertyId } });
 }
 export async function setListingStatus(u: PortfolioActor, propertyId: string, id: string, status: "ACTIVE" | "ARCHIVED") {
   let channel: ListingChannel | null = null;
@@ -240,9 +253,7 @@ export async function setListingStatus(u: PortfolioActor, propertyId: string, id
       const prop = await editableProperty(tx, u.tenantId, propertyId);
       const l = await loadListing(tx, u.tenantId, propertyId, id);
       channel = l.channel as ListingChannel;
-      if (l.status === status) return;
-      await tx.update(listings).set({ status, updatedAt: new Date() }).where(eq(listings.id, id));
-      await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: status === "ARCHIVED" ? "listing.archived" : "listing.restored", entity: "Listing", entityId: id, summary: `${u.name} ${status === "ARCHIVED" ? "archive" : "rétablit"} l'annonce ${LISTING_CHANNEL_LABEL[l.channel as ListingChannel]} de ${prop.name}.`, payload: { propertyId } });
+      await applyListingStatus(tx, u, prop.name, l, status);
     });
   } catch (e) { if (channel) { const d = await duplicateError(e, u.tenantId, propertyId, channel, null); if (d) throw d; } throw e; }
 }

@@ -19,7 +19,7 @@ export async function apiUser(): Promise<CurrentUser | Response> {
 export function sameOrigin(req: Request): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return true;
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host"))?.split(",")[0].trim();
   try { return !!host && new URL(origin).host === host; } catch { return false; }
 }
 /** Réponse 403 à renvoyer si la requête qui modifie vient d'une autre origine ; null sinon. */
@@ -32,8 +32,10 @@ export async function readObject(req: Request): Promise<Record<string, unknown> 
   return body && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : apiError(400, "INVALID_JSON", "Le corps de la requête doit être un objet JSON.");
 }
 /** Erreur d'un service → réponse HTTP. Une erreur inattendue est consignée sans détail côté client. */
+const pgCode = (e: unknown): string | undefined => { for (let x: any = e, i = 0; x && i < 4; x = x.cause, i++) if (typeof x.code === "string") return x.code; return undefined; };
 export function fromError(e: unknown): Response {
   if (e instanceof PortfolioError) return apiError(e.code === "NOT_FOUND" ? 404 : e.code === "CONFLICT" ? 409 : 400, e.code, e.message);
+  if (pgCode(e) === "23503") return apiError(409, "CONFLICT", "Ce propriétaire vient d'être supprimé ou est encore utilisé : rechargez la page.");
   console.error("[api/v1]", e instanceof Error ? e.message : e);
   return apiError(500, "INTERNAL", "Erreur technique : rien n'a été modifié.");
 }

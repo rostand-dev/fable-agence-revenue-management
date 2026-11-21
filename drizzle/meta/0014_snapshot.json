@@ -1379,6 +1379,27 @@
           "method": "btree",
           "with": {}
         },
+        "owners_name_ci": {
+          "name": "owners_name_ci",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "lower(\"name\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "owners_one_default": {
           "name": "owners_one_default",
           "columns": [
@@ -1834,7 +1855,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "restrict",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },

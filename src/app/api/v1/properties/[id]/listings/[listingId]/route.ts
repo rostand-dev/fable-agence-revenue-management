@@ -14,8 +14,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
   if ("status" in body && body.status !== "ACTIVE" && body.status !== "ARCHIVED") return apiError(400, "INVALID", "status : ACTIVE ou ARCHIVED.");
   try {
     const { status, ...fields } = body;
-    if (Object.keys(fields).length) await updateListing(u, id, listingId, fields);
-    if (status === "ACTIVE" || status === "ARCHIVED") await setListingStatus(u, id, listingId, status);
+    const target = status === "ACTIVE" || status === "ARCHIVED" ? status : undefined;
+    if (Object.keys(fields).length) await updateListing(u, id, listingId, fields, target);
+    else if (target) await setListingStatus(u, id, listingId, target);
     return json({ ok: true });
   } catch (e) { return fromError(e); }
 }
