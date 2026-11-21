@@ -184,7 +184,7 @@ async function claim(tenantId: string, id: string, force: boolean): Promise<bool
 }
 
 async function finish(tenantId: string, id: string, status: "PROCESSED" | "IGNORED" | "FAILED", outcome: string | null, error: string | null, propertyId?: string | null) {
-  await withTenant(tenantId, (tx) => tx.update(webhookDeliveries).set({ status, outcome, error, claimedAt: null, processedAt: new Date(), attempts: sql`${webhookDeliveries.attempts} + 1`, ...(propertyId ? { propertyId } : {}) }).where(eq(webhookDeliveries.id, id)));
+  await withTenant(tenantId, (tx) => tx.update(webhookDeliveries).set({ status, outcome, error, claimedAt: null, processedAt: new Date(), attempts: sql`${webhookDeliveries.attempts} + 1`, ...(propertyId ? { propertyId } : {}) }).where(and(eq(webhookDeliveries.id, id), eq(webhookDeliveries.status, "PROCESSING"))));
 }
 
 export type ProcessResult = { status: "PROCESSED" | "IGNORED" | "SKIPPED"; outcome: string | null } | { status: "FAILED"; outcome: null; retryable: boolean };

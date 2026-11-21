@@ -8,6 +8,8 @@ import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { AVAILABILITY, capabilitiesOf, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, PROVIDERS, providerStatus, resolveProvider, type ProviderStatus } from "@/lib/integrations/capabilities";
 import { loadProviderFacts } from "@/lib/services/capabilities";
+import { ingestionErrorCount } from "@/lib/services/ingestion-errors";
+import Link from "next/link";
 
 export const metadata = { title: "Intégrations" };
 const ST: Record<ProviderStatus, [string, "sain" | "tech" | "attention" | "neutre"]> = { DEMO: ["Source simulée", "tech"], CONNECTED: ["Connectée", "sain"], NOT_CONNECTED: ["Non connectée", "neutre"], DEGRADED: ["Dégradée", "attention"] };
@@ -16,13 +18,14 @@ const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 export default async function Integrations({ searchParams }: { searchParams: Promise<{ llm?: string }> }) {
   const { llm } = await searchParams;
   const user = await requireUser();
-  const [llmStatus, facts] = await Promise.all([getLlmStatus(user.tenantId), loadProviderFacts(user.tenantId)]);
+  const [llmStatus, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
   return (
     <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Configuration" }, { label: "Intégrations" }]}>
       <div className="page-head">
         <h1>Ce que l'agence peut lire et écrire</h1>
         <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. Dans cette version, l'agence ne modifie rien chez vos fournisseurs : toute modification passe par une procédure manuelle guidée, avec preuve.</p>
       </div>
+      <p style={{ margin: "0 0 18px" }} data-testid="ingestion-link"><Link className="btn btn-ghost btn-sm" href="/integrations/erreurs">Erreurs d'ingestion SuperHote{ingestErrors > 0 ? ` (${ingestErrors})` : ""}</Link></p>
       {llm === "supprimee" && <Banner role="sain" title="Clé supprimée" style={{ marginBottom: 18 }}>Les agents reviennent au modèle du serveur, ou au mode déterministe s'il n'y en a pas. Les modèles choisis par agent ont été réinitialisés.</Banner>}
       <Banner role="tech" title="Démonstration simulée, logements réels en lecture" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
       <div className="stack">

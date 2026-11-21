@@ -60,3 +60,12 @@ Variable : `LOG_PII_MASKING` (`on` par défaut ; `off` désactive le masquage de
 - **Garde-fous** : une lecture incomplète (plus de 30 pages, ou page pleine sans méta) est une erreur et ne modifie rien ; une lecture vide alors que des réservations existent est suspecte (rien n'est annulé, écart signalé, réservations PriceLabs conservées) ; un séjour terminé absent de la lecture est conservé ; une réservation modifiée depuis moins d'une minute avant la lecture n'est pas annulée. Le calendrier suit les réservations réellement enregistrées, et le verrou du logement est pris en premier partout (pas d'interblocage avec les webhooks).
 - **Résumé** : `superhote.lastReconcile` (créées, modifiées, annulées, réactivées, inchangées, ignorées car trop anciennes, disparues) affiché dans l'onglet SuperHote. Les réservations relayées par PriceLabs sont remplacées par celles de SuperHote.
 - **Staging** : aucune variable ni migration nouvelle.
+
+## US-033 — File des échecs, rejeu et écran d'erreurs
+
+- **Écran** `/integrations/erreurs` (lien sur la page Intégrations, avec le nombre d'échecs) : cartes lisibles sur mobile. Pour chaque livraison de webhook en échec : événement, logement, réservation SuperHote, nombre de tentatives, raison. Trois états : « En échec » (moins de 3 tentatives), « Abandonnée » (tentatives épuisées : la file des lettres mortes) et « Traitement interrompu » (inscrite ou en cours depuis plus d'une minute, par exemple après un redémarrage).
+- **Lectures planifiées** : les logements dont la dernière lecture SuperHote a échoué, ou dont la dernière réconciliation a jugé la lecture suspecte (vide alors que des réservations existent), sont listés avec un lien vers l'onglet SuperHote.
+- **Rejeu** : par livraison ou « Tout rejouer » (20 au plus par passage, les moins tentées d'abord, séquentiel). Même traitement qu'à la réception, sans limite de tentatives ; l'idempotence d'`applyReservation` rend le rejeu sans doublon. Une livraison dont le webhook a été supprimé ne peut plus être rejouée, seulement écartée. Un rejeu qui échoue encore reste dans la file avec sa raison.
+- **Mise à l'écart** : la livraison passe IGNORED (« Écartée par le propriétaire ») et sort de la file ; la lecture planifiée rattrape de toute façon les réservations.
+- **Traçabilité** : audits `integration.webhook_replayed` et `integration.webhook_dismissed`.
+- **Staging** : aucune variable ni migration nouvelle.

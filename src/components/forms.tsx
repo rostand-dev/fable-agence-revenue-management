@@ -7,9 +7,9 @@ import { Icon } from "./Icon";
 export type FormState = { error?: string; ok?: string; reauth?: boolean } | null;
 type ServerAction = (prev: FormState, fd: FormData) => Promise<FormState>;
 
-export function Submit({ children, className = "btn btn-primary", icon, pendingLabel, name, value, formNoValidate }: { children: React.ReactNode; className?: string; icon?: string; pendingLabel?: string; name?: string; value?: string; formNoValidate?: boolean }) {
+export function Submit({ children, className = "btn btn-primary", icon, pendingLabel, name, value, formNoValidate, ariaLabel }: { children: React.ReactNode; ariaLabel?: string; className?: string; icon?: string; pendingLabel?: string; name?: string; value?: string; formNoValidate?: boolean }) {
   const { pending } = useFormStatus();
-  return <button type="submit" name={name} value={value} formNoValidate={formNoValidate} className={className} disabled={pending} aria-disabled={pending}>{icon && <Icon name={pending ? "spin" : icon} />}{pending ? pendingLabel ?? "En cours…" : children}</button>;
+  return <button type="submit" aria-label={ariaLabel} name={name} value={value} formNoValidate={formNoValidate} className={className} disabled={pending} aria-disabled={pending}>{icon && <Icon name={pending ? "spin" : icon} />}{pending ? pendingLabel ?? "En cours…" : children}</button>;
 }
 
 /** Formulaire relié à une action serveur : l'erreur revient près du formulaire, jamais en alerte de navigateur. */
