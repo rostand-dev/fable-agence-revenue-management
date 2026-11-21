@@ -70,12 +70,12 @@ describe("majoration de canal dans le prix vendu", () => {
   });
 });
 
-describe("PB-11 : prix minimum PriceLabs sous le plancher", () => {
+describe("PB-13 : prix minimum PriceLabs sous le plancher", () => {
   it("76 € × 1,23 = 93,48 € : pas d'alerte, le minimum n'a pas à être relevé", () => {
-    expect(by(input({ minPrice: 7600 }), "PB-11")).toHaveLength(0);
+    expect(by(input({ minPrice: 7600 }), "PB-13")).toHaveLength(0);
   });
   it("sans majoration (0 %), 76 € est sous le plancher de ~82,52 € : l'agent d'onboarding propose 83 €", () => {
-    const [o] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 } }), "PB-11");
+    const [o] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 } }), "PB-13");
     expect(o).toBeDefined();
     expect(o.veto).toBe(false);
     const c = o.candidates[o.selected];
@@ -87,13 +87,13 @@ describe("PB-11 : prix minimum PriceLabs sous le plancher", () => {
     expect(o.candidates.find((x) => x.type === "NO_ACTION")!.audit.verdict).toBe("REJECT");
   });
   it("l'écriture par API n'est proposée que si la capacité d'écriture existe ; sinon procédure manuelle", () => {
-    const [manual] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 }, capabilities: {} }), "PB-11");
+    const [manual] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 }, capabilities: {} }), "PB-13");
     expect(manual.candidates[manual.selected].executionMode).toBe("MANUAL_RUNBOOK");
-    const [api] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 }, capabilities: { "pricelabs.write": true } }), "PB-11");
+    const [api] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 }, capabilities: { "pricelabs.write": true } }), "PB-13");
     expect(api.candidates[api.selected].executionMode).toBe("API_PRICELABS");
   });
   it("une action en observation sur le calendrier ne rend pas l'option inapplicable (le minimum vaut pour toutes les dates)", () => {
-    const [o] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 }, activeRanges: [{ from: today, to: addDays(today, 90) }] }), "PB-11");
+    const [o] = by(input({ minPrice: 7600, markups: { AIRBNB: 0 }, activeRanges: [{ from: today, to: addDays(today, 90) }] }), "PB-13");
     const c = o.candidates[o.selected];
     expect(c.type).toBe("MIN_PRICE_CHANGE");
     expect(c.audit.rules.some((r) => r.code === "CONFLICT" && r.outcome === "FAIL")).toBe(false);
@@ -101,12 +101,15 @@ describe("PB-11 : prix minimum PriceLabs sous le plancher", () => {
   });
   it("avec Airbnb et Booking, le minimum proposé satisfait le canal le plus exigeant", () => {
     const two: EconomicModel = { ...model, channels: { AIRBNB: { commissionPct: 18.8, paymentFeePct: 0 }, BOOKING: { commissionPct: 17, paymentFeePct: 1.4 } } };
-    const [o] = by(input({ model: two, minPrice: 7600, markups: { AIRBNB: 0, BOOKING: 0 } }), "PB-11");
+    const [o] = by(input({ model: two, minPrice: 7600, markups: { AIRBNB: 0, BOOKING: 0 } }), "PB-13");
     const need = Math.max(...(["AIRBNB", "BOOKING"] as const).map((c) => Math.ceil(hardFloorCents(two, c, 2) / 100) * 100));
     expect(o.candidates[o.selected].parameters.minPriceCents).toBe(need);
   });
   it("pas d'alerte si le minimum est inconnu", () => {
-    expect(by(input({ minPrice: null, markups: { AIRBNB: 0 } }), "PB-11")).toHaveLength(0);
+    expect(by(input({ minPrice: null, markups: { AIRBNB: 0 } }), "PB-13")).toHaveLength(0);
+  });
+  it("PB-11 reste réservé au playbook BASE_LOW du blueprint : l'alerte du minimum ne l'emploie jamais", () => {
+    expect(by(input({ minPrice: 7600, markups: { AIRBNB: 0 } }), "PB-11")).toHaveLength(0);
   });
 });
 

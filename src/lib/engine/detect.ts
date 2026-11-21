@@ -205,8 +205,11 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
   return out;
 }
 
-/* ------------------------------------------------------------------ PB-11 */
+/* ------------------------------------------------------------------ PB-13 */
 /**
+ * PB-13 · minimum PriceLabs sous le plancher (extension du catalogue : le blueprint §9.5 s'arrête à PB-12).
+ * PB-11 reste réservé au playbook du blueprint « BASE_LOW » (hausse graduelle du prix de base), pas encore implémenté.
+ *
  * Le prix minimum PriceLabs est un plancher mécanique : tant que minimum × (1 + majoration) passe sous le plancher absolu d'un canal,
  * PriceLabs peut vendre sous ce plancher dès que la demande baisse. L'agent d'onboarding propose de relever ce minimum.
  * Il ne se déclenche jamais pour un canal dont la majoration est inconnue (ce canal est exclu de la revue).
@@ -244,7 +247,7 @@ function minPriceBelowFloor(ctx: Ctx): DetectedOpportunity[] {
     { kind: "comparaison", label: "Calcul du minimum proposé", value: `plancher ${euro(w.hard)} ÷ ${mk.toFixed(2).replace(".", ",")} de majoration, arrondi à l'euro supérieur = ${euro(newMin)}`, source: "Calcul" },
   ];
   return [{
-    playbook: "PB-11", dedupe: "min", reasonCode: "MIN_PRICE_BELOW_FLOOR",
+    playbook: "PB-13", dedupe: "min", reasonCode: "MIN_PRICE_BELOW_FLOOR",
     title: `Le prix minimum PriceLabs laisse vendre ${name} sous le plancher absolu`,
     stayFrom: from, stayTo: to,
     signalText: `Minimum PriceLabs ${euro(min)} : prix vendu ${euro(w.cur.soldNightlyCents)} au minimum, pour un plancher de ${euro(w.hard)}`, signalSource: "PriceLabs · réglages + simulateur de cumul",

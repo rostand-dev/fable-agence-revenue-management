@@ -209,8 +209,8 @@ export const MONEY_DICTIONARY: MoneyField[] = [
   }),
   f({
     id: "strategy.min_price", label: "Prix minimum", names: ["minPriceCents", "minCents", "previousMinPriceCents", "proposedMinCents"], group: "STRATEGY",
-    location: "properties.strategy.minPriceCents · PlListing.minCents · paramètres de l'option PB-11 (previousMinPriceCents, proposedMinCents)", sources: ["PRICELABS", "COMPUTED"], derivation: "OBSERVED",
-    definition: "Min Price PriceLabs : prix catalogue plancher, avant majoration de canal et avant commission. Ne dit rien du net : le plancher économique est un autre montant. PB-11 compare ce minimum × (1 + majoration du canal) au plancher absolu et propose, si besoin, le plus petit minimum entier qui le respecte (previousMinPriceCents = minimum actuel, proposedMinCents = minimum proposé).",
+    location: "properties.strategy.minPriceCents · PlListing.minCents · paramètres de l'option PB-13 (previousMinPriceCents, proposedMinCents)", sources: ["PRICELABS", "COMPUTED"], derivation: "OBSERVED",
+    definition: "Min Price PriceLabs : prix catalogue plancher, avant majoration de canal et avant commission. Ne dit rien du net : le plancher économique est un autre montant. PB-13 compare ce minimum × (1 + majoration du canal) au plancher absolu et propose, si besoin, le plus petit minimum entier qui le respecte (previousMinPriceCents = minimum actuel, proposedMinCents = minimum proposé).",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: true, toVerify: PRICE_TO_VERIFY,
   }),
   f({

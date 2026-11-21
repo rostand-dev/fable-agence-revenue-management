@@ -253,9 +253,9 @@ Base Price PriceLabs du logement. `previousBasePriceCents` conserve l'ancienne v
 
 ### Prix minimum
 
-`strategy.min_price` · properties.strategy.minPriceCents · PlListing.minCents · paramètres de l'option PB-11 (previousMinPriceCents, proposedMinCents)
+`strategy.min_price` · properties.strategy.minPriceCents · PlListing.minCents · paramètres de l'option PB-13 (previousMinPriceCents, proposedMinCents)
 
-Min Price PriceLabs : prix catalogue plancher, avant majoration de canal et avant commission. Ne dit rien du net : le plancher économique est un autre montant. PB-11 compare ce minimum × (1 + majoration du canal) au plancher absolu et propose, si besoin, le plus petit minimum entier qui le respecte (previousMinPriceCents = minimum actuel, proposedMinCents = minimum proposé).
+Min Price PriceLabs : prix catalogue plancher, avant majoration de canal et avant commission. Ne dit rien du net : le plancher économique est un autre montant. PB-13 compare ce minimum × (1 + majoration du canal) au plancher absolu et propose, si besoin, le plus petit minimum entier qui le respecte (previousMinPriceCents = minimum actuel, proposedMinCents = minimum proposé).
 
 `null` = inconnu.
 
