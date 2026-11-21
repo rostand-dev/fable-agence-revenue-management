@@ -57,14 +57,37 @@ describe("Strategy Builder (US-023)", () => {
     expect((await prop(id)).strategyDraft).toBeNull();
     expect((await events(a, "strategy.draft_discarded")).some((e) => e.entityId === id)).toBe(true);
   });
-  it("un brouillon périmé (la stratégie a changé entre-temps) ne se publie pas", async () => {
+  it("un changement de prix seul n'invalide pas le brouillon ; un changement de réglage l'invalide", async () => {
     const id = await launched(a, "Builder 4");
     await saveDraft(a.actor, id, { maxPriceChangePct: "8" });
     await db.transaction((tx) => commitStrategy(tx, { tenantId: a.tenantId, propertyId: id, next: (s) => ({ ...s, basePriceCents: 12000 }), source: "PRICELABS_SYNC", createdBy: "system" }));
+    expect((await getStrategyState(a.tenantId, id)).draft?.stale).toBe(false);
+    await db.transaction((tx) => commitStrategy(tx, { tenantId: a.tenantId, propertyId: id, next: (s) => ({ ...s, minStay: 4 }), source: "FORM", createdBy: "system" }));
     expect((await getStrategyState(a.tenantId, id)).draft?.stale).toBe(true);
     expect(await code(publishDraft(a.actor, id, ""))).toMatch(/^CONFLICT: La stratégie a changé depuis ce brouillon/);
     await saveDraft(a.actor, id, { maxPriceChangePct: "8" }); // enregistré de nouveau sur la version en vigueur
-    expect(await publishDraft(a.actor, id, "")).toBe(3);
+    expect(await publishDraft(a.actor, id, "")).toBe(4);
+  });
+  it("mise à jour perdue : enregistrer sur une version dont les réglages ont changé est refusé (409)", async () => {
+    const id = await launched(a, "Builder lost");
+    await db.transaction((tx) => commitStrategy(tx, { tenantId: a.tenantId, propertyId: id, next: (s) => ({ ...s, minStay: 5 }), source: "FORM", createdBy: "system" }));
+    expect(await code(saveDraft(a.actor, id, { minStay: "3" }, 1))).toMatch(/^CONFLICT:/);
+    await db.transaction((tx) => commitStrategy(tx, { tenantId: a.tenantId, propertyId: id, next: (s) => ({ ...s, basePriceCents: 12500 }), source: "PRICELABS_SYNC", createdBy: "system" }));
+    await saveDraft(a.actor, id, { minStay: "3" }, 2); // seul un prix a changé depuis la version 2 → accepté
+    expect((await prop(id)).strategyDraft).not.toBeNull();
+  });
+  it("un logement lancé sans version enregistrée reçoit d'abord sa version de départ", async () => {
+    const id = await makeProperty(a.tenantId, "Sans historique");
+    await db.update(schema.properties).set({ strategy: { basePriceCents: 10000, minStay: 2 }, strategyVersion: 1 }).where(eq(schema.properties.id, id));
+    await db.transaction((tx) => commitStrategy(tx, { tenantId: a.tenantId, propertyId: id, next: (s) => ({ ...s, minStay: 3 }), source: "FORM", createdBy: "system" }));
+    expect((await getStrategyState(a.tenantId, id)).versions.map((v) => [v.version, v.source])).toEqual([[2, "FORM"], [1, "SYSTEM"]]);
+  });
+  it("la restauration efface un brouillon devenu sans objet", async () => {
+    const id = await launched(a, "Builder rb");
+    await db.transaction((tx) => commitStrategy(tx, { tenantId: a.tenantId, propertyId: id, next: (s) => ({ ...s, minStay: 6 }), source: "FORM", createdBy: "system" }));
+    await saveDraft(a.actor, id, { minStay: "3" });
+    await rollbackToVersion(a.actor, id, 1, "");
+    expect((await prop(id)).strategyDraft).toBeNull();
   });
   it("restauration : nouvelle version avec les réglages d'avant, sans toucher aux prix ; l'historique n'est jamais réécrit", async () => {
     const id = await launched(a, "Builder 5");

@@ -54,7 +54,7 @@ export default async function StrategyBuilder({ params }: { params: Promise<{ id
       {!editable ? <Banner role="tech" title="Réglages non modifiables ici">{s.isDemo ? "Un logement de démonstration ne se modifie pas." : "Ce logement est en cours de création : la stratégie se règle dans le parcours guidé."}</Banner> : (
         <section aria-labelledby="sb-draft">
           <h2 id="sb-draft">Brouillon</h2>
-          <ActionForm action={saveStrategyDraftAction} hidden={{ propertyId: p.id }}>
+          <ActionForm action={saveStrategyDraftAction} hidden={{ propertyId: p.id, baseVersion: s.version }}>
             <div className="form-grid">
               <div style={{ gridColumn: "1 / -1" }}>{field("objective", "Objectif", { type: "text", maxLength: 160, defaultValue: form.objective ?? "", placeholder: "ex. protéger le revenu net des séjours professionnels", autoComplete: "off" })}</div>
               <div style={{ gridColumn: "1 / -1" }}>{field("positioning", "Positionnement", { type: "text", maxLength: 120, defaultValue: form.positioning ?? "", autoComplete: "off" })}</div>

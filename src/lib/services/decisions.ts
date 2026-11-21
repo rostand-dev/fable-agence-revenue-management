@@ -163,13 +163,17 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
           else if (typeof a.parameters.changePct === "number" && d.priceCents !== null) patch.priceCents = Math.round(d.priceCents * (1 + a.parameters.changePct / 100) / 100) * 100;
           await tx.update(calendarDays).set(patch).where(and(eq(calendarDays.propertyId, p.id), eq(calendarDays.date, d.date)));
         }
+        let prevBase: number | null = p.strategy?.basePriceCents ?? null;
+        let prevMin: number | null = p.strategy?.minPriceCents ?? null;
         if (a.type === "BASE_PRICE_CHANGE" && a.parameters.basePriceCents) {
-          await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, basePriceCents: a.parameters.basePriceCents }), source: "ACTION", createdBy: actor.id });
+          const r = await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, basePriceCents: a.parameters.basePriceCents }), source: "ACTION", createdBy: actor.id });
+          if (r) prevBase = r.previous.basePriceCents ?? null;
         }
         if (a.type === "MIN_PRICE_CHANGE" && a.parameters.minPriceCents) {
-          await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, minPriceCents: a.parameters.minPriceCents }), source: "ACTION", createdBy: actor.id });
+          const r = await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, minPriceCents: a.parameters.minPriceCents }), source: "ACTION", createdBy: actor.id });
+          if (r) prevMin = r.previous.minPriceCents ?? null;
         }
-        execution = { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: p.strategy?.basePriceCents ?? null, previousMinPriceCents: p.strategy?.minPriceCents ?? null, baseline };
+        execution = { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline };
       } else if (mode === "MANUAL_RUNBOOK") {
         if (!decl) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
         const ch = a.target.channel ?? a.parameters.channel;

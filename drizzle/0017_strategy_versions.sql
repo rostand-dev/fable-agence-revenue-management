@@ -38,5 +38,5 @@ END $$;--> statement-breakpoint
 INSERT INTO "strategy_versions" ("id", "tenant_id", "property_id", "version", "strategy", "changes", "source", "created_by")
 SELECT 'stv_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 20), p."tenant_id", p."id", p."strategy_version", p."strategy", '[]'::jsonb, 'SYSTEM', 'system'
 FROM "properties" p
-WHERE NOT p."is_demo" AND p."status" <> 'ONBOARDING'
+WHERE NOT p."is_demo" AND p."status" <> 'ONBOARDING' AND p."strategy_version" >= 1
   AND NOT EXISTS (SELECT 1 FROM "strategy_versions" v WHERE v."property_id" = p."id");

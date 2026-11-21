@@ -18,7 +18,7 @@ async function run(fn: () => Promise<unknown>, ok: string): Promise<FormState> {
 }
 export async function saveStrategyDraftAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
-  return run(() => saveDraft(u, txt(fd, "propertyId"), { objective: txt(fd, "objective"), positioning: txt(fd, "positioning"), minStay: txt(fd, "minStay"), maxDiscountStackPct: txt(fd, "maxDiscountStackPct"), maxPriceChangePct: txt(fd, "maxPriceChangePct") }), "Brouillon enregistré. Rien n'est changé tant que vous ne publiez pas.");
+  return run(() => saveDraft(u, txt(fd, "propertyId"), { objective: txt(fd, "objective"), positioning: txt(fd, "positioning"), minStay: txt(fd, "minStay"), maxDiscountStackPct: txt(fd, "maxDiscountStackPct"), maxPriceChangePct: txt(fd, "maxPriceChangePct") }, Number.isInteger(Number(txt(fd, "baseVersion"))) && txt(fd, "baseVersion") !== "" ? Number(txt(fd, "baseVersion")) : null), "Brouillon enregistré. Rien n'est changé tant que vous ne publiez pas.");
 }
 export async function discardStrategyDraftAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();

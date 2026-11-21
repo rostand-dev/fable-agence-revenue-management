@@ -80,7 +80,7 @@ export const properties = pgTable("properties", {
   /** Connexion SuperHote (lecture seule) propre au logement : jeton chiffré, logement rattaché, canaux relevés, comparaison de prix */
   superhote: jsonb("superhote").$type<Record<string, any>>(),
   /** Brouillon du Strategy Builder (US-023) : réglages proposés, version de la stratégie sur laquelle il repose, auteur, date. null = pas de brouillon. */
-  strategyDraft: jsonb("strategy_draft").$type<{ values: Record<string, unknown>; baseVersion: number; by: string; at: string }>(),
+  strategyDraft: jsonb("strategy_draft").$type<{ values: Record<string, unknown>; baseVersion: number; baseValues?: Record<string, unknown>; by: string; at: string }>(),
   /** Numéro de la version courante du modèle économique (US-022) ; 0 = aucune version enregistrée. Les versions sont dans economic_model_versions. */
   economicsVersion: integer("economics_version").notNull().default(0),
   /** Confirmation du mapping des identifiants externes (US-021) : { fingerprint, at, by, warnings }. Périmée dès que l'empreinte des identifiants change. */
