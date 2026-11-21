@@ -58,7 +58,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const stats = windowStats(input.days, today);
   const lead = leadTimes(input.resas), los = medianLos(input.resas), share = channelShare(input.resas);
   const flagged = new Map<string, boolean>();
-  for (const o of opps.filter((x) => x.playbook !== "PB-10" && x.playbook !== "PB-11")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
+  for (const o of opps.filter((x) => x.playbook !== "PB-10" && x.playbook !== "PB-13")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
   const first3 = sum((k) => 1) && kpis.slice(0, 3).reduce((a, k) => a + k.netRevpanCents, 0) / 3, last3 = kpis.slice(-3).reduce((a, k) => a + k.netRevpanCents, 0) / 3;
   const trend = !hasHistory ? null : last3 > first3 * 1.05 ? "croissante" : last3 < first3 * 0.95 ? "décroissante" : "stable";
   const markups = (p.channelMarkups ?? []) as ChannelMarkup[];
