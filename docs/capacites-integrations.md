@@ -29,9 +29,9 @@ PMS et channel manager · source des réservations.
 | Capacité | Identifiant | Nature | Développée | Raison |
 |---|---|---|---|---|
 | Lecture planifiée des réservations et du calendrier | `superhote.reconcile` | lecture | oui, sur logement réel | API v2 SuperHote en lecture seule (jeton par logement : rentals.read, calendar.read, reservations.read), relue selon la cadence du logement. |
-| Réception des événements en temps réel (webhooks) | `superhote.webhooks` | lecture | non | Aucun point d'entrée n'existe dans cette version : les réservations sont relues par l'API, pas poussées par SuperHote. |
+| Réception des événements en temps réel (webhooks) | `superhote.webhooks` | lecture | oui, sur logement réel | Point d'entrée signé (HMAC-SHA256) et idempotent : SuperHote pousse les réservations créées, modifiées et annulées. L'abonnement se crée depuis la fiche du logement (jeton avec le scope public-api:webhooks.manage) et demande une adresse publique en https. La lecture planifiée reste le filet de sécurité. |
 
-Suite : Les webhooks (création, modification) ne sont pas développés : les réservations sont relues par l'API selon la cadence du logement. Connexion par logement : fiche du logement, onglet SuperHote.
+Suite : Les réservations sont reçues en temps réel par webhooks (à activer dans l'onglet SuperHote, adresse publique en https exigée) et relues par l'API selon la cadence du logement, qui sert de filet de sécurité. Connexion par logement : fiche du logement, onglet SuperHote.
 
 ## PriceLabs
 

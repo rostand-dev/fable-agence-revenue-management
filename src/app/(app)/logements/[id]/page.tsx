@@ -12,6 +12,7 @@ import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { SuperhotePanel } from "@/components/SuperhotePanel";
 import { badgeHref, pricelabsBadge, superhoteBadge } from "@/lib/integrations/connection-badge";
 import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
+import { webhookStatus } from "@/lib/services/superhote-webhook";
 import { Badge, Banner, Byline, Cascade, Metric, Money, Recap, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
 import { agentName } from "@/lib/agents/registry";
@@ -270,7 +271,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "pricelabs" && sp.erreurSh && <Banner role="attention" title="La connexion à SuperHote a échoué" style={{ marginBottom: 14 }}>{sp.erreurSh} Ressaisissez le jeton dans l'onglet SuperHote.</Banner>}
       {tab === "pricelabs" && <PriceLabsPanel costsMissing={miss.length} propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} />}
 
-      {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} error={sp.erreurSh} />}
+      {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} error={sp.erreurSh} webhook={!p.isDemo && p.superhote?.apiKeyEnc ? await webhookStatus(user.tenantId, p.id) : undefined} />}
 
       {tab === "donnees" && (
         <section className="stack">

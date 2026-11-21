@@ -188,6 +188,14 @@ Toute écriture de la stratégie passe par un point unique (`commitStrategy`) : 
 
 Plan, ordre des US et référence fonctionnelle : [`docs/epic-3-ingestion-superhote.md`](docs/epic-3-ingestion-superhote.md). Pas de Make : NuitSignal s'abonne lui-même aux webhooks sortants de l'API SuperHote.
 
+### Webhooks SuperHote (US-030)
+
+- **Activation** : fiche du logement → onglet SuperHote → « Activer les webhooks ». NuitSignal crée chez SuperHote (`POST /webhooks`) un abonnement aux événements `reservation.created`, `reservation.updated` et `reservation.canceled`. Le jeton doit porter le scope `public-api:webhooks.manage`. Un seul webhook est créé par compte SuperHote (limite de 10 par compte) ; le logement est retrouvé par le `rental_id` de la réservation.
+- **Adresse** : `APP_URL` (ou `SUPERHOTE_WEBHOOK_BASE_URL`) + `/api/webhooks/superhote/<identifiant opaque>`. Elle doit être en https et publique : sur un poste local ou une Preview protégée, l'activation est refusée avec un message clair.
+- **Sécurité** : signature `X-Superhote-Signature` (HMAC-SHA256 du corps brut, secret `whsec_…` chiffré en base, comparaison à temps constant) vérifiée avant tout traitement ; corps lu en flux et limité à 256 Ko (413 au-delà, même sans `Content-Length`) ; le corps signé fait foi (un en-tête qui le contredit est refusé) ; instance protégée par mot de passe (Preview) : activation refusée ; aucune donnée du voyageur conservée.
+- **Idempotence** : chaque livraison est inscrite dans `webhook_deliveries` sous `X-Superhote-Delivery` avant d'être traitée ; une nouvelle tentative de SuperHote ne produit aucun second effet. Une livraison n'est traitée que par celui qui la « réclame » (aucun double traitement). Une panne transitoire est renvoyée à SuperHote (500) : il réessaie à 1 puis 5 minutes et la même livraison est reprise (3 tentatives au plus) ; ensuite elle reste `FAILED`, visible, et la réconciliation (US-032) et le rejeu (US-033) rattrapent l'écart. Supprimer le webhook conserve l'historique des livraisons.
+- **Annulations** : une annulation faite par l'API arrive en `reservation.updated` avec `status_label` = `CANCELED` ; elle est traitée comme une annulation.
+
 ### Données personnelles (US-034)
 
 Aucune identité de voyageur n'est conservée : l'ingestion ne garde que les champs d'une liste blanche. Les envois aux modèles de langage, les journaux du serveur et le journal d'audit masquent en plus e-mails, téléphones, IBAN, cartes et secrets (`src/lib/privacy/pii.ts`). `LOG_PII_MASKING=off` désactive le seul masquage des journaux, pour le débogage local.

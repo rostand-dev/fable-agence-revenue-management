@@ -185,6 +185,53 @@ export const reservationChanges = pgTable("reservation_changes", {
   createdAt: created(),
 }, (t) => [index("reservation_changes_property").on(t.propertyId, t.createdAt), index("reservation_changes_resa").on(t.propertyId, t.externalId, t.createdAt), index("reservation_changes_tenant").on(t.tenantId)]);
 
+/**
+ * Point de réception des webhooks SuperHote (US-030). Un compte SuperHote n'accepte que 10 webhooks : on en crée UN par propriétaire et par jeton,
+ * et la livraison est aiguillée vers le logement par `rental_id`. L'identifiant (`id`) est opaque et fait partie de l'URL publique ; le secret
+ * `whsec_…`, renvoyé une seule fois par SuperHote à la création, est chiffré (AES-256-GCM) et sert à vérifier la signature HMAC de chaque livraison.
+ */
+export const superhoteWebhooks = pgTable("superhote_webhooks", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  /** Empreinte (HMAC) du jeton API : relie les logements qui partagent le même compte SuperHote, sans stocker le jeton. */
+  tokenFingerprint: text("token_fingerprint").notNull(),
+  /** Identifiant du webhook chez SuperHote (pour le supprimer). */
+  remoteId: text("remote_id").notNull(),
+  secretEnc: text("secret_enc").notNull(),
+  url: text("url").notNull(),
+  events: jsonb("events").$type<string[]>().notNull().default([]),
+  lastReceivedAt: ts("last_received_at"),
+  createdBy: text("created_by").notNull(),
+  createdAt: created(),
+}, (t) => [uniqueIndex("superhote_webhooks_token").on(t.tenantId, t.tokenFingerprint), index("superhote_webhooks_tenant").on(t.tenantId)]);
+
+/**
+ * Boîte de réception des livraisons (US-030) : chaque livraison reçue y est inscrite AVANT tout traitement, sous la clé d'idempotence
+ * `X-Superhote-Delivery` (une nouvelle tentative de SuperHote garde le même identifiant). Le corps n'est conservé qu'après filtrage par liste blanche
+ * (aucune donnée du voyageur, US-034). Statuts : RECEIVED (inscrite, pas encore traitée) · PROCESSING (réclamée) · PROCESSED · IGNORED (événement ou logement hors périmètre) · FAILED (à rejouer, US-033).
+ */
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  /** null après la suppression du point de réception : l'historique des livraisons est conservé. */
+  endpointId: text("endpoint_id").references(() => superhoteWebhooks.id, { onDelete: "set null" }),
+  deliveryId: text("delivery_id").notNull(),
+  event: text("event").notNull(),
+  propertyId: text("property_id").references(() => properties.id, { onDelete: "set null" }),
+  /** Identifiant de la réservation SuperHote concernée. */
+  externalId: text("external_id"),
+  status: text("status").notNull().default("RECEIVED"),
+  /** Résultat du traitement : CREATED | MODIFIED | CANCELLED | REACTIVATED | UNCHANGED | STALE, ou la raison d'un IGNORED. */
+  outcome: text("outcome"),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
+  payload: jsonb("payload").$type<Record<string, any>>().notNull().default({}),
+  /** Début du traitement en cours (statut PROCESSING) : une livraison n'est traitée que par celui qui la « réclame », et une réclamation de plus d'une minute est considérée abandonnée. */
+  claimedAt: ts("claimed_at"),
+  receivedAt: ts("received_at").notNull().defaultNow(),
+  processedAt: ts("processed_at"),
+}, (t) => [uniqueIndex("webhook_deliveries_unique").on(t.endpointId, t.deliveryId), index("webhook_deliveries_status").on(t.tenantId, t.status, t.receivedAt), index("webhook_deliveries_tenant").on(t.tenantId)]);
+
 export const calendarDays = pgTable("calendar_days", {
   propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
   date: date("date", { mode: "string" }).notNull(),

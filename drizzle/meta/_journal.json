@@ -141,6 +141,13 @@
       "when": 1795264879001,
       "tag": "0019_reservation_nights",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795266445869,
+      "tag": "0020_superhote_webhooks",
+      "breakpoints": true
     }
   ]
 }

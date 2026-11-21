@@ -19,6 +19,8 @@ services:
       - ACTIVATION_SHADOW_MIN_DAYS=${ACTIVATION_SHADOW_MIN_DAYS:-14}
       # Masquage des données personnelles (e-mails, téléphones, IBAN, cartes, secrets) dans les journaux du serveur (US-034) : on par défaut ; off = débogage local seulement, jamais en production ni en staging.
       - LOG_PII_MASKING=${LOG_PII_MASKING:-on}
+      # Adresse publique des webhooks SuperHote (https) ; vide = APP_URL. Voir .env.example.
+      - SUPERHOTE_WEBHOOK_BASE_URL=${SUPERHOTE_WEBHOOK_BASE_URL:-}
       # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, Anthropic). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
       - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
       # Facultatif : clé Anthropic de repli, utilisée quand le propriétaire n'a saisi aucune clé. Vide = agents en repli déterministe.

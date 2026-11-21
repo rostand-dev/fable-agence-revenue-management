@@ -33,7 +33,7 @@ export type CapabilityDef = {
 };
 
 export const PROVIDER_INFO: Record<Provider, { name: string; role: string; next: string }> = {
-  superhote: { name: "SuperHote", role: "PMS et channel manager · source des réservations", next: "Les webhooks (création, modification) ne sont pas développés : les réservations sont relues par l'API selon la cadence du logement. Connexion par logement : fiche du logement, onglet SuperHote." },
+  superhote: { name: "SuperHote", role: "PMS et channel manager · source des réservations", next: "Les réservations sont reçues en temps réel par webhooks (à activer dans l'onglet SuperHote, adresse publique en https exigée) et relues par l'API selon la cadence du logement, qui sert de filet de sécurité. Connexion par logement : fiche du logement, onglet SuperHote." },
   pricelabs: { name: "PriceLabs", role: "Moteur de prix · grille, réglages et marché", next: "La connexion se fait par logement : fiche du logement, onglet PriceLabs, clé API. Lecture seule dans cette version : toute modification de prix passe par la procédure manuelle guidée." },
   booking: { name: "Booking.com", role: "Canal · promotions et commissions", next: "L'API Promotions exige un accès Connectivity Partner. D'ici là : procédure manuelle guidée, avec preuve." },
   airbnb: { name: "Airbnb", role: "Canal · promotions et commissions", next: "Aucune automatisation de navigateur : les conditions d'Airbnb l'interdisent. Procédure manuelle guidée, avec preuve." },
@@ -42,8 +42,8 @@ export const PROVIDER_INFO: Record<Provider, { name: string; role: string; next:
 export const CAPABILITIES: CapabilityDef[] = [
   { id: "superhote.reconcile", provider: "superhote", kind: "read", label: "Lecture planifiée des réservations et du calendrier", built: "REAL",
     detail: "API v2 SuperHote en lecture seule (jeton par logement : rentals.read, calendar.read, reservations.read), relue selon la cadence du logement." },
-  { id: "superhote.webhooks", provider: "superhote", kind: "read", label: "Réception des événements en temps réel (webhooks)", built: "NONE",
-    detail: "Aucun point d'entrée n'existe dans cette version : les réservations sont relues par l'API, pas poussées par SuperHote." },
+  { id: "superhote.webhooks", provider: "superhote", kind: "read", label: "Réception des événements en temps réel (webhooks)", built: "REAL",
+    detail: "Point d'entrée signé (HMAC-SHA256) et idempotent : SuperHote pousse les réservations créées, modifiées et annulées. L'abonnement se crée depuis la fiche du logement (jeton avec le scope public-api:webhooks.manage) et demande une adresse publique en https. La lecture planifiée reste le filet de sécurité." },
   { id: "pricelabs.read", provider: "pricelabs", kind: "read", label: "Lecture de la grille de prix, du marché et des réservations relayées", built: "REAL",
     detail: "API client PriceLabs en lecture seule (clé API par logement) : annonces, prix, marché, réservations." },
   { id: "pricelabs.write", provider: "pricelabs", kind: "write", label: "Écriture des prix et restrictions, après approbation", built: "DEMO_ONLY",

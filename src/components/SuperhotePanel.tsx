@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { connectSuperhoteAction, detachRentalAction, disconnectSuperhoteAction, selectRentalAction, syncSuperhoteAction } from "@/app/actions/superhote";
+import { connectSuperhoteAction, detachRentalAction, disableWebhookAction, disconnectSuperhoteAction, enableWebhookAction, selectRentalAction, syncSuperhoteAction } from "@/app/actions/superhote";
+import type { WebhookStatus } from "@/lib/services/superhote-webhook";
 import { fmtDate, fmtDateTime } from "@/lib/dates";
 import { euro } from "@/lib/format";
 import { ActionForm, Submit } from "./forms";
@@ -7,7 +8,7 @@ import { SuperhoteGuide } from "./SuperhoteGuide";
 import { Banner, Recap, State, Vq } from "./ui";
 
 /** Connexion SuperHote d'un logement (lecture seule) : jeton, logement rattaché, canaux relevés, comparaison de prix. */
-export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo, sh, plLinked, taken, error }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; sh: Record<string, any> | null; plLinked: boolean; taken: Record<string, string>; error?: string }) {
+export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo, sh, plLinked, taken, error, webhook }: { propertyId: string; propertyName: string; propertyCity: string; isDemo: boolean; sh: Record<string, any> | null; plLinked: boolean; taken: Record<string, string>; error?: string; webhook?: WebhookStatus }) {
   if (isDemo) return <Banner role="tech" title="Logement de démonstration">Ses données sont simulées : il ne se connecte pas à SuperHote. Ajoutez votre propre logement pour brancher votre jeton.</Banner>;
   const ls = sh?.lastSync, pc = ls?.priceCheck, oc: Record<string, any> = ls?.observedCommission ?? {}, pf = ls?.observedPaymentFee, rc = ls?.reservationCheck, cands: any[] = sh?.candidates ?? [];
   return (
@@ -76,6 +77,25 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
               </>
             );
           })()}
+          {sh.rentalId && webhook && (
+            <div className="stack" data-testid="webhook-panel">
+              <Recap rows={[
+                ["Webhooks SuperHote", webhook.active ? <State role="sain">actifs</State> : <State role="attention">non activés</State>],
+                ...(webhook.active ? [
+                  ["Dernière livraison", webhook.lastReceivedAt ? fmtDateTime(webhook.lastReceivedAt) : <Vq key="l">aucune pour l'instant</Vq>],
+                  ["Livraisons", `${webhook.counts.PROCESSED ?? 0} traitée${(webhook.counts.PROCESSED ?? 0) > 1 ? "s" : ""} · ${webhook.counts.IGNORED ?? 0} ignorée${(webhook.counts.IGNORED ?? 0) > 1 ? "s" : ""} · ${webhook.counts.FAILED ?? 0} en échec`],
+                ] as [string, React.ReactNode][] : []),
+              ]} />
+              {webhook.active && webhook.lastFailure && <Banner role="attention" title="Une livraison n'a pas pu être traitée">{webhook.lastFailure} La lecture planifiée rattrapera l'écart.</Banner>}
+              {!webhook.active && webhook.reason && <p className="muted" style={{ margin: 0 }}>{webhook.reason}</p>}
+              <div className="row-wrap">
+                {!webhook.active
+                  ? <ActionForm action={enableWebhookAction} hidden={{ propertyId }} className="inline"><Submit icon="plug" pendingLabel="Activation…">Activer les webhooks</Submit></ActionForm>
+                  : <ActionForm action={disableWebhookAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="cross">Désactiver les webhooks</Submit></ActionForm>}
+              </div>
+              <p className="muted" style={{ margin: 0 }}>Avec les webhooks, SuperHote prévient NuitSignal à chaque réservation créée, modifiée ou annulée, sans attendre la prochaine lecture. Le jeton doit porter le scope « public-api:webhooks.manage ». Un seul webhook sert tous les logements d'un même compte SuperHote.</p>
+            </div>
+          )}
           <div className="row-wrap">
             {sh.rentalId && <ActionForm action={syncSuperhoteAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire SuperHote maintenant</Submit></ActionForm>}
             {sh.rentalId && <ActionForm action={detachRentalAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de logement</Submit></ActionForm>}

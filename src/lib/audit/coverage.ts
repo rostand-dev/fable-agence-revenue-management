@@ -82,11 +82,14 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   detachRentalAction: { events: ["integration.superhote_rental_unlinked"] },
   syncSuperhoteAction: { exempt: "Relecture des réservations en lecture seule : les données lues remplacent les précédentes (ingestion), aucune décision ni réglage ne change." },
   disconnectSuperhoteAction: { events: ["integration.superhote_disconnected"] },
+  enableWebhookAction: { events: ["integration.superhote_webhook_registered"] },
+  disableWebhookAction: { events: ["integration.superhote_webhook_removed"] },
 };
 
 /** Routes d'API qui acceptent autre chose qu'une lecture. */
 export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/chat": { exempt: "Conversation avec un agent (flux) : aucune décision ni réglage n'est modifié." },
+  "api/webhooks/superhote/[endpointId]": { exempt: "Réception d'un événement signé de SuperHote : la trace est la boîte de réception (webhook_deliveries) et l'historique des changements de réservation (reservation_changes), tous deux en base et isolés par propriétaire." },
   "api/session/touch": { exempt: "Repousse l'échéance d'inactivité de la session ; aucune donnée métier." },
   "api/session/restore": { events: ["account.login_remembered"] },
   "api/v1/owners": { events: ["owner.created"] },

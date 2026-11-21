@@ -78,6 +78,8 @@ export const AUDIT_TYPES = {
   "integration.superhote_rental_linked": { category: "INTEGRATION", label: "Logement SuperHote rattaché" },
   "integration.superhote_rental_unlinked": { category: "INTEGRATION", label: "Logement SuperHote détaché" },
   "integration.superhote_disconnected": { category: "INTEGRATION", label: "SuperHote déconnecté" },
+  "integration.superhote_webhook_registered": { category: "INTEGRATION", label: "Webhooks SuperHote activés" },
+  "integration.superhote_webhook_removed": { category: "INTEGRATION", label: "Webhooks SuperHote supprimés" },
   "reservations.channel_overrides": { category: "INTEGRATION", label: "Canaux de réservations précisés" },
   // accès
   "account.created": { category: "ACCESS", label: "Compte créé" },

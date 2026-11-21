@@ -28,8 +28,12 @@ describe("catalogue des capacités", () => {
   });
   it("ne déclare aucune écriture réelle : aucun client du code n'écrit chez un fournisseur", () => {
     expect(CAPABILITIES.filter((c) => c.kind === "write" && c.built === "REAL")).toEqual([]);
-    // SuperHote : lecture seule, uniquement des GET
-    expect(read("superhote.ts")).not.toMatch(/"(POST|PUT|PATCH|DELETE)"/);
+    // SuperHote : lecture des réservations, du calendrier et des logements ; la seule écriture est la gestion des abonnements webhook (/webhooks), jamais une réservation ni un prix
+    const sh = read("superhote.ts");
+    expect(sh).not.toMatch(/"(PUT|PATCH)"/);
+    const writes = [...sh.matchAll(/call\(token, ([^,)]+)[^)]*\{ method: "(POST|DELETE)"/g)].map((m) => m[1]);
+    expect(writes.length).toBeGreaterThan(0);
+    for (const target of writes) expect(target, "écriture SuperHote hors /webhooks").toMatch(/\/webhooks/);
     // PriceLabs : le seul POST est la lecture de la grille (`/listing_prices`) ; aucune autre méthode d'écriture
     const pl = read("pricelabs.ts");
     expect(pl).not.toMatch(/"(PUT|PATCH|DELETE)"/);
@@ -55,7 +59,6 @@ describe("état effectif d'une capacité", () => {
     expect(resolveCapability(cap("pricelabs.write"), none).status).toBe("NOT_BUILT");
   });
   it("capacités non développées : dépendance visible, jamais disponible", () => {
-    expect(resolveCapability(cap("superhote.webhooks"), real(2)).status).toBe("NOT_BUILT");
     expect(resolveCapability(cap("booking.promotions.read"), real(2)).status).toBe("NEEDS_ACCESS");
     expect(resolveCapability(cap("booking.promotions.write"), demo).status).toBe("NEEDS_ACCESS");
     expect(resolveCapability(cap("airbnb.promotions.write"), real(2)).status).toBe("FORBIDDEN");
@@ -134,7 +137,7 @@ describe("drapeaux et statuts", () => {
     expect(capabilityFlags({ isDemo: false, killSwitch: {} })["pricelabs.write"]).toBe(false);
     expect(capabilityFlags({ isDemo: true, killSwitch: { pricelabs: true } })["pricelabs.write"]).toBe(false);
     const f = capabilityFlags({ isDemo: false, killSwitch: {} });
-    expect(f["pricelabs.read"]).toBe(true); expect(f["superhote.webhooks"]).toBe(false); expect(f["booking.promotions.write"]).toBe(false);
+    expect(f["pricelabs.read"]).toBe(true); expect(f["superhote.webhooks"]).toBe(true); expect(f["booking.promotions.write"]).toBe(false);
     expect(Object.keys(f).sort()).toEqual(CAPABILITIES.map((c) => c.id).sort());
   });
   it("statut d'un fournisseur déduit des logements", () => {

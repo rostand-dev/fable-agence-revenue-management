@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { SyncError } from "@/lib/services/pricelabs-sync";
 import { runDailyReview } from "@/lib/services/review";
+import { disableWebhook, enableWebhook } from "@/lib/services/superhote-webhook";
 import { connectSuperhote, detachRental, disconnectSuperhote, selectRental, syncSuperhote } from "@/lib/services/superhote-sync";
 
 /** `sensitive` : formulaire d'une action qui touche à une clé API ; une session rétablie par « Rester connecté » doit d'abord confirmer le mot de passe. */
@@ -32,4 +33,10 @@ export async function syncSuperhoteAction(_: FormState, fd: FormData) {
 }
 export async function disconnectSuperhoteAction(_: FormState, fd: FormData) {
   return run(async (u) => { await disconnectSuperhote(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Jeton supprimé."; }, fd);
+}
+export async function enableWebhookAction(_: FormState, fd: FormData) {
+  return run(async (u) => { const r = await enableWebhook(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return r.created ? "Webhooks activés : SuperHote enverra désormais les réservations créées, modifiées et annulées." : "Les webhooks de ce compte SuperHote sont déjà actifs."; }, fd);
+}
+export async function disableWebhookAction(_: FormState, fd: FormData) {
+  return run(async (u) => { const r = await disableWebhook(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return r.removed ? "Webhooks supprimés. La lecture planifiée de SuperHote continue." : "Aucun webhook n'était actif."; }, fd);
 }
