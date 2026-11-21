@@ -1,9 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
+import { httpCredentials } from "./e2e/helpers/env";
 
 /**
  * Tests de bout en bout (navigateur réel), bureau et mobile.
  * - E2E_BASE_URL : adresse à tester (ex. une Preview Coolify). Absente : l'application est lancée ici (`npm run start`, après `npm run build`).
  * - E2E_EMAIL / E2E_PASSWORD : compte de démo utilisé pour se connecter.
+ * - E2E_HTTP_USER / E2E_HTTP_PASSWORD : identifiants HTTP Basic si l'environnement testé est protégé (Preview Coolify). Absents : aucune authentification HTTP.
  * - E2E_CHROME_PATH : chemin d'un Chrome déjà installé (poste local sans téléchargement de navigateur). Absent : Chromium de Playwright.
  */
 const external = process.env.E2E_BASE_URL?.trim();
@@ -35,7 +37,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : [["list"]],
-  use: { baseURL, trace: "retain-on-failure", screenshot: "only-on-failure", locale: "fr-FR" },
+  use: { baseURL, httpCredentials,
+  // Environnement distant : jamais de trace (elle contiendrait l'en-tête Authorization et le mot de passe saisi).
+  trace: external ? "off" : "retain-on-failure", screenshot: "only-on-failure", locale: "fr-FR" },
   projects: [
     { name: "setup", testMatch: /auth\.setup\.ts/, use: { ...devices["Desktop Chrome"], launchOptions } },
     chromium("bureau", { width: 1280, height: 800 }, false),

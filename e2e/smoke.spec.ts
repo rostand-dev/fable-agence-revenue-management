@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 
 // Pages principales d'un propriétaire connecté : elles s'ouvrent, affichent un titre et tiennent dans l'écran (bureau, 390 px et 360 px).
@@ -18,7 +19,7 @@ for (const path of PAGES) {
 }
 
 test("la page de connexion est lisible sans session", async ({ browser, baseURL }) => {
-  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] } });
+  const ctx = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, httpCredentials });
   const page = await ctx.newPage();
   await page.goto("/connexion");
   await expect(page.getByRole("button", { name: "Se connecter" })).toBeVisible();

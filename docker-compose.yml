@@ -35,6 +35,12 @@ services:
       # Inscription : confirmation de l'adresse par e-mail avant création du compte (nécessite Resend).
       # Mettre false en preview pour créer le compte immédiatement, sans e-mail (révèle alors les adresses déjà inscrites).
       - SIGNUP_EMAIL_CONFIRMATION=${SIGNUP_EMAIL_CONFIRMATION:-true}
+      # Commit Git déployé, repris de SOURCE_COMMIT (fourni par Coolify) et affiché par /api/health : la CI s'en sert pour attendre que la Preview soit à jour. Vide = commit non publié.
+      - APP_COMMIT=${SOURCE_COMMIT:-}
+      # Preview uniquement (variables « Preview Deployment » de Coolify ; ne rien définir en production, sur la démo ni sur le staging) : identifiant exigé (HTTP Basic) pour ouvrir l'application. Vide = pas de protection.
+      - PREVIEW_BASIC_AUTH_USER=${PREVIEW_BASIC_AUTH_USER:-}
+      # Mot de passe associé, 12 caractères au moins. Si l'un des deux est renseigné sans l'autre (ou un mot de passe trop court), l'accès est refusé (503) plutôt qu'ouvert. /api/health reste accessible sans mot de passe.
+      - PREVIEW_BASIC_AUTH_PASSWORD=${PREVIEW_BASIC_AUTH_PASSWORD:-}
       # Compte de démo (test/preview uniquement, ne rien définir en production) : créé au démarrage s'il n'existe pas.
       # Interrupteur : true crée le compte ; il faut aussi un domaine de APP_URL correspondant à DEMO_ACCOUNT_ALLOWED_HOST et un mot de passe de 10 caractères au moins.
       - DEMO_ACCOUNT_ENABLED=${DEMO_ACCOUNT_ENABLED:-false}
