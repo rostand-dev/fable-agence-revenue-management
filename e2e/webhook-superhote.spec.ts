@@ -81,3 +81,23 @@ test("Webhooks SuperHote : activation refusée avec un message clair quand l'adr
   await expectNoHorizontalOverflow(page, "/logements/:id?tab=superhote (activation refusée)");
   expect(await sql("select 1 from superhote_webhooks where token_fingerprint = $1", [fingerprintToken(token)])).toHaveLength(0);
 });
+
+test("Réconciliation SuperHote : le résumé du dernier rattrapage est lisible sur tous les écrans", async ({ page }, info) => {
+  test.skip(!process.env.DATABASE_URL || !process.env.APP_SECRET, "Dernière réconciliation écrite en base : DATABASE_URL et APP_SECRET requis.");
+  const id = await createViaApi(page, `Réconciliation ${uid(info)}`);
+  const token = `tok-${uid(info)}-cccccccccccccccccccccccc`;
+  await linkSuperhote(id, token, "11");
+  await sql("update properties set superhote = superhote || $2::jsonb where id = $1", [id, JSON.stringify({ lastReconcile: { created: 2, modified: 1, cancelled: 1, vanished: 0, reactivated: 0, unchanged: 12, stale: 0, suspicious: false, at: new Date().toISOString() } })]);
+  await page.goto(`/logements/${id}?tab=superhote`);
+  const sum = page.getByTestId("reconcile-summary");
+  await expect(sum).toContainText("2 créées");
+  await expect(sum).toContainText("1 modifiée");
+  await expect(sum).toContainText("1 annulée");
+  await expect(sum).toContainText("écart rattrapé");
+  await expectNoHorizontalOverflow(page, "/logements/:id?tab=superhote (réconciliation)");
+  await sql("update properties set superhote = superhote || $2::jsonb where id = $1", [id, JSON.stringify({ lastReconcile: { created: 0, modified: 0, cancelled: 0, vanished: 0, reactivated: 0, unchanged: 14, stale: 0, suspicious: true, at: new Date().toISOString() } })]);
+  await page.reload();
+  await expect(page.getByTestId("reconcile-summary")).toContainText("aucun écart");
+  await expect(page.getByTestId("reconcile-summary")).toContainText("lecture vide ignorée");
+  await expectNoHorizontalOverflow(page, "/logements/:id?tab=superhote (lecture suspecte)");
+});

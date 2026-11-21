@@ -36,14 +36,18 @@ async function call(token: string, path: string, retried = false, init: { method
   return j;
 }
 
+/** Toutes les pages d'une liste. Une lecture INCOMPLÈTE est une erreur, jamais un résultat partiel : la réconciliation annule les réservations absentes d'une lecture complète (US-032). */
 async function pages(token: string, path: string, max = 30): Promise<any[]> {
-  const rows: any[] = [];
+  const rows: any[] = [], PER = 100;
   for (let page = 1; page <= max; page++) {
-    const j = await call(token, `${path}${path.includes("?") ? "&" : "?"}page=${page}&per_page=100`);
-    rows.push(...listOf(unwrap(j)));
-    if (page >= lastPage(j)) break;
+    const j = await call(token, `${path}${path.includes("?") ? "&" : "?"}page=${page}&per_page=${PER}`);
+    const items = listOf(unwrap(j));
+    rows.push(...items);
+    const meta = unwrap(j)?.meta ?? j?.meta, hasMeta = Number.isFinite(Number(meta?.last_page)) && Number(meta?.last_page) >= 1;
+    // avec `meta.last_page` on s'y fie ; sans, une page pleine annonce une suite
+    if (hasMeta ? page >= lastPage(j) : items.length < PER) return rows;
   }
-  return rows;
+  throw new SuperhoteError(`Lecture SuperHote incomplète : plus de ${max} pages. Rien n'a été modifié.`);
 }
 
 export async function listRentals(token: string): Promise<ShRental[]> {

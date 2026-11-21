@@ -52,3 +52,11 @@ Variable : `LOG_PII_MASKING` (`on` par défaut ; `off` désactive le masquage de
 3. Le jeton API SuperHote doit porter le scope **`public-api:webhooks.manage`** (en plus des scopes de lecture).
 4. `APP_SECRET` chiffre les secrets de webhook et dérive l'empreinte des jetons : le changer invalide les webhooks déjà créés (les désactiver puis réactiver).
 5. `TENANT_RLS` : sans effet particulier ; la route traite chaque livraison sous l'isolation du propriétaire.
+
+## US-032 — Réconciliation planifiée
+
+- **Filet de sécurité des webhooks** : chaque lecture planifiée de SuperHote (cadence du logement, de 1 h à 6 h, ou lecture manuelle, ou lecture PriceLabs qui relit SuperHote) applique la lecture COMPLÈTE réservation par réservation avec la même écriture que les webhooks (`applyReservation`, source `RECONCILE`). Le remplacement en bloc des réservations SuperHote disparaît : plus de perte d'historique, et un état plus ancien qu'un webhook déjà appliqué est ignoré.
+- **Détection** : créations, modifications, annulations et réactivations manquées, chacune avec son historique (`reservation_changes`). Une réservation connue mais absente d'une lecture complète est annulée (sauf si elle a été modifiée depuis le début de la lecture) ; un doublon dont le jumeau disparaît redevient confirmé.
+- **Garde-fous** : une lecture incomplète (plus de 30 pages, ou page pleine sans méta) est une erreur et ne modifie rien ; une lecture vide alors que des réservations existent est suspecte (rien n'est annulé, écart signalé, réservations PriceLabs conservées) ; un séjour terminé absent de la lecture est conservé ; une réservation modifiée depuis moins d'une minute avant la lecture n'est pas annulée. Le calendrier suit les réservations réellement enregistrées, et le verrou du logement est pris en premier partout (pas d'interblocage avec les webhooks).
+- **Résumé** : `superhote.lastReconcile` (créées, modifiées, annulées, réactivées, inchangées, ignorées car trop anciennes, disparues) affiché dans l'onglet SuperHote. Les réservations relayées par PriceLabs sont remplacées par celles de SuperHote.
+- **Staging** : aucune variable ni migration nouvelle.
