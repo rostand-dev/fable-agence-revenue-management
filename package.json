@@ -15,7 +15,9 @@
     "docs:stacking": "tsx scripts/generate-stacking-doc.ts",
     "test:db": "vitest run -c vitest.db.config.mts",
     "test:all": "npm test && npm run test:db",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "fixtures:pricelabs": "tsx scripts/pricelabs-fixture.ts",
+    "fake:pricelabs": "tsx scripts/fake-pricelabs-server.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",

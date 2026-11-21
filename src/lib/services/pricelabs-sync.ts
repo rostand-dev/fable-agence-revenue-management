@@ -4,7 +4,7 @@ import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
 import { addDays, todayISO } from "../dates";
 import type { EconomicModel, Strategy } from "../engine/types";
-import { getNeighborhood, getPrices, getReservations, horizon, listListings, PriceLabsError } from "../integrations/pricelabs";
+import { horizon, priceLabsFor, PriceLabsError } from "../integrations/pricelabs";
 import { mapChannel, mapMarket, mapPrices, mapReservations, type ChannelOverride } from "../integrations/pricelabs-map";
 import { channelHints, compareReservations, comparePriceSeries, observedCommission as shObservedCommission, observedPaymentFee } from "../integrations/superhote-map";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
@@ -40,7 +40,7 @@ export async function connectPriceLabs(tenantId: string, propertyId: string, api
   const apiKey = apiKeyRaw.trim();
   if (apiKey.length < 20 || /\s/.test(apiKey)) throw new SyncError("Cette clé ne ressemble pas à une clé API PriceLabs. Copiez-la en entier depuis PriceLabs.");
   let listings;
-  try { listings = await listListings(apiKey); } catch (e) { throw new SyncError(wrap(e)); }
+  try { listings = await priceLabsFor(apiKey).listListings(); } catch (e) { throw new SyncError(wrap(e)); }
   if (listings.length === 0) throw new SyncError("La clé est valide, mais ce compte PriceLabs ne contient aucune annonce.");
   await db.update(properties).set({
     pricelabs: { apiKeyEnc: encryptSecret(apiKey), keyHint: secretHint(apiKey), connectedAt: new Date().toISOString(), candidates: listings.map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })), listingId: null, pms: null, listingName: null },
@@ -66,7 +66,7 @@ export async function detachListing(tenantId: string, propertyId: string, actor:
   const p = await getProp(tenantId, propertyId);
   if (!p.pricelabs?.apiKeyEnc) throw new SyncError("Aucune clé PriceLabs sur ce logement.");
   let candidates = p.pricelabs.candidates ?? [];
-  try { candidates = (await listListings(decryptSecret(p.pricelabs.apiKeyEnc))).map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })); } catch { /* liste précédente conservée */ }
+  try { candidates = (await priceLabsFor(decryptSecret(p.pricelabs.apiKeyEnc)).listListings()).map((l) => ({ id: l.id, pms: l.pms, name: l.name, city: l.city, bedrooms: l.bedrooms })); } catch { /* liste précédente conservée */ }
   const { lastSync, ...rest } = p.pricelabs;
   await db.update(properties).set({ pricelabs: { ...rest, candidates, listingId: null, pms: null, listingName: null } }).where(eq(properties.id, p.id));
   await recordAudit(db, { tenantId, actor, type: "integration.pricelabs_listing_unlinked", entity: "Property", entityId: p.id, summary: `Annonce PriceLabs détachée de ${p.name}.`, payload: { listingId: p.pricelabs?.listingId ?? null } });
@@ -96,15 +96,16 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   let apiKey: string;
   try { apiKey = decryptSecret(pl.apiKeyEnc); } catch { throw await fail("La clé enregistrée est illisible (APP_SECRET a changé ?). Saisissez-la de nouveau."); }
 
+  const port = priceLabsFor(apiKey);
   let listing, priceItem, resaRows, market: any = null, marketError: string | null = null;
   try {
-    listing = (await listListings(apiKey)).find((l) => l.id === pl.listingId && l.pms === pl.pms);
+    listing = (await port.listListings()).find((l) => l.id === pl.listingId && l.pms === pl.pms);
     if (!listing) throw new PriceLabsError("L'annonce rattachée n'existe plus sur ce compte PriceLabs.");
-    priceItem = await getPrices(apiKey, pl.listingId, pl.pms, h.from, h.to);
-    resaRows = await getReservations(apiKey, pl.listingId, pl.pms, h.histFrom, h.histTo);
+    priceItem = await port.getPrices(pl.listingId, pl.pms, h.from, h.to);
+    resaRows = await port.getReservations(pl.listingId, pl.pms, h.histFrom, h.histTo);
   } catch (e) { throw await fail(wrap(e)); }
   // le marché est utile mais pas bloquant : sans lui, les signaux de rythme restent « inconnus »
-  try { market = await getNeighborhood(apiKey, pl.listingId, pl.pms); } catch (e) { marketError = wrap(e); }
+  try { market = await port.getNeighborhood(pl.listingId, pl.pms); } catch (e) { marketError = wrap(e); }
 
   // SuperHote (facultatif, lecture seule, jamais bloquant) : canal des réservations transmises sans canal + comparaison des prix
   const sh = opts.skipSuperhote ? null : await snapshotSuperhote(p.superhote, now);

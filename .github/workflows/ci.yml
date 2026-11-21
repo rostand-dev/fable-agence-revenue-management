@@ -126,6 +126,8 @@ jobs:
       DEMO_ACCOUNT_PASSWORD: ci-e2e-demo-passw0rd
       # Création de compte immédiate, sans e-mail de confirmation (aucun envoi d'e-mail en CI).
       SIGNUP_EMAIL_CONFIRMATION: "false"
+      # Faux serveur de l'API PriceLabs (scripts/fake-pricelabs-server.ts), lancé par Playwright : l'application le lit comme elle lirait PriceLabs. Aucune clé ni donnée réelle.
+      PRICELABS_API_BASE: http://127.0.0.1:4010/v1
       # Identifiants que Playwright saisit pour se connecter : ceux du compte de démo ci-dessus.
       E2E_EMAIL: demo-e2e@example.test
       E2E_PASSWORD: ci-e2e-demo-passw0rd
