@@ -1,9 +1,33 @@
-import { channelOverridesAction, connectPriceLabsAction, detachListingAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction } from "@/app/actions/pricelabs";
+import { channelOverridesAction, connectPriceLabsAction, detachListingAction, disconnectPriceLabsAction, selectListingAction, syncPriceLabsAction, testPriceLabsAction } from "@/app/actions/pricelabs";
 import { fmtDate, fmtDateTime, fmtDay } from "@/lib/dates";
 import { euro } from "@/lib/format";
 import { ActionForm, Submit } from "./forms";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner, Recap, State, Vq } from "./ui";
+
+const CHECK_ROLE: Record<string, "sain" | "attention" | "violation" | "neutre"> = { OK: "sain", WARN: "attention", FAIL: "violation", SKIPPED: "neutre" };
+const CHECK_WORD: Record<string, string> = { OK: "disponible", WARN: "à vérifier", FAIL: "en échec", SKIPPED: "non vérifié" };
+
+/** Résultat du dernier test de connexion : une ligne par lecture, avec son état en toutes lettres (jamais la couleur seule). */
+function ConnectionCheckResult({ check }: { check: Record<string, any> }) {
+  return (
+    <div className="stack" style={{ gap: 6 }} data-testid="pricelabs-check" aria-live="polite">
+      <p className="section-note" style={{ margin: 0 }}>
+        <State role={check.ok === null ? "attention" : check.ok ? "sain" : "violation"}>{check.ok === null ? "Clé valide, annonce à rattacher" : check.ok ? "Essentiel disponible" : "Lecture impossible"}</State>{" "}
+        Test du {fmtDateTime(new Date(check.at))}. Rien n'a été modifié : seul ce résultat est mémorisé.
+      </p>
+      <ul role="list" className="plain-list" style={{ margin: 0, paddingLeft: 0, listStyle: "none", display: "grid", gap: 6 }}>
+        {(check.checks ?? []).map((c: any) => (
+          <li key={c.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "baseline" }}>
+            <span style={{ minWidth: 150, fontWeight: 600 }}>{c.label}</span>
+            <State role={CHECK_ROLE[c.status] ?? "neutre"}>{CHECK_WORD[c.status] ?? c.status}</State>
+            <span className="muted" style={{ flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }}>{c.detail}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /** Connexion PriceLabs d'un logement : saisie de la clé, choix de l'annonce, état de la dernière lecture. */
 export type NoChannel = { externalId: string; checkIn: string; checkOut: string; nights: number; grossRoomCents: number; commissionCents: number | null; choice: string };
@@ -119,7 +143,10 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
               </section>
             );
           })()}
+          {ls?.listingChanges?.length > 0 && <Banner role="attention" title="Annonce modifiée chez PriceLabs">{ls.listingChanges.join(" ; ")}. Vérifiez que l'annonce correspond toujours à ce logement.</Banner>}
+          {pl.lastCheck && <ConnectionCheckResult check={pl.lastCheck} />}
           <div className="row-wrap">
+            <ActionForm action={testPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="check" pendingLabel="Test en cours…">Tester la connexion</Submit></ActionForm>
             {pl.listingId && <ActionForm action={syncPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire PriceLabs maintenant</Submit></ActionForm>}
             {pl.listingId && <ActionForm action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}
             <ActionForm action={disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer la clé</Submit></ActionForm>

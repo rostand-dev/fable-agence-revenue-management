@@ -48,7 +48,8 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   connectPriceLabsAction: { events: ["integration.pricelabs_connected"] },
   selectListingAction: { events: ["integration.pricelabs_listing_linked"] },
   detachListingAction: { events: ["integration.pricelabs_listing_unlinked"] },
-  syncPriceLabsAction: { events: ["property.strategy_synced"] },
+  syncPriceLabsAction: { events: ["property.strategy_synced", "integration.pricelabs_listing_changed"] },
+  testPriceLabsAction: { events: ["integration.pricelabs_tested"] },
   disconnectPriceLabsAction: { events: ["integration.pricelabs_disconnected"] },
   channelOverridesAction: { events: ["reservations.channel_overrides"] },
   // actions/settings.ts
