@@ -178,6 +178,12 @@ API : `GET` et `POST /api/v1/properties/{id}/mapping` (session). Migration `0015
 
 Chaque changement de commission, de frais de paiement, de coût, de seuil ou de taxe de séjour crée une **version** (`economic_model_versions`) : numéro, date, auteur, et la liste de ce qui a changé (avant → après, « inconnue » quand la valeur n'est pas renseignée). Écran `/logements/{id}/versions-economie`, API `GET /api/v1/properties/{id}/economics/versions`. Une version n'est jamais modifiée ni supprimée : le rôle applicatif de la base n'a que `SELECT` et `INSERT` sur la table (isolation par tenant également). Pendant la création d'un logement, les sauvegardes d'étape ne sont pas versionnées : la version 1 naît à la validation des coûts. Le numéro de version de la **stratégie** ne bouge plus quand le modèle économique change. Migration `0016_economic_versions` idempotente : elle reprend chaque logement réel déjà renseigné en version 1 (auteur « système »). Aucune nouvelle variable d'environnement.
 
+## Strategy Builder (US-023)
+
+Page `/logements/{id}/strategie` : un **brouillon** (objectif, positionnement, séjour minimum, cumul de remises maximal 0–50 %, variation de prix sans validation renforcée 1–30 %) sans aucun effet, la **comparaison** avec la stratégie en vigueur, la **publication** (nouvelle version, note facultative) et l'**historique** de toutes les versions avec leur origine (Strategy Builder, dossier, relecture PriceLabs, action approuvée ou annulée, restauration). La **restauration** d'une version recrée ses réglages comme nouvelle version ; l'historique n'est jamais réécrit et les prix de base, minimum et maximum (pilotés par PriceLabs et les actions) ne sont pas restaurés. Un brouillon dont la stratégie a changé entre-temps est « périmé » : il ne se publie pas avant d'être enregistré de nouveau. Le Builder est indisponible pour un logement de démonstration ou en création.
+
+Toute écriture de la stratégie passe par un point unique (`commitStrategy`) : verrou du logement, numéro de version incrémenté atomiquement, version enregistrée avec la modification. API : `GET`, `PUT` (brouillon), `DELETE` (abandon) sur `/api/v1/properties/{id}/strategy`, `POST` sur `.../strategy/publish` et `.../strategy/rollback`. Table `strategy_versions` en ajout seul pour le rôle applicatif (SELECT et INSERT), isolée par tenant. Migration `0017_strategy_versions` idempotente : version de départ pour les logements déjà lancés. Aucune nouvelle variable d'environnement.
+
 ## Développement
 
 ```bash

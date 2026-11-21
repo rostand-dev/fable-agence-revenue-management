@@ -65,6 +65,11 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   deleteListingAction: { events: ["listing.deleted"] },
   deletePropertyAction: { events: ["property.deleted"] },
   renameTenantAction: { events: ["tenant.renamed"] },
+  // actions/strategy.ts (US-023)
+  saveStrategyDraftAction: { events: ["strategy.draft_saved"] },
+  discardStrategyDraftAction: { events: ["strategy.draft_discarded"] },
+  publishStrategyAction: { events: ["strategy.published"] },
+  rollbackStrategyAction: { events: ["strategy.rolled_back"] },
   // actions/mapping.ts (US-021)
   confirmMappingAction: { events: ["mapping.confirmed"] },
   // actions/superhote.ts
@@ -87,5 +92,8 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/v1/properties/[id]/listings": { events: ["listing.created"] },
   "api/v1/properties/[id]/listings/[listingId]": { events: ["listing.updated", "listing.archived", "listing.restored", "listing.deleted"] },
   "api/v1/properties/[id]/mapping": { events: ["mapping.confirmed"] },
+  "api/v1/properties/[id]/strategy": { events: ["strategy.draft_saved", "strategy.draft_discarded"] },
+  "api/v1/properties/[id]/strategy/publish": { events: ["strategy.published"] },
+  "api/v1/properties/[id]/strategy/rollback": { events: ["strategy.rolled_back"] },
   "api/session/end": { exempt: "Ferme la session après inactivité ; aucune donnée métier." },
 };

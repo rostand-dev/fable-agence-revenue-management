@@ -53,6 +53,25 @@ describe("cycle de décision : chaque étape est tracée dans la même transacti
     expect(rolled?.payload).toMatchObject({ reason: "Test de retour arrière", fromStatus: "MEASURING" });
   });
 
+  it("non-régression US-023 : une action de prix de base crée une version ACTION, son retour arrière une version ACTION_ROLLBACK", async () => {
+    let pick: Awaited<ReturnType<typeof approvable>> = null;
+    for (const mode of ["API_PRICELABS", "INTERNAL"]) for (const o of await open()) {
+      const i = (o.candidates as Candidate[]).findIndex((c) => c.executionMode === mode && c.audit.verdict !== "REJECT" && (c.type === "BASE_PRICE_CHANGE" || c.type === "MIN_PRICE_CHANGE"));
+      if (i >= 0 && !pick) pick = { o, i, c: (o.candidates as Candidate[])[i] };
+    }
+    if (!pick) return; // la démonstration ne propose pas toujours ce type d'action
+    const { o, i, c } = pick;
+    const actionId = (await D.approve(t.actor, o.id, i, D.commentRequired(c) ? "Validé après relecture du dossier." : "Ok"))!;
+    await D.execute(t.actor, actionId, undefined);
+    const prop = o.propertyId;
+    const rows = () => db.select().from(schema.strategyVersions).where(eq(schema.strategyVersions.propertyId, prop));
+    expect((await rows()).map((r) => r.source)).toContain("ACTION");
+    const [act] = await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, actionId));
+    expect((act.execution as { previousBasePriceCents?: number | null; previousMinPriceCents?: number | null }).previousBasePriceCents !== undefined).toBe(true);
+    await D.rollback(t.actor, actionId, "Test de retour arrière");
+    expect((await rows()).map((r) => r.source)).toContain("ACTION_ROLLBACK");
+  });
+
   it("rejeter, différer et rouvrir un dossier écrivent chacun leur événement", async () => {
     const [a, b] = (await open()).filter((o) => !o.veto);
     await D.reject(t.actor, a.id, "Pas pertinent");
