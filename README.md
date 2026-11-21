@@ -171,6 +171,10 @@ npm run db:generate         # après une modification de src/db/schema.ts
 npm run db:idempotent       # obligatoire juste après db:generate : rend la migration rejouable sans erreur (un test échoue sinon)
 ```
 
+### Intégration continue (GitHub Actions)
+
+Le workflow `.github/workflows/ci.yml` s'exécute sur chaque pull request et chaque push sur `main`, avec trois contrôles indépendants : **Typecheck et tests** (`npm run typecheck` et `npm test`), **Tests base de données** (`npm run test:db` sur un PostgreSQL 16 jetable, qui rejoue aussi chaque migration deux fois) et **Build** (`npm run build`). Le workflow n'utilise aucun secret et ne déploie rien : le déploiement reste assuré par Coolify. Pour lancer les mêmes tests en local, créez une base dont le nom contient « test » et exportez `TEST_DATABASE_URL` avant `npm run test:db`.
+
 ## Déploiement sur Coolify
 
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
