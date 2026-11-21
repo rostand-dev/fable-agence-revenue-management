@@ -70,20 +70,32 @@ jobs:
         run: npm ci
       - if: steps.config.outputs.run == 'true'
         run: npx playwright install --with-deps chromium
-      - name: Attendre que la Preview affiche le commit de la PR
+      - name: Attendre que la Preview soit à jour
         if: steps.config.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          # Coolify construit puis déploie la Preview : on interroge /api/health (ouvert sans mot de passe) jusqu'à y lire le commit de la PR.
+          # Coolify construit puis déploie la Preview. On interroge /api/health (ouvert sans mot de passe) :
+          #  - si le commit y est affiché (APP_COMMIT / SOURCE_COMMIT transmis au conteneur), on exige celui de la PR ;
+          #  - sinon (Coolify ne renseigne pas toujours SOURCE_COMMIT sur les Previews), on exige que le commentaire de déploiement posté par
+          #    l'application GitHub de Coolify (compte Bot) annonce « ready » et ait été mis à jour APRÈS la date du commit de la PR.
           echo "Preview attendue : $PREVIEW_URL (commit $PR_SHA)"
+          commit_date=$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_SHA" --jq .commit.committer.date)
           last=""
           SECONDS=0
           while [ "$SECONDS" -lt 1200 ]; do
             body=$(curl -fsS -m 10 "$PREVIEW_URL/api/health" 2>/dev/null || true)
             last="$body"
-            if echo "$body" | grep -q "\"commit\":\"$PR_SHA\""; then echo "Preview à jour après $SECONDS s."; exit 0; fi
+            if echo "$body" | grep -q "\"commit\":\"$PR_SHA\""; then echo "Preview à jour après $SECONDS s (commit affiché)."; exit 0; fi
+            if echo "$body" | grep -q '"status":"ok"' && echo "$body" | grep -q '"commit":null'; then
+              ready=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" --paginate \
+                --jq "[.[] | select(.user.type == \"Bot\" and (.body | test(\"is ready\")) and .updated_at > \"$commit_date\")] | length" | paste -sd+ | bc || echo 0)
+              if [ "${ready:-0}" -gt 0 ]; then echo "Preview à jour après $SECONDS s (déploiement Coolify terminé après le commit ; commit non affiché par /api/health)."; exit 0; fi
+            fi
             sleep 15
           done
-          echo "::error title=Preview non à jour::Après 20 min, /api/health n'affiche pas le commit $PR_SHA. Dernière réponse : ${last:-aucune}. Vérifier que la Preview est déployée dans Coolify et que APP_COMMIT (SOURCE_COMMIT) est bien transmis au conteneur."
+          echo "::error title=Preview non à jour::Après 20 min, la Preview n'est pas confirmée à jour pour le commit $PR_SHA. Dernière réponse de /api/health : ${last:-aucune}. Vérifier le déploiement dans Coolify."
           exit 1
       - name: Tests E2E sur la Preview
         if: steps.config.outputs.run == 'true'
