@@ -165,7 +165,7 @@ export const WORKFLOWS: { id: string; name: string; cadence: string; purpose: st
       { agent: "onboarding", what: "Calculer les planchers par canal pour 2, 7 et 28 nuits" },
       { agent: "pricing", what: "Proposer une stratégie de départ : prix de base, bornes, séjour minimum" },
       { agent: "vous", what: "Valider les planchers et la stratégie" },
-      { agent: "direction", what: "Ouvrir une période d'observation d'au moins 14 jours avant toute écriture" },
+      { agent: "direction", what: "Ouvrir une période d'observation (durée minimale configurée, 14 jours par défaut) avant toute écriture" },
     ],
   },
   {

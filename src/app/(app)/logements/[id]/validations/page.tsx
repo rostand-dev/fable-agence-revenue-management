@@ -5,7 +5,7 @@ import { Icon } from "@/components/Icon";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Banner, State } from "@/components/ui";
-import { RECONCILIATION_MAX_GAP_PCT, RECONCILIATION_MIN_SAMPLE, SHADOW_MIN_DAYS } from "@/lib/activation-gates";
+import { RECONCILIATION_MAX_GAP_PCT, RECONCILIATION_MIN_SAMPLE } from "@/lib/activation-gates";
 import { requireUser } from "@/lib/auth";
 import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { euro } from "@/lib/format";
@@ -24,6 +24,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
   try { [v, q] = await Promise.all([getValidations(user.tenantId, id), getQuality(user.tenantId, id)]); } catch (e) { if (e instanceof PortfolioError) notFound(); throw e; }
   const editable = !v.isDemo && v.status === "SHADOW";
   const shadow = q.items.find((i) => i.key === "shadow")!;
+  const minDays = q.minDays;
   const byChannel = new Map<string, typeof v.grid>();
   for (const g of v.grid) byChannel.set(g.channel, [...(byChannel.get(g.channel) ?? []), g]);
   const field = (name: string, label: string, props: React.InputHTMLAttributes<HTMLInputElement>, help?: string) => (
@@ -35,7 +36,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
       <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${id}/qualite`}><Icon name="back" />Retour à la checklist</Link></p>
       <div className="page-head">
         <h1>Validations avant activation</h1>
-        <p>Trois conditions précèdent le passage à « Actif » : une observation d'au moins {SHADOW_MIN_DAYS} jours, des planchers validés par une personne et un échantillon de réservations rapproché.</p>
+        <p>Trois conditions précèdent le passage à « Actif » : {minDays === 0 ? "l'observation lancée (aucun délai minimum configuré)" : `une observation d'au moins ${minDays} jour${minDays > 1 ? "s" : ""}`}, des planchers validés par une personne et un échantillon de réservations rapproché.</p>
       </div>
       {!editable && <Banner role="tech" title="Validations en lecture seule" style={{ marginBottom: 16 }}>{v.isDemo ? "Un logement de démonstration ne se valide pas." : v.status === "ACTIVE" ? "Ce logement est déjà actif." : "Les validations se font une fois l'observation lancée."}</Banner>}
 

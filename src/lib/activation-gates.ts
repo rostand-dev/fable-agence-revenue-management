@@ -3,23 +3,35 @@ import { floorGrid } from "./engine/economics";
 import type { EconomicModel } from "./engine/types";
 
 /**
- * Conditions d'activation tirées du blueprint (§6.1, §18.3) : observation d'au moins 14 jours, floors validés par une personne,
+ * Conditions d'activation tirées du blueprint (§6.1, §18.3) : observation d'une durée minimale configurable (14 jours par défaut), floors validés par une personne,
  * échantillon de réservations rapproché. Une information inconnue ne valide jamais une condition.
  */
-export const SHADOW_MIN_DAYS = 14;
+export const SHADOW_MIN_DAYS_DEFAULT = 14;
+export const SHADOW_MIN_DAYS_MAX = 90;
+/**
+ * Durée minimale d'observation avant activation, en jours : variable ACTIVATION_SHADOW_MIN_DAYS (14 par défaut, de 0 à 90).
+ * Une valeur absente, vide, non entière ou hors plage revient à 14 : une faute de frappe ne doit jamais raccourcir l'observation.
+ * 0 supprime le délai (la date de lancement doit toujours être connue).
+ */
+export function shadowMinDays(raw: string | undefined = process.env.ACTIVATION_SHADOW_MIN_DAYS): number {
+  const v = (raw ?? "").trim();
+  if (!/^\d+$/.test(v)) return SHADOW_MIN_DAYS_DEFAULT;
+  const n = Number(v);
+  return n <= SHADOW_MIN_DAYS_MAX ? n : SHADOW_MIN_DAYS_DEFAULT;
+}
 export const RECONCILIATION_MIN_SAMPLE = 10;
 export const RECONCILIATION_MAX_GAP_PCT = 1;
 export const FLOOR_LOS = [2, 7, 28] as const;
 const DAY = 86_400_000;
 
-export type ShadowState = { status: "OK" | "WAITING" | "UNKNOWN"; days: number | null; readyAt: string | null };
+export type ShadowState = { status: "OK" | "WAITING" | "UNKNOWN"; days: number | null; readyAt: string | null; minDays: number };
 /** Durée d'observation écoulée depuis le lancement (`onboarding.completedAt`). */
-export function shadowState(completedAt: string | null | undefined, now = Date.now()): ShadowState {
+export function shadowState(completedAt: string | null | undefined, now = Date.now(), minDays = shadowMinDays()): ShadowState {
   const t = completedAt ? Date.parse(completedAt) : NaN;
-  if (!Number.isFinite(t)) return { status: "UNKNOWN", days: null, readyAt: null };
+  if (!Number.isFinite(t)) return { status: "UNKNOWN", days: null, readyAt: null, minDays };
   const days = Math.max(0, Math.floor((now - t) / DAY));
-  const readyAt = new Date(t + SHADOW_MIN_DAYS * DAY).toISOString();
-  return { status: now - t >= SHADOW_MIN_DAYS * DAY ? "OK" : "WAITING", days, readyAt };
+  const readyAt = new Date(t + minDays * DAY).toISOString();
+  return { status: now - t >= minDays * DAY ? "OK" : "WAITING", days, readyAt, minDays };
 }
 
 /** Empreinte de la grille de planchers (canal × 2/7/28 nuits) : change dès qu'un coût, une commission ou une contribution change. `null` si le modèle est incomplet. */

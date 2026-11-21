@@ -15,13 +15,14 @@ import { PortfolioError, type PortfolioActor } from "./portfolio";
 const { properties } = schema;
 type Ex = Pick<typeof db, "select">;
 
-export type QualityView = QualityReport & { name: string; status: string; isDemo: boolean };
+export type QualityView = QualityReport & { name: string; status: string; isDemo: boolean; minDays: number };
 
 /** Lit ce dont la checklist a besoin pour un logement de cet espace seulement (verrou de ligne si `lock`). */
 async function evaluate(ex: Ex, tenantId: string, propertyId: string, lock = false) {
   const { p, facts } = await loadMappingFacts(ex, tenantId, propertyId, lock);
   const strategy = (p.strategy ?? {}) as Strategy;
   const gates = await loadGateFacts(ex as never, tenantId, propertyId, p.economics as EconomicModel);
+  const shadow = shadowState(p.onboarding?.completedAt); // une seule lecture : la valeur qui décide est celle qui est tracée
   const report = evaluateQuality({
     identityOk: identityComplete(p),
     pricelabsLinked: !!p.pricelabs?.listingId,
@@ -31,16 +32,16 @@ async function evaluate(ex: Ex, tenantId: string, propertyId: string, lock = fal
     prices: { basePriceCents: strategy.basePriceCents ?? null, minPriceCents: strategy.minPriceCents ?? null, maxPriceCents: strategy.maxPriceCents ?? null },
     superhoteLinked: !!p.superhote?.rentalId,
     provisionalCount: ((p.economics as EconomicModel)?.provisional ?? []).length,
-    shadow: shadowState(p.onboarding?.completedAt),
+    shadow,
     floors: gates.floors,
     reconciliation: gates.reconciliation,
   });
-  return { p, report, gates };
+  return { p, report, gates, minDays: shadow.minDays };
 }
 
 export async function getQuality(tenantId: string, propertyId: string): Promise<QualityView> {
-  const { p, report } = await evaluate(db, tenantId, propertyId);
-  return { ...report, name: p.name, status: p.status, isDemo: p.isDemo };
+  const { p, report, minDays } = await evaluate(db, tenantId, propertyId);
+  return { ...report, name: p.name, status: p.status, isDemo: p.isDemo, minDays };
 }
 
 /**
@@ -49,7 +50,7 @@ export async function getQuality(tenantId: string, propertyId: string): Promise<
  */
 export async function activateProperty(u: PortfolioActor, propertyId: string) {
   await db.transaction(async (tx) => {
-    const { p, report, gates } = await evaluate(tx, u.tenantId, propertyId, true);
+    const { p, report, gates, minDays } = await evaluate(tx, u.tenantId, propertyId, true);
     if (p.isDemo) throw new PortfolioError("INVALID", "Un logement de démonstration ne s'active pas.");
     if (p.status === "ACTIVE") throw new PortfolioError("INVALID", "Ce logement est déjà actif.");
     if (p.status !== "SHADOW") throw new PortfolioError("INVALID", "Seul un logement en observation peut être activé : lancez d'abord l'observation depuis le parcours de création.");
@@ -58,6 +59,6 @@ export async function activateProperty(u: PortfolioActor, propertyId: string) {
       throw new PortfolioError("INVALID", `Activation refusée. À corriger : ${todo.join(" ; ")}.`);
     }
     await tx.update(properties).set({ status: "ACTIVE" }).where(and(eq(properties.id, p.id), eq(properties.tenantId, u.tenantId)));
-    await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.activated", entity: "Property", entityId: p.id, summary: `${u.name} active ${p.name} : la checklist de qualité est satisfaite.`, payload: { floorsFingerprint: gates.floors.status === "OK" ? gates.fingerprint : null, reconciliation: { sampleSize: gates.reconciliation.sampleSize, maxGapPct: gates.reconciliation.maxGapPct, by: gates.reconciliation.by }, floorsValidatedBy: gates.floors.by, warnings: report.warnings, checks: report.items.map((i) => ({ key: i.key, ok: i.ok, severity: i.severity })) } });
+    await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.activated", entity: "Property", entityId: p.id, summary: `${u.name} active ${p.name} : la checklist de qualité est satisfaite.`, payload: { shadowMinDays: minDays, floorsFingerprint: gates.floors.status === "OK" ? gates.fingerprint : null, reconciliation: { sampleSize: gates.reconciliation.sampleSize, maxGapPct: gates.reconciliation.maxGapPct, by: gates.reconciliation.by }, floorsValidatedBy: gates.floors.by, warnings: report.warnings, checks: report.items.map((i) => ({ key: i.key, ok: i.ok, severity: i.severity })) } });
   });
 }
