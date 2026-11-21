@@ -14,6 +14,7 @@ import { replaceReservations } from "./reservations-store";
 import { applyCalendarEffect, lockProperty, reconcileReservations, type ReconcileResult } from "./reservation-ingest";
 import { withTenant } from "@/db/tenant";
 import { latestPayload, recordSnapshot } from "./snapshots";
+import { analyzeMarket } from "../integrations/pricelabs-market";
 import { analyzeGrid, diffConfig, normalizeConfig, type PricingConfiguration } from "../integrations/pricelabs-config";
 import { snapshotSuperhote } from "./superhote-read";
 
@@ -152,6 +153,9 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
   const drift = listingDrift(prevCand ? { name: prevCand.name ?? null, city: prevCand.city ?? null, bedrooms: typeof prevCand.bedrooms === "number" ? prevCand.bedrooms : null } : null, listing);
   // US-041 : configuration lue (base, minimum, maximum, synchronisation) et contrôle de la grille brute de PriceLabs
   const config = normalizeConfig(listing);
+  // US-042 : ce que PriceLabs a réellement fourni pour le marché. Lecture en échec : les jours de marché précédents sont conservés (datés), jamais effacés.
+  const keptMarket = marketError ? Number((await db.select({ n: sql<number>`count(*)` }).from(marketDays).where(and(eq(marketDays.propertyId, p.id), sql`${marketDays.date} >= ${h.from}`, sql`${marketDays.date} <= ${h.to}`, sql`${marketDays.marketOccupancy} is not null`)))[0]?.n ?? 0) : 0;
+  const marketReport = analyzeMarket({ ...mk, hasData: !!market }, { from: h.from, to: h.to }, marketError, keptMarket);
   const gridReport = analyzeGrid(mapPrices(priceItem).filter((d) => d.date >= h.from && d.date <= h.to), { from: h.from, to: h.to }, config);
   const fresh = { id: listing.id, pms: listing.pms, name: listing.name, city: listing.city, bedrooms: listing.bedrooms };
   const candidates = prevCand ? (pl.candidates as any[]).map((c) => (c.id === pl.listingId ? fresh : c)) : [...(pl.candidates ?? []), fresh];
@@ -171,11 +175,12 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     touristTaxPct: model?.touristTaxPct ?? null,
     estimatedCommissions: confirmed.filter((r) => r.commissionEstimated).length, unknownCommissions: confirmed.filter((r) => r.commissionCents === null).length, unknownChannel: confirmed.filter((r) => r.channel === "INCONNU").length,
     undeclaredRates: [...new Set(confirmed.filter((r) => r.commissionCents === null && r.channel !== "INCONNU").map((r) => r.channel))],
-    marketDays: mk.market.filter((m) => m.marketOccupancy !== null).length, marketCategory: mk.category, marketListings: mk.listingsUsed, marketSource: mk.source, marketError,
+    marketDays: marketError ? keptMarket : mk.market.filter((m) => m.marketOccupancy !== null).length, marketCategory: mk.category, marketListings: mk.listingsUsed, marketSource: mk.source, marketError, marketReport,
     listingChanges: drift, gridReport, gridRefreshedAt: priceItem.last_refreshed_at ?? listing.lastRefreshedAt, currency: priceItem.currency ?? listing.currency, pushEnabled: listing.pushEnabled,
   };
 
   let rec: ReconcileResult | null = null;
+  let finalLastSync: typeof lastSync = lastSync;
   await withTenant(tenantId, async (tx) => {
     await lockProperty(tx, p.id); // même ordre de verrous que les webhooks : verrou du logement d'abord, puis calendrier
     // US-043 : ce que PriceLabs a répondu est conservé tel quel (immuable) ; les projections ci-dessous pointent leur snapshot.
@@ -192,16 +197,23 @@ export async function syncPriceLabs(tenantId: string, propertyId: string, opts: 
     const configChanges = diffConfig(prevConfig, config);
     if (configChanges.length) await recordAudit(tx, { tenantId, actor: "system", type: "integration.pricelabs_config_changed", entity: "Property", entityId: p.id, summary: `La configuration PriceLabs de ${p.name} a changé : ${configChanges.map((c) => `${c.label} ${c.from ?? "inconnu"} → ${c.to ?? "inconnu"}`).join(" ; ")}.`, payload: { changes: configChanges } });
     await tx.delete(calendarDays).where(eq(calendarDays.propertyId, p.id));
-    await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
+    // marché illisible : on garde les jours déjà lus (avec leur date de lecture) au lieu de les remplacer par des « inconnus » ; seuls les jours passés sont retirés
+    // le décompte est refait ici, sous le verrou du logement : le rapport mémorisé dit ce que la table contient vraiment
+    if (marketError) {
+      const n = Number((await tx.select({ n: sql<number>`count(*)` }).from(marketDays).where(and(eq(marketDays.propertyId, p.id), sql`${marketDays.date} >= ${h.from}`, sql`${marketDays.date} <= ${h.to}`, sql`${marketDays.marketOccupancy} is not null`)))[0]?.n ?? 0);
+      finalLastSync = { ...lastSync, marketDays: n, marketReport: analyzeMarket({ ...mk, hasData: !!market }, { from: h.from, to: h.to }, marketError, n) };
+    }
+    if (marketError) await tx.delete(marketDays).where(and(eq(marketDays.propertyId, p.id), sql`${marketDays.date} < ${h.from}`));
+    else await tx.delete(marketDays).where(eq(marketDays.propertyId, p.id));
     await tx.insert(calendarDays).values(days.map((d) => ({ propertyId: p.id, tenantId, date: d.date, priceCents: d.priceCents, recommendedPriceCents: d.recommendedPriceCents, sentPriceCents: d.sentPriceCents, minStay: d.minStay, state: d.state, rule: null, observedAt: now, snapshotId: priceSnap.id })));
-    await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now, snapshotId: marketSnap?.id ?? null })));
+    if (!marketError) await tx.insert(marketDays).values(mk.market.map((m) => ({ propertyId: p.id, tenantId, ...m, observedAt: now, snapshotId: marketSnap?.id ?? null })));
     if (toWrite && source === "SUPERHOTE" && sh?.ok) {
       rec = await reconcileReservations(tx, { tenantId, propertyId: p.id, model, reservations: sh.reservations, readAt: new Date(sh.at) });
       // le calendrier reflète les réservations réellement enregistrées (webhook plus récent, doublon, lecture suspecte), pas seulement la lecture brute
       await applyCalendarEffect(tx, p.id, { from: todayISO(now), to: addDays(todayISO(now), 91) }, [], todayISO(now));
     }
     else if (toWrite) await replaceReservations(tx, tenantId, p.id, toWrite, source);
-    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, candidates, lastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync, ...(rec ? { lastReconcile: rec } : {}) } } : {}) }).where(eq(properties.id, p.id));
+    await tx.update(properties).set({ bedrooms: p.bedrooms ?? (listing.bedrooms === null ? null : Math.round(listing.bedrooms)), pricelabs: { ...pl, listingName: listing.name, candidates, lastSync: finalLastSync }, ...(shLastSync ? { superhote: { ...p.superhote, lastSync: shLastSync, ...(rec ? { lastReconcile: rec } : {}) } } : {}) }).where(eq(properties.id, p.id));
     if (drift.length) await recordAudit(tx, { tenantId, actor: "system", type: "integration.pricelabs_listing_changed", entity: "Property", entityId: p.id, summary: `L'annonce PriceLabs de ${p.name} a changé : ${drift.join(" ; ")}. Vérifiez le mapping.`, payload: { changes: drift } });
     // les prix de base, minimum et maximum suivent PriceLabs : un changement de stratégie est une version, tracée avec son avant/après (US-023)
     const res = await commitStrategy(tx, { tenantId, propertyId: p.id, next: (cur) => ({ ...cur, basePriceCents: listing.baseCents ?? cur.basePriceCents ?? null, minPriceCents: listing.minCents ?? cur.minPriceCents ?? null, maxPriceCents: listing.maxCents ?? cur.maxPriceCents ?? null, maxDiscountStackPct: cur.maxDiscountStackPct ?? 20, maxPriceChangePct: cur.maxPriceChangePct ?? 5 }), source: "PRICELABS_SYNC", createdBy: "system" });

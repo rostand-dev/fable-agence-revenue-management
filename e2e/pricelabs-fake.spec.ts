@@ -177,3 +177,30 @@ test("PriceLabs (faux serveur) : minimum au-dessus du prix de base, signalé dan
   await expect(page.getByTestId("pricelabs-grid-report").getByText(/minimum est supérieur au prix de base/)).toBeVisible();
   await expectNoHorizontalOverflow(page, "onglet PriceLabs (bornes incohérentes)");
 });
+
+// US-042 : le marché est importé selon ce que PriceLabs fournit réellement ; limites et pannes sont dites en toutes lettres.
+test("PriceLabs (faux serveur) : marché complet, contrôle du marché disponible", async ({ page }, info) => {
+  await linked(page, info, "nominal", "marché ok");
+  const rep = page.getByTestId("pricelabs-market-report");
+  await expect(rep.getByText("disponible", { exact: true })).toBeVisible();
+  await expect(rep.getByText(/compset de 120 annonces/)).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (contrôle du marché)");
+});
+
+test("PriceLabs (faux serveur) : compset réduit, la limite est signalée sans bloquer la lecture", async ({ page }, info) => {
+  await linked(page, info, "market-sparse", "marché mince");
+  const rep = page.getByTestId("pricelabs-market-report");
+  await expect(rep.getByText("limité", { exact: true })).toBeVisible();
+  await expect(rep.getByText(/Compset de 3 annonces seulement/)).toBeVisible();
+  await expect(page.getByText("réussie")).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (marché limité)");
+});
+
+test("PriceLabs (faux serveur) : marché illisible, la lecture réussit et les signaux de marché restent inconnus", async ({ page }, info) => {
+  await linked(page, info, "market-down", "marché en panne");
+  await expect(page.getByText("réussie")).toBeVisible();
+  const rep = page.getByTestId("pricelabs-market-report");
+  await expect(rep.getByText("illisible", { exact: true })).toBeVisible();
+  await expect(rep.getByText(/signaux de marché restent inconnus/)).toBeVisible();
+  await expectNoHorizontalOverflow(page, "onglet PriceLabs (marché illisible)");
+});

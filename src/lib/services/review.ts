@@ -6,6 +6,7 @@ import { priorityScore, reviewProperty, type EngineInput } from "../engine/detec
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveLlm } from "../agents/llm-config";
 import { capabilityFlags, capability } from "../integrations/capabilities";
+import { freshnessOf } from "../freshness";
 import { loadFlags } from "./flags";
 import { resolveFlag } from "../flags/catalog";
 import { deterministicNarrative, writeNarrative } from "./narrative";
@@ -41,7 +42,9 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   ]);
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
-    const k = m.get(c.date);
+    // Blueprint §7.4 : un marché lu depuis plus de 48 h n'est plus une preuve. Il devient « inconnu » pour le moteur (aucune opportunité fondée dessus),
+    // y compris quand la lecture suivante a échoué et que les jours précédents ont été conservés. Le logement de démonstration est simulé : exempté.
+    const k0 = m.get(c.date), k = k0 && (p.isDemo || freshnessOf("MARKET", k0.observedAt, now).state === "FRESH") ? k0 : undefined;
     return { date: c.date, state: c.state as Day["state"], priceCents: c.priceCents, recommendedPriceCents: c.recommendedPriceCents, sentPriceCents: c.sentPriceCents, minStay: c.minStay, rule: c.rule, marketOccupancy: k?.marketOccupancy ?? null, marketAdrCents: k?.marketAdrCents ?? null, pricePercentile: k?.pricePercentile ?? null, event: k?.event ?? null };
   });
   // capacités de CE logement, déduites du catalogue du code (US-002) et non d'une ligne de base ; le coupe-circuit coupe les écritures du fournisseur
