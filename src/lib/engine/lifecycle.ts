@@ -8,7 +8,7 @@
  *   comptés depuis la décision. Un dossier différé reste fermé jusqu'à son échéance.
  * - Regroupement : les dossiers d'un même logement dont les nuits se touchent partagent une clé, pour être lus ensemble.
  */
-import { addDays, type ISODate } from "../dates";
+import { addDays, todayISO, type ISODate } from "../dates";
 import { playbookOf } from "./playbooks";
 
 export type OpportunityStatus = "OPEN" | "DEFERRED" | "DECIDED" | "EXPIRED";
@@ -30,9 +30,9 @@ export function openingDecision(prev: ExistingOpportunity | undefined, playbook:
   if (prev.status === "OPEN") return { action: "REFRESH" };
   if (prev.status === "DEFERRED") return { action: "SKIP", reason: "DEFERRED", until: prev.deferUntil ?? null };
   if (prev.status === "DECIDED") {
-    const since = prev.decidedAt ?? prev.createdAt;
-    const until = new Date(+since + cooldownDaysOf(playbook) * 86400000);
-    if (+now < +until) return { action: "SKIP", reason: "COOLDOWN", until: until.toISOString().slice(0, 10) };
+    // le repos se compte en jours civils (Europe/Paris, comme toute l'application) : il se termine au matin de l'échéance affichée
+    const until = endOfCooldown(prev.decidedAt ?? prev.createdAt, playbook);
+    if (todayISO(now) < until) return { action: "SKIP", reason: "COOLDOWN", until };
   }
   return { action: "CREATE" };
 }
@@ -71,4 +71,4 @@ export function cooldownLabel(until: ISODate): string {
   return `jusqu'au ${until.split("-").reverse().join("/")}`;
 }
 
-export const endOfCooldown = (decidedAt: Date, playbook: string): ISODate => addDays(decidedAt.toISOString().slice(0, 10) as ISODate, cooldownDaysOf(playbook));
+export const endOfCooldown = (decidedAt: Date, playbook: string): ISODate => addDays(todayISO(decidedAt), cooldownDaysOf(playbook));

@@ -99,7 +99,7 @@ export type ReviewOptions = {
  * Chaque étape laisse une trace (AgentRun) ; la revue est idempotente grâce aux clés de dédoublonnage.
  * À la fin, le rythme de suivi de chaque logement revu est recalculé et sa prochaine revue planifiée.
  */
-export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = "SCHEDULED", opts: ReviewOptions = {}): Promise<{ opened: number; refreshed: number; expired: number; blocked: number; reviewed: string[] }> {
+export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = "SCHEDULED", opts: ReviewOptions = {}): Promise<{ opened: number; refreshed: number; expired: number; blocked: number; resting: number; reviewed: string[] }> {
   const now = new Date(), today = todayISO(now);
   const runId = newId("rev");
   await db.insert(reviewRuns).values({ id: runId, tenantId, kind: "DAILY", startedAt: now, stats: { trigger } });
@@ -143,6 +143,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
     const seen = new Set<string>();
     // un même signal ne produit qu'un dossier par revue (le plus prioritaire), puis les dossiers qui se touchent sont regroupés
     const found = dedupeOpportunities(res.opportunities, priorityScore);
+    // la clé suit les dossiers détectés (y compris ceux laissés au repos) : elle peut changer d'une revue à l'autre, seuls les dossiers ouverts sont listés ensemble
     const groups = groupKeys(found, p.id);
     for (const [idx, o] of found.entries()) {
       const key = dedupeKey(p.id, o); seen.add(key);
@@ -194,5 +195,5 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   for (const p of props) {
     try { await refreshCadence(tenantId, p.id, { reviewed: { blocked: blockedIds.has(p.id) } }, now); } catch (e) { console.error("[rythme]", p.id, e); }
   }
-  return { opened, refreshed, expired, blocked, reviewed: props.map((p) => p.id) };
+  return { opened, refreshed, expired, blocked, resting, reviewed: props.map((p) => p.id) };
 }

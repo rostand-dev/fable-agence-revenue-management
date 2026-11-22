@@ -34,17 +34,17 @@ describe("période de repos", () => {
     expect(openingDecision({ status: "DECIDED", createdAt: daysAgo(1) }, "PB-01", NOW)).toMatchObject({ action: "SKIP", reason: "COOLDOWN" });
     expect(openingDecision({ status: "DECIDED", createdAt: daysAgo(90) }, "PB-01", NOW)).toEqual({ action: "CREATE" });
   });
-  it("chaque playbook a sa propre durée", () => {
-    const a = openingDecision({ status: "DECIDED", createdAt: daysAgo(40), decidedAt: daysAgo(10) }, "PB-01", NOW);
-    const long = Object.values(PLAYBOOKS).find((p) => p.cooldownDays > 10)!;
-    const short = Object.values(PLAYBOOKS).find((p) => p.cooldownDays <= 10);
-    expect(a.action === "SKIP" || a.action === "CREATE").toBe(true);
-    expect(openingDecision({ status: "DECIDED", createdAt: daysAgo(40), decidedAt: daysAgo(10) }, long.code, NOW).action).toBe("SKIP");
-    if (short) expect(openingDecision({ status: "DECIDED", createdAt: daysAgo(40), decidedAt: daysAgo(10) }, short.code, NOW).action).toBe("CREATE");
+  it("chaque playbook a sa propre durée : 3 jours contre 21 jours, après 10 jours", () => {
+    const decided = { status: "DECIDED", createdAt: daysAgo(40), decidedAt: daysAgo(10) };
+    expect(PLAYBOOKS["PB-06"].cooldownDays).toBe(3);
+    expect(PLAYBOOKS["PB-02"].cooldownDays).toBe(21);
+    expect(openingDecision(decided, "PB-06", NOW)).toEqual({ action: "CREATE" });
+    expect(openingDecision(decided, "PB-02", NOW)).toMatchObject({ action: "SKIP", reason: "COOLDOWN" });
   });
   it("libellé et échéance", () => {
     expect(cooldownLabel("2026-11-26")).toBe("jusqu'au 26/11/2026");
-    expect(endOfCooldown(new Date("2026-11-20T23:30:00Z"), "PB-01")).toBe("2026-12-04");
+    // 23 h 30 UTC = 00 h 30 le lendemain à Paris : le repos se compte depuis le jour de Paris
+    expect(endOfCooldown(new Date("2026-11-20T23:30:00Z"), "PB-01")).toBe("2026-12-05");
   });
 });
 

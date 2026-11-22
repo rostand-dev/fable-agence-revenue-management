@@ -24,14 +24,15 @@ test("Dossier tranché : la période de repos du playbook est expliquée, sans d
   expect(found, "aucun dossier tranché avec une période de repos").toBe(true);
 });
 
-test("Dossiers ouverts : les dossiers liés, quand il y en a, tiennent à l'écran", async ({ page }) => {
+test("Dossier ouvert : s'affiche sans débordement, avec ses dossiers liés lorsqu'il en a", async ({ page }) => {
   await page.goto("/");
-  const lien = page.locator('a[href^="/dossier/"]').first();
-  await expect(lien).toBeVisible();
-  await lien.click();
-  const lies = page.getByTestId("dossiers-lies");
-  if (await lies.count()) {
-    await expect(lies.locator("a").first()).toBeVisible();
+  const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  expect(hrefs.length).toBeGreaterThan(0);
+  for (const href of hrefs.slice(0, 6)) {
+    await page.goto(href);
+    await expect(page.getByTestId("signal-card")).toBeVisible();
+    const lies = page.getByTestId("dossiers-lies");
+    if (await lies.count()) await expect(lies.locator("li a").first()).toBeVisible();
+    await expectNoHorizontalOverflow(page, "dossier ouvert " + href);
   }
-  await expectNoHorizontalOverflow(page, "dossier ouvert");
 });
