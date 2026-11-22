@@ -6,6 +6,7 @@ import { DEMAND_MODEL_NOTE, sellProbability } from "./demand";
 import { cumulativeDiscountPct, hardFloorCents, missingEconomics } from "./economics";
 import { threshold } from "./playbooks";
 import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
+import { conformOpportunity, type ConformityIssue } from "./candidates";
 import { strategyFloorOver } from "./seasons";
 import {
   detectChannelGap, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
@@ -618,7 +619,7 @@ function dataDrift(ctx: Ctx, signals: Signal<DataDriftPayload>[]): DetectedOppor
 }
 
 /* ------------------------------------------------------------------ entrée */
-export type EngineResult = { opportunities: DetectedOpportunity[]; /** Signaux observés, y compris ceux dont le constructeur n'a rien retenu */ signals: Signal[]; stats: WindowStat[]; blocked: string[]; /** Canaux exclus de la revue faute de majoration renseignée */ missingMarkups: Channel[] };
+export type EngineResult = { opportunities: DetectedOpportunity[]; /** Signaux observés, y compris ceux dont le constructeur n'a rien retenu */ signals: Signal[]; stats: WindowStat[]; blocked: string[]; /** Canaux exclus de la revue faute de majoration renseignée */ missingMarkups: Channel[]; /** Candidates retirées faute de respecter leur contrat (US-063) : doit rester vide */ conformity: ConformityIssue[] };
 
 /**
  * Revue déterministe d'un logement : signaux → diagnostic → options → simulation → audit.
@@ -628,12 +629,12 @@ export type EngineResult = { opportunities: DetectedOpportunity[]; /** Signaux o
 export function reviewProperty(input: EngineInput): EngineResult {
   const stats = windowStats(input.days, input.today);
   const blocked = missingEconomics(input.model);
-  if (blocked.length) return { opportunities: [], signals: [], stats, blocked, missingMarkups: [] };
+  if (blocked.length) return { opportunities: [], signals: [], stats, blocked, missingMarkups: [], conformity: [] };
   const declared = Object.keys(input.model.channels) as Channel[];
   // une majoration inconnue n'est jamais traitée comme 0 % : le canal est exclu et l'application demande de la saisir
   const missingMarkups = input.markups ? declared.filter((c) => input.markups![c] === undefined || input.markups![c] === null) : [];
   const channels = declared.filter((c) => !missingMarkups.includes(c));
-  if (channels.length === 0) return { opportunities: [], signals: [], stats, blocked: [], missingMarkups };
+  if (channels.length === 0) return { opportunities: [], signals: [], stats, blocked: [], missingMarkups, conformity: [] };
   const share = channelShare(input.resas);
   const refChannel = [...channels].sort((a, b) => (input.model.channels[b]!.commissionPct + input.model.channels[b]!.paymentFeePct) - (input.model.channels[a]!.commissionPct + input.model.channels[a]!.paymentFeePct))[0];
   const stale = channels.filter((c) => {
@@ -648,7 +649,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
   // chaque règle observe (signals.ts), puis son constructeur instruit : l'ordre est fixe car une règle retire ses nuits aux suivantes
   const signals: Signal[] = [];
   const step = <P,>(found: Signal<P>[], build: (s: Signal<P>[]) => DetectedOpportunity[]) => { signals.push(...(found as Signal[])); return build(found); };
-  const opportunities = [
+  const built = [
     ...step(detectFloorBreach(ctx), (s) => floorBreach(ctx, s)),
     ...step(detectMinPriceBelowFloor(ctx), (s) => minPriceBelowFloor(ctx, s)),
     ...step(detectStackRisk(ctx), (s) => stackRisk(ctx, s)),
@@ -659,7 +660,10 @@ export function reviewProperty(input: EngineInput): EngineResult {
     ...step(detectChannelGap(ctx, stats), (s) => channelGap(ctx, s)),
     ...step(detectDataDrift(ctx), (s) => dataDrift(ctx, s)),
   ];
-  return { opportunities, signals, stats, blocked: [], missingMarkups };
+  // chaque candidate respecte le contrat de son type et les actions permises par son playbook ; sinon elle est retirée (jamais proposée) et signalée
+  const conformity: ConformityIssue[] = [];
+  const opportunities = built.flatMap((o) => { const r = conformOpportunity(o); conformity.push(...r.issues); return r.opportunity ? [r.opportunity] : []; });
+  return { opportunities, signals, stats, blocked: [], missingMarkups, conformity };
 }
 
 /** Score de priorité (blueprint §9.2). Il organise le travail ; il ne contourne jamais un veto. */

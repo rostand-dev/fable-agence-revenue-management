@@ -58,3 +58,15 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 **Limites connues** : le coût d'exécution ne dépend que du mode d'exécution ; le poids stratégique est par playbook (pas encore par logement) ; le facteur d'urgence reste calculé par le moteur.
 
 **Tests** : unitaires (`scoring.test.ts`, 10 cas dont la formule calculée à la main, bornes, virgule française, veto), base (`scoring.db.test.ts` : le réglage change la priorité à la revue puis se rétablit, configuration illisible), non-régression (golden inchangé), E2E (`e2e/priorisation.spec.ts`, 3 viewports).
+
+## US-063 — Génération d'actions candidates typées
+
+**Ce qui change**
+- **Contrat par type d'action `src/lib/engine/candidates.ts`** (10 types : prix daté, séjour minimum daté, exclusion de règle, prix de base, prix minimum, promotion de canal, retrait de promotion, audit d'annonce, vérification manuelle, ne rien faire) : systèmes cibles permis, modes d'exécution permis (une action PriceLabs sans capacité d'écriture reste proposée en procédure manuelle), paramètres obligatoires avec leurs bornes (dates ISO, entiers, remise de promotion de 1 à 40 %, séjour minimum de 1 à 30 nuits…), nuits touchées, plan de retour arrière et fenêtre de mesure pour toute action exécutable.
+- **Conformité au playbook** : une candidate dont le type n'est pas permis par son playbook (catalogue de la page Méthode) est refusée.
+- **Garde-fou dans le moteur** : toute candidate non conforme est **retirée avant d'être proposée** (jamais affichée, jamais approuvable) ; si l'option retenue est retirée, « ne rien faire » est retenu ; sans candidate conforme, le dossier n'est pas ouvert. La revue journalise chaque candidate retirée et son écart (`CANDIDATE_CONFORMITY`). Sur les données de démonstration et les scénarios testés, aucune candidate n'est retirée : les dossiers existants sont inchangés (snapshot de non-régression).
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Limites connues** : le contrat vérifie la forme et les bornes de chaque candidate, pas la pertinence économique (rôle de l'auditeur, US-064) ; les limites de variation de prix par action et par semaine relèvent du policy engine.
+
+**Tests** : unitaires (`candidates.test.ts` : contrat de chaque type, bornes, refus, retrait et re-sélection, et 12 scénarios réels vérifiant que le moteur ne produit que des candidates conformes), non-régression (golden inchangé), suites existantes (markups, PB-13).
