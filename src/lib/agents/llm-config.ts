@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { decryptSecret } from "../secret";
 import { serverDefaultModel, type LlmConfig } from "./llm";
+import { anthropicProvider, openaiProvider, type GatewayTarget } from "./gateway";
 import { AGENT_BY_ID, type AgentId } from "./registry";
 
 /**
@@ -16,13 +17,30 @@ export function pickLlmConfig(input: { userKey: string | null; serverKey: string
   return null;
 }
 
-export type LlmStatus = { source: "utilisateur" | "serveur" | "aucune"; keyHint: string | null; models: { id: string; name: string; createdAt: string | null }[]; modelsFetchedAt: Date | null; verifiedAt: Date | null };
+/** Repli OpenAI du serveur : actif seulement si la clé ET le modèle sont définis (aucun nom de modèle n'est deviné). */
+export function openaiFallbackFrom(env: Record<string, string | undefined> = process.env): { apiKey: string; model: string } | null {
+  const apiKey = env.OPENAI_API_KEY?.trim(), model = env.OPENAI_MODEL?.trim();
+  return apiKey && model ? { apiKey, model } : null;
+}
+
+/**
+ * Cibles ordonnées de la passerelle (US-070) pour un agent : Anthropic d'abord (clé du propriétaire, sinon clé du serveur), puis le repli OpenAI du serveur s'il est configuré.
+ * Pur et testable. Liste vide = aucun fournisseur : l'appelant retombe sur son repli déterministe.
+ */
+export function buildTargets(input: { primary: LlmConfig | null; openai: { apiKey: string; model: string } | null }): GatewayTarget[] {
+  const out: GatewayTarget[] = [];
+  if (input.primary) out.push({ provider: anthropicProvider, apiKey: input.primary.apiKey, model: input.primary.model, source: input.primary.source });
+  if (input.openai) out.push({ provider: openaiProvider, apiKey: input.openai.apiKey, model: input.openai.model, source: "serveur" });
+  return out;
+}
+
+export type LlmStatus = { source: "utilisateur" | "serveur" | "aucune"; /** Repli OpenAI du serveur configuré (modèle) ou null */ fallbackModel: string | null; keyHint: string | null; models: { id: string; name: string; createdAt: string | null }[]; modelsFetchedAt: Date | null; verifiedAt: Date | null };
 
 /** État de la configuration LLM du propriétaire, sans jamais exposer la clé. */
 export async function getLlmStatus(tenantId: string): Promise<LlmStatus> {
   const [c] = await db.select().from(schema.llmCredentials).where(eq(schema.llmCredentials.tenantId, tenantId));
-  if (c) return { source: "utilisateur", keyHint: c.keyHint, models: c.models, modelsFetchedAt: c.modelsFetchedAt, verifiedAt: c.verifiedAt };
-  return { source: process.env.ANTHROPIC_API_KEY ? "serveur" : "aucune", keyHint: null, models: [], modelsFetchedAt: null, verifiedAt: null };
+  if (c) return { source: "utilisateur", fallbackModel: openaiFallbackFrom()?.model ?? null, keyHint: c.keyHint, models: c.models, modelsFetchedAt: c.modelsFetchedAt, verifiedAt: c.verifiedAt };
+  return { source: process.env.ANTHROPIC_API_KEY ? "serveur" : "aucune", fallbackModel: openaiFallbackFrom()?.model ?? null, keyHint: null, models: [], modelsFetchedAt: null, verifiedAt: null };
 }
 
 /** Clé et modèle d'un agent pour ce propriétaire, ou null (repli déterministe). */
@@ -34,6 +52,11 @@ export async function resolveLlm(tenantId: string, agentId: AgentId | string): P
   const models = (t?.settings?.agentModels ?? {}) as Record<string, string>;
   const id = AGENT_BY_ID[agentId as AgentId] ? agentId : "direction";
   return pickLlmConfig({ userKey, serverKey: process.env.ANTHROPIC_API_KEY, agentModel: models[id], defaultModel: serverDefaultModel() });
+}
+
+/** Cibles de la passerelle pour un agent de ce propriétaire (US-070). */
+export async function resolveTargets(tenantId: string, agentId: AgentId | string): Promise<GatewayTarget[]> {
+  return buildTargets({ primary: await resolveLlm(tenantId, agentId), openai: openaiFallbackFrom() });
 }
 
 /** Modèle effectif d'un agent pour l'affichage (null = mode déterministe). Pur : ne touche ni la base ni le réseau. */

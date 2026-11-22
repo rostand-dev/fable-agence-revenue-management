@@ -27,6 +27,10 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       # Facultatif : modèle Anthropic par défaut des agents.
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
+      # Facultatif : clé OpenAI de repli des agents (US-070), utilisée seulement si Anthropic est en panne ou renvoie une sortie inexploitable. Vide = pas de repli. Exige aussi OPENAI_MODEL.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Facultatif : identifiant exact du modèle OpenAI du repli. Le repli n'est actif que si OPENAI_API_KEY et OPENAI_MODEL sont tous deux renseignés.
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
       # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2). Sur la démo, la session expirée se rouvre seule.
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
       # Facultatif : jours pendant lesquels un appareil reste reconnu après « Rester connecté sur cet appareil » (défaut 30, de 1 à 90 ; 0 désactive la fonction).
