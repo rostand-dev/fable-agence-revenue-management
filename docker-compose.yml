@@ -31,6 +31,10 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Facultatif : identifiant exact du modèle OpenAI du repli. Le repli n'est actif que si OPENAI_API_KEY et OPENAI_MODEL sont tous deux renseignés.
       - OPENAI_MODEL=${OPENAI_MODEL:-}
+      # Facultatif : appels HTTP aux fournisseurs de modèle au plus par revue (corrections et replis comptés) (défaut 12). Au-delà, les agents passent en repli déterministe pour le reste de la revue. 0 désactive les appels de modèle.
+      - AGENT_MAX_CALLS_PER_REVIEW=${AGENT_MAX_CALLS_PER_REVIEW:-12}
+      # Facultatif : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300000). Atteint : repli déterministe jusqu'au lendemain. 0 désactive les appels de modèle.
+      - AGENT_DAILY_TOKEN_BUDGET=${AGENT_DAILY_TOKEN_BUDGET:-300000}
       # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2). Sur la démo, la session expirée se rouvre seule.
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
       # Facultatif : jours pendant lesquels un appareil reste reconnu après « Rester connecté sur cet appareil » (défaut 30, de 1 à 90 ; 0 désactive la fonction).

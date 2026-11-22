@@ -12,6 +12,8 @@ import { saveAgentModelAction } from "@/app/actions/llm";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
 import { serverDefaultModel } from "@/lib/agents/llm";
 import { effectiveModel, getLlmStatus } from "@/lib/agents/llm-config";
+import { budgetLimits } from "@/lib/agents/budget";
+import { FALLBACK_LABEL, tokensUsedToday } from "@/lib/agents/runner";
 import { AGENT_BY_ID, agentName, WORKFLOWS, type AgentId } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
@@ -28,11 +30,13 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const llm = await getLlmStatus(user.tenantId);
   const chosen: string | undefined = (user.settings.agentModels ?? {})[a.id];
   const effective = effectiveModel(llm.source, chosen, serverDefaultModel());
-  const [runs, talk] = await Promise.all([
+  const [usedToday, runs, talk] = await Promise.all([
+    tokensUsedToday(user.tenantId),
     db.select().from(schema.agentRuns).where(and(eq(schema.agentRuns.tenantId, user.tenantId), eq(schema.agentRuns.agentId, a.id))).orderBy(desc(schema.agentRuns.createdAt)).limit(40),
     db.select().from(schema.chatMessages).where(and(eq(schema.chatMessages.tenantId, user.tenantId), eq(schema.chatMessages.agentId, a.id), isNull(schema.chatMessages.opportunityId))).orderBy(asc(schema.chatMessages.createdAt)).limit(60),
   ]);
   const usesLlm = a.reasoning !== "Règles déterministes";
+  const limits = budgetLimits();
   const tokens = runs.reduce((s, r) => s + (r.inputTokens ?? 0) + (r.outputTokens ?? 0), 0);
   const flows = WORKFLOWS.filter((w) => w.steps.some((s) => s.agent === a.id));
   return (
@@ -102,11 +106,14 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
       )}
       {tab === "activite" && (
         <div className="stack">
-          <Recap rows={[["Interventions récentes", String(runs.length), true], ["Dont avec modèle de langage", String(runs.filter((r) => r.mode === "LLM").length), true], ["Jetons consommés", tokens ? tokens.toLocaleString("fr-FR") : "aucun", true], ["En erreur", String(runs.filter((r) => r.error).length), true]]} />
+          <Recap rows={[["Interventions récentes", String(runs.length), true], ["Dont avec modèle de langage", String(runs.filter((r) => r.mode === "LLM").length), true], ["Jetons consommés", tokens ? tokens.toLocaleString("fr-FR") : "aucun", true], ["En erreur", String(runs.filter((r) => r.error).length), true], ["Budget de jetons du jour (tous agents)", limits.dailyTokens === 0 ? "appels de modèle désactivés" : `${usedToday.toLocaleString("fr-FR")} sur ${limits.dailyTokens.toLocaleString("fr-FR")}`, true]]} />
           {runs.length === 0 ? <p className="muted">Aucune intervention enregistrée.</p> : (
             <ul className="timeline">{runs.map((r) => (
               <li key={r.id}><span className={`tl-dot ${r.error ? "is-attention" : r.mode === "LLM" ? "is-tech" : "is-sain"}`}><Icon name={r.error ? "alert" : "check"} /></span>
-                <div><span className="tl-when">{fmtDateTime(r.createdAt)} · {r.operation} · {r.mode === "LLM" ? `modèle ${r.model}` : "règles"}</span><p className="tl-what">{r.summary}</p>{r.error && <p className="tl-who">Repli : {r.error}</p>}</div></li>
+                <div><span className="tl-when">{fmtDateTime(r.createdAt)} · {r.operation} · {r.mode === "LLM" ? `modèle ${r.model}${r.provider ? ` (${r.provider})` : ""}` : "règles"}</span><p className="tl-what">{r.summary}</p>
+                  {r.promptId && <p className="tl-who" data-testid="trace-prompt">Prompt {r.promptId} · version {r.promptVersion}{r.attempts ? ` · ${r.attempts} appel${r.attempts > 1 ? "s" : ""}${r.repaired ? " (une correction)" : ""}` : ""}</p>}
+                  {r.fallbackReason && <p className="tl-who" data-testid="trace-fallback">Repli : {FALLBACK_LABEL[r.fallbackReason] ?? r.fallbackReason}</p>}
+                  {r.error && !r.fallbackReason && <p className="tl-who">Repli : {r.error}</p>}</div></li>
             ))}</ul>
           )}
         </div>

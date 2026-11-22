@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { callLlm, extractJson, HOUSE_RULES, PROMPT_VERSION, type LlmConfig } from "../agents/llm";
+import { FALLBACK_LABEL, runAgentTask, type AgentBudget, type AgentOutcome } from "../agents/runner";
 import { fmtPeriod } from "../dates";
 import { signedEuro } from "../format";
 import type { DetectedOpportunity } from "../engine/types";
 
+type Out = z.infer<typeof OutSchema>;
 export type Narrative = { summary: string; recommendation: string; caveats: string[]; mode: "LLM" | "DETERMINISTIC"; model?: string; promptVersion?: string };
-const Out = z.object({ summary: z.string().min(20).max(700), recommendation: z.string().min(10).max(500), caveats: z.array(z.string().max(300)).max(4) });
+const OutSchema = z.object({ summary: z.string().min(20).max(700), recommendation: z.string().min(10).max(500), caveats: z.array(z.string().max(300)).max(4) });
 
 export function deterministicNarrative(o: DetectedOpportunity): Narrative {
   const c = o.candidates[o.selected];
@@ -25,11 +26,9 @@ export function deterministicNarrative(o: DetectedOpportunity): Narrative {
   };
 }
 
-/** Rédaction du dossier par la direction. Les faits viennent du moteur ; le LLM ne fait que les expliquer. */
-export async function writeNarrative(llm: LlmConfig | null, o: DetectedOpportunity, propertyName: string): Promise<{ narrative: Narrative; usage?: { inputTokens: number | null; outputTokens: number | null; durationMs: number }; error?: string }> {
-  const fallback = deterministicNarrative(o);
-  if (!llm) return { narrative: fallback };
-  const facts = {
+/** Faits certifiés du dossier : tout ce que le modèle reçoit. Les montants viennent du moteur. */
+function narrativeFacts(o: DetectedOpportunity, propertyName: string) {
+  return {
     logement: propertyName, titre: o.title, periode: fmtPeriod(o.stayFrom, o.stayTo), signal: o.signalText, source: o.signalSource,
     diagnostic: o.diagnosis.primaryLabel, confiance: o.diagnosis.confidence, raisonnement: o.diagnosis.tree,
     preuves: o.diagnosis.evidence.map((e) => `${e.label} : ${e.value} (${e.source})`),
@@ -40,15 +39,19 @@ export async function writeNarrative(llm: LlmConfig | null, o: DetectedOpportuni
     })),
     veto: o.veto ? o.vetoText : null,
   };
-  try {
-    const r = await callLlm(llm, {
-      system: `Tu es la directrice du revenue management d'une agence. Tu rédiges la synthèse d'un dossier de décision pour le propriétaire.\n${HOUSE_RULES}\nRéponds uniquement par un objet JSON : {"summary": "2 à 3 phrases : ce qui est observé, sur quelle période, et la cause la plus probable", "recommendation": "1 à 2 phrases : l'option retenue et pourquoi elle l'emporte sur les autres, ou pourquoi ne rien faire", "caveats": ["0 à 3 réserves utiles à la décision"]}`,
-      messages: [{ role: "user", content: "Faits certifiés du dossier :\n" + JSON.stringify(facts, null, 1) }], maxTokens: 900,
-    });
-    if (r.truncated) throw new Error("Réponse du modèle coupée par la limite de longueur : synthèse par règles.");
-    const parsed = Out.parse(extractJson(r.text));
-    return { narrative: { ...parsed, mode: "LLM", model: r.model, promptVersion: PROMPT_VERSION }, usage: { inputTokens: r.inputTokens, outputTokens: r.outputTokens, durationMs: r.durationMs } };
-  } catch (e: any) {
-    return { narrative: fallback, error: String(e?.message ?? e).slice(0, 200) };
-  }
+}
+
+/**
+ * Rédaction du dossier par la direction (US-074 : via l'exécuteur d'agent, donc prompt versionné, budget, trace et repli).
+ * Les faits viennent du moteur ; le modèle ne fait que les expliquer. Sans modèle, la synthèse est celle des règles.
+ */
+export async function writeNarrative(budget: AgentBudget, o: DetectedOpportunity, propertyName: string, opportunityId: string): Promise<{ narrative: Narrative; outcome: AgentOutcome<Out> }> {
+  const outcome = await runAgentTask<Out>({
+    budget, agentId: "direction", opportunityId, operation: "explainAction", prompt: "direction.explain_action", schema: OutSchema,
+    user: "Faits certifiés du dossier :\n" + JSON.stringify(narrativeFacts(o, propertyName), null, 1),
+    summary: ({ mode, reason }) => `Synthèse du dossier « ${o.title} » ${mode === "LLM" ? "rédigée" : "composée par règles" + (reason && reason !== "NO_PROVIDER" ? " (repli : " + FALLBACK_LABEL[reason] + ")" : "")}.`,
+    fallback: () => { const d = deterministicNarrative(o); return { summary: d.summary, recommendation: d.recommendation, caveats: d.caveats }; },
+  });
+  const narrative: Narrative = outcome.mode === "LLM" ? { ...outcome.data, mode: "LLM", model: outcome.run.model ?? undefined, promptVersion: outcome.run.promptVersion ?? undefined } : deterministicNarrative(o);
+  return { narrative, outcome };
 }

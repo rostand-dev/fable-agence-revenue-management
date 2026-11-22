@@ -6,7 +6,8 @@ import { reviewProperty, type EngineInput } from "../engine/detect";
 import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
 import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
-import { resolveLlm } from "../agents/llm-config";
+import { resolveTargets } from "../agents/llm-config";
+import { openBudget } from "../agents/runner";
 import { capabilityFlags, capability } from "../integrations/capabilities";
 import { freshnessOf } from "../freshness";
 import { loadFlags } from "./flags";
@@ -117,8 +118,11 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const props = opts.propertyIds ? all.filter((p) => opts.propertyIds!.includes(p.id)) : all;
   const blockedIds = new Set<string>();
   const code = await nextCode(tenantId, today);
-  const llm = await resolveLlm(tenantId, "direction");
-  let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0, llmBudget = 10;
+  // budget des appels de modèle de la revue (US-074) ; les cibles de la passerelle sont résolues une fois par agent
+  const budget = await openBudget(tenantId, now);
+  const llm = await resolveTargets(tenantId, "direction");
+  budget.targets.set("direction", llm);
+  let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
 
   // les dossiers différés redeviennent ouverts à leur échéance
@@ -168,9 +172,10 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       }
       let narrative = deterministicNarrative(o);
       const id = newId("opp");
-      if (llm && llmBudget-- > 0) {
-        const w = await writeNarrative(llm, o, p.name); narrative = w.narrative;
-        log("direction", "explainAction", `Synthèse du dossier « ${o.title} » ${w.error ? "rédigée en repli déterministe (" + w.error + ")" : "rédigée"}.`, { mode: narrative.mode, model: narrative.model, promptVersion: narrative.promptVersion, opportunityId: id, inputTokens: w.usage?.inputTokens, outputTokens: w.usage?.outputTokens, durationMs: w.usage?.durationMs ?? 0, error: w.error });
+      if (llm.length) {
+        const w = await writeNarrative(budget, o, p.name, id); narrative = w.narrative;
+        // trace enregistrée tout de suite : le budget du jour la voit, même si la revue échoue plus loin ou si une autre revue tourne en parallèle
+        await db.insert(agentRuns).values(w.outcome.run);
       }
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;
@@ -190,7 +195,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   if (runs.length) await db.insert(agentRuns).values(runs);
   steps.push(...runs.map((r) => ({ agent: r.agentId, label: r.operation, detail: r.summary, ok: !r.error })));
   const scope = opts.propertyIds ? props.map((p) => p.name).join(", ") : null;
-  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, resting, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm: !!llm } }).where(eq(reviewRuns.id, runId));
+  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, resting, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm: llm.length > 0 } }).where(eq(reviewRuns.id, runId));
   // les revues planifiées sont fréquentes (jusqu'à quatre par jour et par logement) : seules celles qui changent quelque chose entrent au journal
   if (!(trigger === "SCHEDULED" && opened === 0 && expired === 0)) {
     const how = trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : trigger === "EVENT" ? "après un changement de réservation" : "planifiée";
