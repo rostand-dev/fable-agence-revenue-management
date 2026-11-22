@@ -30,3 +30,17 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 **Limites connues** : PB-08, PB-09, PB-11 et PB-12 ne sont que décrits ; le seuil de PB-04 sera recalibré avec les premières données réelles.
 
 **Tests** : unitaires (`signals.test.ts`, 36 cas : un seuil franchi / un seuil juste en dessous par playbook, données manquantes, ordre), non-régression (`review-golden.test.ts`), E2E navigateur (`e2e/playbooks.spec.ts` : page Méthode et dossier, bureau, mobile 390 et 360 px, sans débordement horizontal).
+
+## US-061 — Déduplication, regroupement et période de repos
+
+**Ce qui change**
+- **Module pur `src/lib/engine/lifecycle.ts`** : `openingDecision` (créer, rafraîchir ou laisser fermé), `dedupeOpportunities`, `groupKeys`.
+- **Déduplication** : un même signal (logement, playbook, clé) ne produit qu'un dossier, d'une revue à l'autre (le dossier ouvert est rafraîchi) et au sein d'une revue (le plus prioritaire est gardé ; avant, deux signaux de même clé pouvaient créer deux dossiers).
+- **Période de repos par playbook** : après une décision humaine, le même signal ne rouvre pas de dossier pendant la durée `cooldownDays` du playbook (14 jours pour PB-01, voir la page Méthode), **comptée depuis la décision** (avant : 21 jours pour tous, comptés depuis l'ouverture du dossier). Un dossier différé reste fermé jusqu'à son échéance. Rouvrir un dossier à la main reste possible et remet la date de décision à zéro.
+- **Regroupement** : les dossiers ouverts d'un même logement dont les nuits se touchent ou se chevauchent partagent une clé ; le dossier affiche les « Dossiers liés ». Un dossier tranché affiche sa période de repos (« jusqu'au … »).
+- La revue journalise le nombre de dossiers « en période de repos ou différés ».
+- **Staging (Coolify)** : migration **0022** (colonnes `decided_at` et `group_key`, index `opps_group`, rattrapage de `decided_at` pour les dossiers déjà tranchés). Elle est idempotente (`IF NOT EXISTS`, `UPDATE` ciblé) et s'applique au démarrage comme les précédentes. Aucune variable d'environnement.
+
+**Limites connues** : le regroupement est affiché sur le dossier seulement (pas encore sur la liste d'accueil) ; les clés de groupe suivent la première nuit du groupe et peuvent donc changer quand les fenêtres glissent.
+
+**Tests** : unitaires (`lifecycle.test.ts`), base (`lifecycle.db.test.ts` : rejouer la revue sans doublon, repos puis réouverture, date remise à zéro ; test de migrations existant rejoué deux fois), non-régression (golden), E2E (`e2e/cycle-dossiers.spec.ts`, 3 viewports).

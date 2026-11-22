@@ -53,7 +53,7 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
   if (commentRequired(c) && comment.trim().length < 8) throw new DecisionError("Un commentaire est obligatoire pour cette option (risque élevé ou validation demandée par l'auditeur).");
   if (c.type === "NO_ACTION") {
     await db.transaction(async (tx) => {
-      await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decision: "NO_ACTION", selected: candidateIndex, deferUntil: c.reviewAt ?? null });
+      await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decidedAt: new Date(), decision: "NO_ACTION", selected: candidateIndex, deferUntil: c.reviewAt ?? null });
       await audit(tx, actor.tenantId, userActor(actor.id), "opportunity.no_action", "Opportunity", o.id, `${actor.name} retient l'inaction sur ${o.code}${comment ? " — " + comment.trim() : ""}.`, { code: o.code, candidateIndex, comment: comment.trim() || null, reviewAt: c.reviewAt ?? null });
     });
     return null;
@@ -68,7 +68,7 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
   }
   const id = newId("act");
   await db.transaction(async (tx) => {
-    await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decision: p?.status === "SHADOW" ? "APPROVED_SHADOW" : "APPROVED", selected: candidateIndex });
+    await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decidedAt: new Date(), decision: p?.status === "SHADOW" ? "APPROVED_SHADOW" : "APPROVED", selected: candidateIndex });
     await tx.insert(revenueActions).values({
       id, tenantId: actor.tenantId, propertyId: o.propertyId, opportunityId: o.id, type: c.type, label: c.label, target: c.target, parameters: c.parameters,
       simulation: { current: c.current, proposed: c.proposed, expectedDeltaCents: c.expectedDeltaCents, hypothesis: c.hypothesis, executionMode: c.executionMode, measurementWindowDays: c.measurementWindowDays },
@@ -91,7 +91,7 @@ export async function reject(actor: Actor, opportunityId: string, commentRaw: st
   const o = await getOpp(actor.tenantId, opportunityId);
   if (o.status !== "OPEN") throw new DecisionError("Ce dossier n'est plus ouvert.");
   await db.transaction(async (tx) => {
-    await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decision: "REJECTED" });
+    await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decidedAt: new Date(), decision: "REJECTED" });
     await audit(tx, actor.tenantId, userActor(actor.id), "opportunity.rejected", "Opportunity", o.id, `${actor.name} rejette la proposition du dossier ${o.code}${comment ? " — " + comment.trim() : ""}.`, { code: o.code, comment: comment.trim() || null });
   });
 }
@@ -111,7 +111,7 @@ export async function reopen(actor: Actor, opportunityId: string) {
   const acts = await db.select().from(revenueActions).where(eq(revenueActions.opportunityId, o.id));
   if (acts.some((a) => !["CANCELLED", "REJECTED"].includes(a.status))) throw new DecisionError("Une action existe déjà pour ce dossier : utilisez le retour arrière.");
   await db.transaction(async (tx) => {
-    await moveOpp(tx, actor.tenantId, o.id, ["DECIDED", "DEFERRED", "EXPIRED"], { status: "OPEN", decision: null, deferUntil: null });
+    await moveOpp(tx, actor.tenantId, o.id, ["DECIDED", "DEFERRED", "EXPIRED"], { status: "OPEN", decision: null, deferUntil: null, decidedAt: null });
     await audit(tx, actor.tenantId, userActor(actor.id), "opportunity.reopened", "Opportunity", o.id, `${actor.name} rouvre le dossier ${o.code}.`, { code: o.code, previousStatus: o.status, previousDecision: o.decision });
   });
 }
