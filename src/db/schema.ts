@@ -372,6 +372,17 @@ export const revenueActions = pgTable("revenue_actions", {
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("actions_status").on(t.tenantId, t.status)]);
 
+/** Historique des transitions d'état d'une action (US-065), écrit par un déclencheur de la base : aucune transition ne peut manquer. */
+export const actionTransitions = pgTable("action_transitions", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  actionId: text("action_id").notNull().references(() => revenueActions.id, { onDelete: "cascade" }),
+  /** null = création de l'action */
+  fromStatus: text("from_status"),
+  toStatus: text("to_status").notNull(),
+  createdAt: created(),
+}, (t) => [index("action_transitions_action").on(t.actionId, t.createdAt)]);
+
 export const agentRuns = pgTable("agent_runs", {
   id: id(),
   tenantId: text("tenant_id").notNull(),

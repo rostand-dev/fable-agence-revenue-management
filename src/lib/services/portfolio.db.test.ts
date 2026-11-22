@@ -126,9 +126,10 @@ describe("logements (US-020)", () => {
     const oid = newId("opp");
     await db.insert(schema.opportunities).values({ id: oid, tenantId: a.tenantId, propertyId: pid, code: "OPP-" + oid, playbook: "PB-01", reasonCode: "X", title: "t", stayFrom: "2026-12-01", stayTo: "2026-12-05", dedupeKey: "k" + oid, signals: {}, diagnosis: {}, candidates: [], expiresAt: "2026-12-31" });
     const aid = newId("act");
-    await db.insert(schema.revenueActions).values({ id: aid, tenantId: a.tenantId, propertyId: pid, opportunityId: oid, type: "MIN_STAY_OVERRIDE", label: "l", target: {}, parameters: {}, simulation: {}, audit: {}, status: "EXECUTED", riskLevel: "LOW", rollbackPlan: "r", idempotencyKey: "idem" + aid });
+    await db.insert(schema.revenueActions).values({ id: aid, tenantId: a.tenantId, propertyId: pid, opportunityId: oid, type: "MIN_STAY_OVERRIDE", label: "l", target: {}, parameters: {}, simulation: {}, audit: {}, status: "DRAFT", riskLevel: "LOW", rollbackPlan: "r", idempotencyKey: "idem" + aid });
+    for (const st of ["SIMULATED", "AUDITED", "PENDING_APPROVAL", "APPROVED", "EXECUTING", "EXECUTED"] as const) await db.update(schema.revenueActions).set({ status: st }).where(eq(schema.revenueActions.id, aid));
     expect(await code(deleteProperty(a.actor, pid, "Avec action"))).toMatch(/^CONFLICT: 1 action de revenu est en cours/);
-    await db.update(schema.revenueActions).set({ status: "REJECTED" }).where(eq(schema.revenueActions.id, aid));
+    await db.update(schema.revenueActions).set({ status: "ROLLED_BACK" }).where(eq(schema.revenueActions.id, aid));
     await deleteProperty(a.actor, pid, "Avec action");
   });
 });

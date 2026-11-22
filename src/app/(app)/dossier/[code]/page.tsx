@@ -73,6 +73,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const names = user.settings.agentNames ?? null;
   const cands = o.candidates as Candidate[];
   const action = acts.find((a) => !["CANCELLED"].includes(a.status)) ?? null;
+  const history = action ? await db.select().from(schema.actionTransitions).where(and(eq(schema.actionTransitions.tenantId, user.tenantId), eq(schema.actionTransitions.actionId, action.id))).orderBy(asc(schema.actionTransitions.createdAt), asc(schema.actionTransitions.id)) : [];
   const open = o.status === "OPEN";
   const q = Number((await searchParams).option);
   const idx = open && Number.isInteger(q) && cands[q] ? q : o.selected;
@@ -425,6 +426,22 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               </div>
             </details>
           )}
+        </section>
+      )}
+
+      {action && history.length > 0 && (
+        <section className="section" aria-labelledby="transitions-h" data-testid="transitions">
+          <h2 id="transitions-h">Historique des transitions</h2>
+          <p className="section-note">Chaque changement d'état de l'action est consigné par la base elle-même : un état ne peut pas être sauté ni rétabli.</p>
+          <ol className="transition-list" aria-label="Du plus ancien au plus récent">
+            {history.map((h) => (
+              <li key={h.id}>
+                <span className="tr-state">{STATE_LABEL[h.toStatus as ActionState] ?? h.toStatus}</span>
+                <span className="tr-from muted">{h.fromStatus ? `depuis ${STATE_LABEL[h.fromStatus as ActionState] ?? h.fromStatus}` : "création"}</span>
+                <time className="tr-at muted" dateTime={h.createdAt.toISOString()}>{fmtDateTime(h.createdAt)}</time>
+              </li>
+            ))}
+          </ol>
         </section>
       )}
 
