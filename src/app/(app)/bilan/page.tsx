@@ -28,6 +28,7 @@ export default async function Bilan({ searchParams }: { searchParams: Promise<{ 
   const month = opps.filter((o) => o.status === "DECIDED" && o.createdAt.toISOString().slice(0, 7) >= m1);
   const open = opps.filter((o) => o.status === "OPEN");
   const has = cur.nights > 0;
+  const netUnknown = cur.netStatus === "UNKNOWN", netTrendOk = !prev.netIncomplete && !cur.netIncomplete;
   const mix = Object.entries(cur.byChannel).sort((a, b) => b[1] - a[1]);
   return (
     <Page title="Bilan mensuel" sub={`${p.name} · ${fmtMonth(m1)}`} crumbs={[{ label: "Analyse" }, { label: "Bilan mensuel" }]}>
@@ -37,19 +38,20 @@ export default async function Bilan({ searchParams }: { searchParams: Promise<{ 
         <p>Dernier mois complet. Les faits marquants d'abord, la <Term id="tendance">tendance</Term> nommée ensuite ; le détail reste accessible dans la fiche du logement.</p>
         <p style={{ marginTop: 10 }}><Byline agent="reporting" names={names} what="a assemblé ce bilan à partir des métriques certifiées, sans modèle de langage" /></p>
       </div>
+      {has && cur.netIncomplete && <Banner role="attention" title="Revenu net partiel" style={{ marginBottom: 16 }}>La commission est inconnue sur certaines nuits vendues ce mois-ci : leur revenu net n'est pas compté, et les chiffres nets ci-dessous sont donc sous-évalués. Ils ne sont pas complétés par un zéro.</Banner>}
       {!has ? <Banner role="tech" title="Aucune réservation sur ce mois">Le bilan ne peut pas être établi : l'historique de ce logement est vide ou non connecté. Aucun chiffre n'est estimé à la place.</Banner> : (
         <>
           <div className="synth">
-            <Metric label={<Term id="revenu-net">Revenu net</Term>} value={euro(cur.netCents)} source={`Tendance ${trend(cur.netCents, prev.netCents)} · ${euro(prev.netCents)} le mois précédent`} />
+            <Metric label={<Term id="revenu-net">Revenu net</Term>} value={netUnknown ? <Vq>inconnu</Vq> : euro(cur.netCents)} source={netTrendOk ? `Tendance ${trend(cur.netCents, prev.netCents)} · ${euro(prev.netCents)} le mois précédent` : "Tendance inconnue : net partiel sur l'un des deux mois"} />
             <Metric label={<Term id="occupation">Occupation</Term>} value={pct(cur.occupancy)} source={`Tendance ${trend(cur.occupancy, prev.occupancy)} · ${pct(prev.occupancy)} le mois précédent`} />
-            <Metric label={<Term id="adr">Prix moyen net</Term>} value={euro(cur.netAdrCents)} source={`Tendance ${trend(cur.netAdrCents ?? 0, prev.netAdrCents ?? 0)} · par nuit occupée`} />
-            <Metric label={<Term id="revpar">Revenu net par nuit disponible</Term>} value={euro(cur.netRevpanCents)} source={`Tendance ${trend(cur.netRevpanCents, prev.netRevpanCents)}`} />
+            <Metric label={<Term id="adr">Prix moyen net</Term>} value={cur.netAdrCents === null ? <Vq>inconnu</Vq> : euro(cur.netAdrCents)} source={netTrendOk ? `Tendance ${trend(cur.netAdrCents ?? 0, prev.netAdrCents ?? 0)} · par nuit occupée` : "Par nuit occupée · tendance inconnue (net partiel)"} />
+            <Metric label={<Term id="revpar">Revenu net par nuit disponible</Term>} value={cur.netIncomplete ? <Vq>inconnu</Vq> : euro(cur.netRevpanCents)} source={netTrendOk ? `Tendance ${trend(cur.netRevpanCents, prev.netRevpanCents)}` : "Tendance inconnue : net partiel"} />
           </div>
           <section className="section">
             <h2>Faits marquants</h2>
             <div className="blocks" style={{ ["--cols" as any]: 3 }}>
-              <div className="block block-faits"><h3>Performance</h3><p className="muted" style={{ margin: "6px 0 0" }}>{cur.nights} nuits vendues sur {cur.available}. Le revenu net par nuit disponible est en tendance <strong>{trend(cur.netRevpanCents, prev.netRevpanCents)}</strong> par rapport à {fmtMonth(m0)}.</p></div>
-              <div className="block block-comparaisons"><h3><Term id="canal">Canaux</Term></h3><p className="muted" style={{ margin: "6px 0 0" }}>{mix.map(([c, v]) => `${CHANNEL_LABEL[c] ?? c} ${pct(v / cur.netCents)}`).join(" · ")} du revenu net.</p></div>
+              <div className="block block-faits"><h3>Performance</h3><p className="muted" style={{ margin: "6px 0 0" }}>{cur.nights} nuits vendues sur {cur.available}. {netTrendOk ? <>Le revenu net par nuit disponible est en tendance <strong>{trend(cur.netRevpanCents, prev.netRevpanCents)}</strong> par rapport à {fmtMonth(m0)}.</> : "La tendance du revenu net est inconnue : le net est partiel."}</p></div>
+              <div className="block block-comparaisons"><h3><Term id="canal">Canaux</Term></h3><p className="muted" style={{ margin: "6px 0 0" }}>{cur.netCents > 0 && mix.length ? `${mix.map(([c, v]) => `${CHANNEL_LABEL[c] ?? c} ${pct(v / cur.netCents)}`).join(" · ")} du revenu net${cur.netIncomplete ? " connu" : ""}.` : "Répartition inconnue."}</p></div>
               <div className="block block-interpretations"><h3>Décisions</h3><p className="muted" style={{ margin: "6px 0 0" }}>{month.length} décision{month.length > 1 ? "s" : ""} enregistrée{month.length > 1 ? "s" : ""} depuis le début du mois, dont {month.filter((o) => o.decision === "NO_ACTION").length} inaction{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""} retenue{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""}. <Term id="effet-incremental">Effet incrémental</Term> : <Vq>inconnu</Vq></p></div>
             </div>
           </section>

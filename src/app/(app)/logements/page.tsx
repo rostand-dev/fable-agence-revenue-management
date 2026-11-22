@@ -36,7 +36,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
       <div className="stack">
         {props.map((p) => {
           const k = monthlyKpis(resas.filter((r) => r.propertyId === p.id), months);
-          const nights = k.reduce((a, m) => a + m.nights, 0), avail = k.reduce((a, m) => a + m.available, 0), net = k.reduce((a, m) => a + m.netCents, 0);
+          const nights = k.reduce((a, m) => a + m.nights, 0), avail = k.reduce((a, m) => a + m.available, 0), net = k.reduce((a, m) => a + m.netCents, 0), netUnknown = k.every((m) => m.netStatus === "UNKNOWN" || m.netStatus === "NONE") && k.some((m) => m.netStatus === "UNKNOWN"), netPartial = !netUnknown && k.some((m) => m.netIncomplete);
           const has = resas.some((r) => r.propertyId === p.id);
           const miss = missingEconomics(p.economics as EconomicModel);
           const [label, fam, ico] = STATUS[p.status] ?? STATUS.ONBOARDING;
@@ -69,7 +69,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
                 <div className="idmeta"><span>{[p.kind, p.city].filter(Boolean).join(" · ") || "type et ville non renseignés"}</span><span>{p.capacity ? `${p.capacity} voyageurs` : "capacité inconnue"}</span><span>stratégie v{p.strategyVersion}</span></div>
                 <div className="row-wrap" style={{ marginTop: 12, gap: "8px 22px" }}>
                   <span className="amount"><span className="gauge-label">Occupation · {fmtMonthShort(months[0])} → {fmtMonthShort(months[2])}</span><span className="amount-value">{has ? pct(nights / avail) : <Vq>inconnue</Vq>}</span></span>
-                  <span className="amount"><span className="gauge-label">Revenu net · {fmtMonthShort(months[0])} → {fmtMonthShort(months[2])}</span><span className="amount-value">{has ? <Money cents={net} /> : <Vq>inconnu</Vq>}</span></span>
+                  <span className="amount"><span className="gauge-label">Revenu net · {fmtMonthShort(months[0])} → {fmtMonthShort(months[2])}</span><span className="amount-value">{has && !netUnknown ? <><Money cents={net} />{netPartial && <span className="muted"> · partiel</span>}</> : <Vq>inconnu</Vq>}</span></span>
                   <span className="amount"><span className="gauge-label">Situations ouvertes</span><span className="amount-value">{n}</span></span>
                 </div>
               </div>

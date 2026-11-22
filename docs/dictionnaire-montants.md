@@ -480,6 +480,7 @@ Gain ou perte attribué à une action après sa fenêtre d'observation. JAMAIS C
 |---|---|---|---|---|---|---|---|---|---|---|
 | Revenu brut d'hébergement (période) | `grossCents` | Calcul | calculé | exclu | **inconnu** | exclu | inclus | inclus | ≥ 0 | à confirmer |
 | ADR (prix moyen par nuit occupée) | `adrCents` | Calcul | calculé | exclu | **inconnu** | exclu | inclus | inclus | ≥ 0 | à confirmer |
+| RevPAN brut (revenu brut par nuit disponible) | `grossRevpanCents` | Calcul | calculé | exclu | **inconnu** | exclu | inclus | inclus | ≥ 0 | à confirmer |
 | Revenu net d'hébergement (période) | `netCents` | Calcul | calculé | exclu | **inconnu** | exclu | exclu | exclu | signé | à confirmer |
 | Net ADR et Net RevPAN | `netAdrCents`, `netRevpanCents` | Calcul | calculé | exclu | **inconnu** | exclu | exclu | exclu | signé | à confirmer |
 | Net par canal (période) | `MonthKpi.byChannel` | Calcul | calculé | exclu | **inconnu** | exclu | exclu | exclu | signé | à confirmer |
@@ -487,39 +488,54 @@ Gain ou perte attribué à une action après sa fenêtre d'observation. JAMAIS C
 
 ### Revenu brut d'hébergement (période)
 
-`kpi.gross` · MonthKpi.grossCents
+`kpi.gross` · MonthKpi.grossCents · Kpi.grossRoomCents (metrics/kpi.ts)
 
-Somme des hébergements bruts répartis par nuit sur le mois de séjour.
+Somme des hébergements bruts répartis par nuit (centimes entiers, somme exacte) sur la période de séjour.
 
 - Réserve : Hérite des réserves de `reservation.gross_room`, notamment le chemin de repli PriceLabs.
 
 ### ADR (prix moyen par nuit occupée)
 
-`kpi.adr` · MonthKpi.adrCents
+`kpi.adr` · MonthKpi.adrCents · Kpi.adrCents (metrics/kpi.ts)
 
-Brut ÷ nuits occupées du mois.
+Brut ÷ nuits vendues de la période.
 
 `null` = inconnu.
 
 - Réserve : null = aucune nuit occupée.
 
+### RevPAN brut (revenu brut par nuit disponible)
+
+`kpi.gross_revpan` · Kpi.grossRevpanCents (metrics/kpi.ts)
+
+Brut ÷ nuits disponibles (nuits de la période moins les nuits bloquées par le propriétaire).
+
+`null` = inconnu.
+
+- Réserve : null = aucune nuit disponible sur la période.
+
 ### Revenu net d'hébergement (période)
 
-`kpi.net` · MonthKpi.netCents
+`kpi.net` · MonthKpi.netCents · Kpi.netRoomCents (metrics/kpi.ts)
 
-Brut − commissions − frais de paiement, par nuit de séjour.
+Brut − commissions − frais de paiement, par nuit de séjour, sur les nuits dont la commission est connue.
 
 Signe : Négatif si les retenues dépassent le brut (brut plancher à 0).
 
-- Réserve : Partiel si une commission est inconnue (`netIncomplete`) : elle compte alors pour 0. Un frais de paiement inconnu compte aussi pour 0, sans signal.
+`null` = inconnu.
+
+- Réserve : Une commission inconnue n'est jamais comptée pour 0 (US-050) : la nuit sort du net, `netIncomplete` (mensuel) ou `netStatus` PARTIAL/UNKNOWN (KPI canonique) le signale. `Kpi.netRoomCents` vaut null si aucune commission n'est connue.
+- Réserve : Un frais de paiement absent compte pour 0, sans signal : seule la commission décide si le net est connu (Airbnb n'a pas de frais de paiement).
 
 ### Net ADR et Net RevPAN
 
-`kpi.net_adr` · MonthKpi.netAdrCents · netRevpanCents
+`kpi.net_adr` · MonthKpi.netAdrCents · netRevpanCents · Kpi.netAdrCents · netRevpanCents (metrics/kpi.ts)
 
-Net ADR = net ÷ nuits occupées (null sans nuit occupée) ; Net RevPAN = net ÷ nuits disponibles (0 sans nuit disponible).
+Net ADR = net ÷ nuits vendues dont la commission est connue (null sans nuit connue) ; Net RevPAN = net ÷ nuits disponibles.
 
 `null` = inconnu.
+
+- Réserve : `Kpi.netRevpanCents` est null tant que le net n'est pas connu pour TOUTES les nuits vendues (statut COMPLETE) : un Net RevPAN partiel serait sous-évalué. La vue mensuelle `MonthKpi.netRevpanCents` reste un nombre (net connu ÷ disponibles) et doit se lire avec `netIncomplete`.
 
 ### Net par canal (période)
 
@@ -575,7 +591,7 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 
 ## À confirmer
 
-44 montants sur 50 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
+45 montants sur 51 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
 
 - TVA : SuperHote ne dit pas si `total_price` est TTC. Lire `vat_rate` des lignes `price_details` sur des réservations réelles. — `reservation.gross_room`
 - TVA sur le ménage : lire `vat_rate` de la ligne `cleaning_fee` sur des réservations réelles. — `reservation.cleaning`
@@ -589,5 +605,5 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 - Selon le type de ligne, le montant est ou non TTC : à lire avec `vat_rate` sur des réservations réelles. — `superhote.fee_line`
 - Hérite de la TVA du prix publié en entrée de la cascade (voir `price.engine`). — `sim.net_room`
 - Fixer une inclusion par clé d'étape (`published`, `promo`, `gross`, `commission`, `fee`, `net`, `stay`, `variable`, `contribution`) si ce montant doit être consommé automatiquement. — `sim.waterfall_step`
-- Hérite de la TVA de `reservation.gross_room`. — `kpi.gross`, `kpi.adr`, `kpi.net`, `kpi.net_adr`, `kpi.net_by_channel`
+- Hérite de la TVA de `reservation.gross_room`. — `kpi.gross`, `kpi.adr`, `kpi.gross_revpan`, `kpi.net`, `kpi.net_adr`, `kpi.net_by_channel`
 - Confirmer que `total_cost` PriceLabs a la même composition que `total_price` SuperHote (taxe, ménage) sur des réservations réelles. — `check.compared_amount`

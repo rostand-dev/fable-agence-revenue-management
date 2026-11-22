@@ -1,4 +1,5 @@
-import { addDays, daysInMonth, diffDays, monthKey, type ISODate } from "../dates";
+import { addDays, diffDays, type ISODate } from "../dates";
+import { kpiByMonth, nightFactsFromResas, type NetStatus } from "../metrics/kpi";
 import type { Day, Resa } from "./types";
 
 export const WINDOWS: { key: string; label: string; from: number; to: number }[] = [
@@ -40,42 +41,32 @@ export function windowStats(days: Day[], today: ISODate): WindowStat[] {
 }
 
 export type MonthKpi = {
-  month: string; nights: number; available: number; blockedNights: number; occupancy: number; grossCents: number; netCents: number;
-  adrCents: number | null; netAdrCents: number | null; netRevpanCents: number; byChannel: Record<string, number>;
-  /** true si une commission est inconnue sur au moins une réservation : le net est alors partiel */
+  month: string; nights: number; available: number; blockedNights: number; occupancy: number; grossCents: number;
+  /** Net des seules nuits dont la commission est connue (US-050) : partiel si `netIncomplete`. */
+  netCents: number;
+  adrCents: number | null; netAdrCents: number | null;
+  /** Net connu ÷ nuits disponibles : sous-évalué si `netIncomplete` (le KPI canonique `computeKpi` renvoie alors null). */
+  netRevpanCents: number; byChannel: Record<string, number>;
+  /** true si une commission est inconnue sur au moins une nuit vendue : le net est alors partiel, jamais complété par un zéro */
   netIncomplete: boolean;
+  /** Statut du net (voir metrics/kpi.ts) : UNKNOWN = aucune commission connue, `netCents` vaut alors 0 par défaut de valeur et ne doit PAS être affiché comme un montant. */
+  netStatus: NetStatus;
 };
 
-/** KPI mensuels : chaque nuit est attribuée à son mois de séjour. Net = brut − commissions − frais de paiement. */
+/**
+ * KPI mensuels : chaque nuit est attribuée à son mois de séjour. Net = brut − commissions − frais de paiement.
+ * Vue historique de `metrics/kpi.ts` (US-050) : même arithmétique, formes inchangées pour les écrans existants.
+ * Changement de fond : une commission inconnue n'est plus comptée comme nulle (ce qui surévaluait le net) ; la nuit sort du net et le mois est signalé `netIncomplete`.
+ */
 export function monthlyKpis(resas: Resa[], months: string[]): MonthKpi[] {
-  const map = new Map<string, MonthKpi>();
-  for (const m of months) map.set(m, { month: m, nights: 0, blockedNights: 0, available: daysInMonth(m), occupancy: 0, grossCents: 0, netCents: 0, adrCents: null, netAdrCents: null, netRevpanCents: 0, byChannel: {}, netIncomplete: false });
-  for (const r of resas) {
-    if (r.status === "BLOCKED") { // blocage propriétaire : ni vendu, ni disponible à la vente
-      for (let d = r.checkIn; d < r.checkOut; d = addDays(d, 1)) { const k = map.get(monthKey(d)); if (k) k.blockedNights += 1; }
-      continue;
-    }
-    if (r.status !== "CONFIRMED" || r.nights <= 0) continue;
-    const perNightGross = r.grossRoomCents / r.nights;
-    const unknownFees = r.commissionCents === null;
-    const perNightNet = (r.grossRoomCents - (r.commissionCents ?? 0) - (r.paymentFeeCents ?? 0)) / r.nights;
-    for (let i = 0; i < r.nights; i++) {
-      const k = map.get(monthKey(addDays(r.checkIn, i)));
-      if (!k) continue;
-      k.nights += 1; k.grossCents += perNightGross; k.netCents += perNightNet;
-      k.byChannel[r.channel] = (k.byChannel[r.channel] ?? 0) + perNightNet;
-      if (unknownFees) k.netIncomplete = true;
-    }
-  }
-  for (const k of map.values()) {
-    k.grossCents = Math.round(k.grossCents); k.netCents = Math.round(k.netCents);
-    k.available = Math.max(k.nights, k.available - k.blockedNights);
-    k.occupancy = k.available ? k.nights / k.available : 0;
-    k.adrCents = k.nights ? Math.round(k.grossCents / k.nights) : null;
-    k.netAdrCents = k.nights ? Math.round(k.netCents / k.nights) : null;
-    k.netRevpanCents = k.available ? Math.round(k.netCents / k.available) : 0;
-  }
-  return months.map((m) => map.get(m)!);
+  const { sold, blocked } = nightFactsFromResas(resas);
+  return kpiByMonth(months, sold, blocked).map((k, i) => ({
+    month: months[i], nights: k.soldNights, available: k.availableNights, blockedNights: k.blockedNights, occupancy: k.occupancy ?? 0,
+    grossCents: k.grossRoomCents, netCents: k.netRoomCents ?? 0, adrCents: k.adrCents, netAdrCents: k.netAdrCents,
+    netRevpanCents: k.availableNights > 0 ? Math.round((k.netRoomCents ?? 0) / k.availableNights) : 0,
+    byChannel: Object.fromEntries(k.byChannel.filter((c) => c.netRoomCents !== null).map((c) => [c.channel, c.netRoomCents as number])),
+    netIncomplete: k.netStatus === "PARTIAL" || k.netStatus === "UNKNOWN", netStatus: k.netStatus,
+  }));
 }
 
 export function lastMonths(today: ISODate, n: number, includeCurrent = false): string[] {

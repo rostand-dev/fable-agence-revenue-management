@@ -144,6 +144,20 @@ describe("métriques", () => {
     expect(k[0].nights).toBe(2); expect(k[1].nights).toBe(1); expect(k[0].netIncomplete).toBe(true);
   });
 });
+describe("métriques : net inconnu (US-050)", () => {
+  const r = (commissionCents: number | null, ci: string, co: string, g = 10000, channel = "AIRBNB") => ({ channel, checkIn: ci, checkOut: co, nights: 0, grossRoomCents: g, commissionCents, paymentFeeCents: null, bookedAt: ci, status: "CONFIRMED" });
+  it("mois sans aucune commission connue : statut UNKNOWN, signalé, jamais présenté comme un net réel", () => {
+    const [k] = monthlyKpis([r(null, "2026-04-01", "2026-04-03")], ["2026-04"]);
+    expect(k).toMatchObject({ netStatus: "UNKNOWN", netIncomplete: true, nights: 2, grossCents: 10000, netAdrCents: null });
+  });
+  it("mois partiel : seules les nuits à commission connue comptent ; une commission de 0 est connue, pas inconnue", () => {
+    const [k] = monthlyKpis([r(0, "2026-04-01", "2026-04-02"), r(null, "2026-04-05", "2026-04-06", 8000, "BOOKING")], ["2026-04"]);
+    expect(k).toMatchObject({ netStatus: "PARTIAL", netIncomplete: true, netCents: 10000 });
+    expect(k.byChannel).toEqual({ AIRBNB: 10000 }); // le canal au net inconnu n'est pas inventé
+    const [z] = monthlyKpis([r(0, "2026-04-01", "2026-04-02")], ["2026-04"]);
+    expect(z).toMatchObject({ netStatus: "COMPLETE", netIncomplete: false, netCents: 10000 });
+  });
+});
 void auditCandidate;
 
 import { answersFromModel, fixedMonthly, modelFromAnswers, parseNum, variablePerNight } from "./costs";
