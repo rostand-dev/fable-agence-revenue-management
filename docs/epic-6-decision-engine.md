@@ -85,3 +85,15 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 **Limites connues** : la limite de variation par période de sept jours et les permissions par rôle (RBAC, épic 8) ne sont pas encore des règles ; la fraîcheur des sources autres que le registre de promotions est contrôlée à la collecte (épic 4), pas ici.
 
 **Tests** : unitaires (`policy.test.ts` : verdicts, registre, chaque veto nommé, bornes de variation, règle MIN_PRICE_DOWN, cohérence sur 12 scénarios de revue), non-régression (golden), E2E (`e2e/playbooks.spec.ts`, 3 viewports).
+
+## US-065 — Machine à états `RevenueAction`
+
+**Ce qui change**
+- **Le cycle de vie est verrouillé par la base elle-même.** La migration `0023_us_065_action_transitions.sql` ajoute un déclencheur `ns_action_check_transition` : une action ne naît qu'à l'état `DRAFT`, et tout changement d'état doit suivre le graphe de `src/lib/engine/stateMachine.ts` (pas de saut, pas de retour, états terminaux sans sortie). Une écriture qui ne change pas l'état reste neutre.
+- **Historique des transitions** : la table `action_transitions` (isolée par locataire, lecture et ajout seuls pour le rôle applicatif) reçoit une ligne à chaque changement d'état, écrite par un second déclencheur, donc impossible à oublier. Les actions déjà existantes reçoivent une ligne de départ (rattrapage rejouable).
+- **Dossier** : section « Historique des transitions » (lisible sur mobile) sous le suivi d'application.
+- **Helpers** `nextStates`, `isTerminal`, `TERMINAL_STATES`, `allTransitions` ; un test compare la base au graphe applicatif sur toutes les paires d'états.
+- **Démo** : l'historique de démonstration rejoue la chaîne complète jusqu'à `CLOSED` au lieu d'insérer directement un état avancé.
+- **Staging (Coolify)** : la migration 0023 est idempotente et s'applique au démarrage ; aucune variable d'environnement nouvelle.
+
+**Limites connues** : le motif d'une transition n'est pas stocké dans l'historique (il reste au journal d'audit) ; les statuts hors graphe ne sont plus insérables, y compris pour d'éventuels scripts externes.

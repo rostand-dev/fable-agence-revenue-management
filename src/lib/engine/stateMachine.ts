@@ -33,3 +33,11 @@ export function cycleProgress(status: ActionState | null): number {
   const map: Partial<Record<ActionState, number>> = { PENDING_APPROVAL: 4, APPROVED: 5, EXECUTING: 5, EXECUTED: 6, VERIFIED: 7, MEASURING: 7, CLOSED: 8 };
   return map[status] ?? 4;
 }
+
+/** États d'où l'on ne peut plus sortir. */
+export const TERMINAL_STATES: ActionState[] = ACTION_STATES.filter((s) => T[s].length === 0);
+/** Transitions permises depuis un état (copie : le graphe ne se modifie pas de l'extérieur). */
+export function nextStates(from: ActionState): ActionState[] { return [...(T[from] ?? [])]; }
+export const isTerminal = (s: ActionState) => TERMINAL_STATES.includes(s);
+/** Le graphe complet, pour le contrôle de parité avec le déclencheur de la base (migration 0023) et pour la documentation. */
+export function allTransitions(): [ActionState, ActionState][] { return ACTION_STATES.flatMap((f) => T[f].map((t) => [f, t] as [ActionState, ActionState])); }

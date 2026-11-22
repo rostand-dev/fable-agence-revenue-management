@@ -78,12 +78,14 @@ export async function seedDemo(tenantId: string): Promise<void> {
     await db.insert(s.revenueActions).values({
       id: actId, tenantId, propertyId: ids[h.key], opportunityId: oppId, type: c.type, label: c.label, target: c.target, parameters: c.parameters,
       simulation: { current: c.current, proposed: c.proposed, expectedDeltaCents: c.expectedDeltaCents, hypothesis: c.hypothesis, executionMode: c.executionMode, measurementWindowDays: c.measurementWindowDays },
-      audit: c.audit, status: "CLOSED", riskLevel: c.risk, rollbackPlan: c.rollbackPlan, idempotencyKey: `${oppId}:${ci}`, approvalComment: h.comment ?? null, approvedAt, executedAt, verifiedAt: executedAt,
+      audit: c.audit, status: "DRAFT", riskLevel: c.risk, rollbackPlan: c.rollbackPlan, idempotencyKey: `${oppId}:${ci}`, approvalComment: h.comment ?? null, approvedAt, executedAt, verifiedAt: executedAt,
       execution: { mode: c.executionMode === "MANUAL_RUNBOOK" ? "MANUAL_DECLARED" : "DEMO_SIMULATED", note: "Historique de démonstration.", declaredScope: c.executionMode === "MANUAL_RUNBOOK" ? "Promotion retirée sur les dates du dossier" : undefined, declaredDate: executedAt.toISOString().slice(0, 10), verification: { mode: "READ_BACK", note: "État relu conforme à l'action approuvée." } },
       measureDueAt: measuredAt.toISOString().slice(0, 10),
       measurement: { outcome: h.outcome, observed: h.observed, interpretation: h.interpretation, incrementalCents: null, confidence: "faible", measuredAt: measuredAt.toISOString() },
       createdAt: created, updatedAt: measuredAt,
     });
+    // la machine à états de la base interdit de naître ailleurs qu'à DRAFT : l'historique de démonstration rejoue la chaîne complète
+    for (const st of ["SIMULATED", "AUDITED", "PENDING_APPROVAL", "APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING", "CLOSED"] as const) await db.update(s.revenueActions).set({ status: st }).where(eq(s.revenueActions.id, actId));
     await recordAudit(db, { tenantId, actor: "demo", type: "action.approved", entity: "RevenueAction", entityId: actId, summary: `« ${c.label} » approuvée (historique de démonstration).`, at: approvedAt });
     await recordAudit(db, { tenantId, actor: "demo", type: "action.executed", entity: "RevenueAction", entityId: actId, summary: `« ${c.label} » exécutée puis vérifiée (historique de démonstration).`, at: executedAt });
     await recordAudit(db, { tenantId, actor: "agent:reporting", type: "experiment.measured", entity: "RevenueAction", entityId: actId, summary: `Mesure de « ${c.label} » : ${h.outcome === "POSITIVE" ? "positif (corrélation)" : h.outcome === "NEUTRAL" ? "neutre" : "non concluant"}.`, at: measuredAt });
