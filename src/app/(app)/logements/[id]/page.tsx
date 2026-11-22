@@ -20,7 +20,8 @@ import { agentName } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { addDays, diffDays, fmtDate, fmtDateTime, fmtDay, fmtMonth, fmtMonthShort, todayISO } from "@/lib/dates";
 import { promosOn } from "@/lib/engine/detect";
-import { floorGrid, missingEconomics, simulateStack } from "@/lib/engine/economics";
+import { missingEconomics, simulateStack } from "@/lib/engine/economics";
+import { seasonalFloorGrid } from "@/lib/engine/seasons";
 import { channelShare, lastMonths, leadTimes, medianLos, monthlyKpis, windowStats } from "@/lib/engine/metrics";
 import { getPace } from "@/lib/services/pace";
 import { PACE_REASON_LABEL, PACE_STATUS_LABEL } from "@/lib/metrics/pace";
@@ -249,7 +250,8 @@ export default async function Logement({ params, searchParams }: { params: Promi
               <p className="section-note" style={{ margin: 0 }}>Prix vendu minimal par nuit, après remises. Sous le plancher absolu, l'auditeur oppose son veto ; entre les deux, il demande une validation commentée.</p>
               <div className="table-wrap"><table className="econ">
                 <thead><tr><th scope="col">Canal</th><th scope="col" className="num"><Term id="los">Durée</Term></th><th scope="col" className="num"><Term id="plancher-absolu">Plancher absolu</Term></th><th scope="col" className="num"><Term id="plancher-strategique">Plancher stratégique</Term></th></tr></thead>
-                <tbody>{floorGrid(model).map((f) => <tr key={f.channel + f.nights}><th scope="row">{CHANNEL_LABEL[f.channel]}</th><td className="num">{f.nights} nuits</td><td className="num">{euro(f.hardCents)}</td><td className="num">{euro(f.strategyCents)}</td></tr>)}</tbody></table></div>
+                <tbody>{seasonalFloorGrid(model).map((f) => <tr key={f.channel + f.nights}><th scope="row">{CHANNEL_LABEL[f.channel]}</th><td className="num">{f.nights} nuits</td><td className="num">{euro(f.hardCents)}</td><td className="num">{euro(f.strategyCents)}{f.seasons.map((x) => <span key={x.seasonId} className="muted" style={{ display: "block", fontSize: 13 }} data-testid="floor-season">{x.label} : {euro(x.strategyCents)}</span>)}</td></tr>)}</tbody></table></div>
+              {!p.isDemo && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/saisons`} data-testid="seasons-link"><Icon name="calendar" />{(model.seasons?.length ?? 0) ? `Saisons du plancher (${model.seasons!.length})` : "Ajouter des saisons au plancher"}</Link></p>}
               {strat.basePriceCents && model.channels.BOOKING && (
                 <div className="cascade-wrap"><header><h3>Ce que laisse une nuit au prix de base · Booking.com · séjour de {los ?? 2} nuits</h3><p>Calcul déterministe du simulateur, remises du canal actives aujourd'hui comprises.</p></header>
                   <Cascade current={null} proposed={simulateStack({ model, channel: "BOOKING", nights: los ?? 2, publishedNightlyCents: strat.basePriceCents, promos: promosOn(input.promos, "BOOKING", today) })} /></div>

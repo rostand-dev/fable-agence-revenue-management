@@ -44,3 +44,18 @@ Blueprint §3 (principes 5 et 7), §7.2–7.3 (signaux, fenêtres), §8.2 (formu
 **Limites connues** : les blocages du calendrier lu n'existent qu'à partir d'aujourd'hui, la disponibilité de l'an dernier peut donc être surévaluée ; une réservation annulée n'a plus de nuits, donc le « même jour l'an dernier » est sous-évalué des annulations tardives ; les annulations ne sont connues que depuis la mise en route de l'ingestion SuperHote ; sur un logement dont l'historique a moins d'un an, le pacing reste inconnu (pickup disponible).
 
 **Tests** : unitaires (`pace.test.ts` : bornes du pickup, annulations, avance/cible/retard, réservation faite après la date de comparaison, historique court, blocages, fenêtres jointives), base (`pace.db.test.ts` : pickup par fenêtre, pacing, annulations avec réactivation, isolation locataire), E2E (API et tableau, bureau, mobile 390 et 360 px).
+
+## US-052 — Plancher économique par canal × durée × saison
+
+**Ce qui change**
+- **Saisons facultatives dans le modèle économique** (`economics.seasons`, JSON : aucune migration). Une saison = nom, dates `MM-JJ` récurrentes chaque année (bornes incluses, une saison peut courir de fin d'année à début d'année), et une couverture des charges fixes par nuit. Au plus 8 saisons, sans chevauchement (29 février compris), jamais sous le seuil de dérangement du logement. Hors saison, la valeur de base s'applique.
+- **Plancher absolu constant, plancher stratégique saisonnier** : le seuil de dérangement ne varie jamais ; seule la couverture des charges fixes change par saison. Module pur `src/lib/engine/seasons.ts` : `parseSeasons`, `seasonOn`, `strategyContributionOn`, `strategyFloorOn(modèle, canal, nuits, date)`, `seasonalFloorGrid` (grille canal × 2/7/28 nuits, avec le plancher stratégique de chaque saison). Modèle incomplet : erreur explicite, jamais un plancher inventé.
+- **Empreinte des planchers** (validation humaine, US-024) : sans saison, elle est identique à celle d'avant (les validations existantes restent valables). Avec des saisons, la grille saisonnière entre dans l'empreinte : ajouter, modifier ou retirer une saison rend la validation « à valider de nouveau ».
+- **Saisie** : page `/logements/{id}/saisons` (formulaire responsive, virgule décimale acceptée) et **API** `PUT /api/v1/properties/{id}/economics/seasons` (`{ "seasons": [...] }`, liste vide = aucune saison, contrôle d'origine, session obligatoire). Chaque changement crée une **version du modèle économique** (US-022, détail par saison) et une entrée d'audit. Logement de démonstration : refusé.
+- **Lecture** : `GET /api/v1/properties/{id}/economics/floors` (saisons, grille avec plancher stratégique par saison, `complete` et `missing` si le modèle est incomplet). L'onglet économie du logement et la page de validations affichent le plancher de chaque saison sous la grille.
+- Le parcours « Coûts et seuils » **conserve** les saisons ; il refuse un nouveau seuil de dérangement qui passerait au-dessus d'une saison (message clair, rien n'est écrit).
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Limites connues** : une saison s'exprime en dates récurrentes (pas d'année) ; le plancher saisonnier est calculé et affiché, il est consommé par le simulateur dès l'US-053 (l'auditeur actuel continue d'utiliser la grille de base tant que cette US n'est pas livrée).
+
+**Tests** : unitaires (`seasons.test.ts` : dates, chevauchements dont nouvel an et 29 février, bornes, plancher calculé à la main, empreinte inchangée sans saison, versions), base (`seasons.db.test.ts` : version et audit, validation périmée puis rétablie, refus, cloisonnement, parcours des coûts), E2E (`e2e/seasons.spec.ts` : saisie, API, 401/403/400/404, bureau, mobile 390 et 360 px).

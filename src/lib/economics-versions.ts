@@ -24,6 +24,10 @@ export function diffEconomics(prev: EconomicModel | null | undefined, next: Econ
     push(`channels.${c}.paymentFeePct`, `Frais de paiement ${CHANNEL_LABEL[c]}`, fmtPct(a?.paymentFeePct), fmtPct(b?.paymentFeePct));
   }
   for (const [k, label] of MONEY) push(k, label, fmtEuro(prev?.[k] as number | null | undefined), fmtEuro(next[k] as number | null | undefined));
+  // saisons (US-052) : une ligne par saison ajoutée, retirée ou modifiée
+  const ps = new Map((prev?.seasons ?? []).map((x) => [x.id, x])), ns = new Map((next.seasons ?? []).map((x) => [x.id, x]));
+  const seasonText = (x?: { label: string; from: string; to: string; strategyContributionPerNightCents: number }) => (x ? `« ${x.label} » ${x.from} → ${x.to} : ${fmtEuro(x.strategyContributionPerNightCents)} par nuit` : null);
+  for (const id of new Set([...ps.keys(), ...ns.keys()])) push(`seasons.${id}`, `Saison « ${(ns.get(id) ?? ps.get(id))!.label} »`, seasonText(ps.get(id)), seasonText(ns.get(id)));
   push("touristTaxPct", "Taxe de séjour dans les montants", fmtPct(prev?.touristTaxPct), fmtPct(next.touristTaxPct));
   // l'origine ne se compare que si on la connaissait : jamais d'« avant » inventé
   if (prev?.origin && prev.origin !== next.origin) push("origin", "Origine des valeurs", prev.origin === "DEMO" ? "démonstration" : "déclarées", next.origin === "DEMO" ? "démonstration" : "déclarées");

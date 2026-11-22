@@ -6,6 +6,12 @@ export const CHANNEL_LABEL: Record<string, string> = { AIRBNB: "Airbnb", BOOKING
 
 export type ChannelEconomics = { commissionPct: number; paymentFeePct: number };
 
+/**
+ * Saison du modèle économique (US-052) : période récurrente chaque année (dates MM-JJ, bornes incluses, `to` avant `from` = à cheval sur le nouvel an)
+ * pendant laquelle la couverture des charges fixes par nuit diffère de la valeur de base. Le seuil de dérangement ne varie jamais.
+ */
+export type Season = { id: string; label: string; from: string; to: string; strategyContributionPerNightCents: number };
+
 /** Modèle économique d'un logement. Toute valeur absente est `null` (inconnue), jamais zéro. */
 export type EconomicModel = {
   channels: Partial<Record<Channel, ChannelEconomics>>;
@@ -23,6 +29,8 @@ export type EconomicModel = {
   origin: "DEMO" | "DECLARED";
   /** Part de taxe de séjour dans le montant total des réservations transmis par le PMS, en %. null = inconnue. */
   touristTaxPct?: number | null;
+  /** Saisons (US-052), facultatives : absentes, le plancher stratégique est le même toute l'année. */
+  seasons?: Season[];
   /** Libellés des valeurs données comme estimations provisoires, à confirmer */
   provisional?: string[];
   /** Réponses brutes du parcours « Coûts et seuils », pour pouvoir le reprendre */
