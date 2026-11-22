@@ -152,7 +152,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
           <section className="section">
             <h2>Situations ouvertes</h2>
             {opps.length === 0 ? <p className="muted">Aucune situation ouverte sur ce logement.</p> : (
-              <ul className="timeline">{opps.sort((a, b) => b.priority - a.priority).map((o) => (
+              <ul className="timeline">{opps.sort((a, b) => Number(b.veto) - Number(a.veto) || b.priority - a.priority).map((o) => (
                 <li key={o.id}><span className={`tl-dot ${o.veto ? "is-veto" : "is-tech"}`}><Icon name={o.veto ? "ban" : "dot"} /></span><div><span className="tl-when">{o.code} · {fmtDay(o.stayFrom)} → {fmtDay(o.stayTo)}</span><p className="tl-what"><Link href={`/dossier/${o.code}`}>{o.title}</Link></p><p className="tl-who">{o.candidates[o.selected]?.label}</p></div></li>
               ))}</ul>
             )}

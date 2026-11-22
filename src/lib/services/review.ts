@@ -2,7 +2,8 @@ import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
 import { addDays, todayISO, type ISODate } from "../dates";
-import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
+import { reviewProperty, type EngineInput } from "../engine/detect";
+import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
 import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveLlm } from "../agents/llm-config";
@@ -14,7 +15,7 @@ import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
 
-const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, integrations, reviewRuns } = schema;
+const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, integrations, reviewRuns, tenants } = schema;
 const ACTIVE_ACTION = ["APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING"];
 
 /**
@@ -67,12 +68,13 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   };
 }
 
-export function oppRow(o: DetectedOpportunity) {
+export function oppRow(o: DetectedOpportunity, scoring: ScoringConfig = DEFAULT_SCORING) {
   const c = o.candidates[o.selected];
+  const score = scoreOpportunity(o, scoring);
   return {
     playbook: o.playbook, reasonCode: o.reasonCode, title: o.title, stayFrom: o.stayFrom, stayTo: o.stayTo,
-    signals: { ...o.signals, signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null },
-    diagnosis: o.diagnosis, candidates: o.candidates, selected: o.selected, priority: priorityScore(o), confidence: o.diagnosis.confidence,
+    signals: { ...o.signals, signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
+    diagnosis: o.diagnosis, candidates: o.candidates, selected: o.selected, priority: score.score, confidence: o.diagnosis.confidence,
     risk: c.risk, impactCents: c.type === "NO_ACTION" ? 0 : c.expectedDeltaCents, veto: o.veto, expiresAt: o.expiresAt,
   };
 }
@@ -108,6 +110,9 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const log = (agentId: string, operation: string, summary: string, extra: Partial<typeof agentRuns.$inferInsert> = {}) =>
     runs.push({ id: newId("run"), tenantId, agentId, operation, mode: "DETERMINISTIC", summary, createdAt: new Date(), ...extra });
 
+  // priorités réglables par espace (Réglages) ; une valeur absente ou hors bornes retombe sur le réglage par défaut
+  const [tenantRow] = await db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId));
+  const scoring = resolveScoring(tenantRow?.settings?.scoring);
   const all = await db.select().from(properties).where(eq(properties.tenantId, tenantId));
   const props = opts.propertyIds ? all.filter((p) => opts.propertyIds!.includes(p.id)) : all;
   const blockedIds = new Set<string>();
@@ -142,7 +147,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
     const existing = await db.select().from(opportunities).where(and(eq(opportunities.propertyId, p.id), inArray(opportunities.status, ["OPEN", "DEFERRED", "DECIDED"])));
     const seen = new Set<string>();
     // un même signal ne produit qu'un dossier par revue (le plus prioritaire), puis les dossiers qui se touchent sont regroupés
-    const found = dedupeOpportunities(res.opportunities, priorityScore);
+    const found = dedupeOpportunities(res.opportunities, (x) => scoreOpportunity(x, scoring).score);
     // la clé suit les dossiers détectés (y compris ceux laissés au repos) : elle peut changer d'une revue à l'autre, seuls les dossiers ouverts sont listés ensemble
     const groups = groupKeys(found, p.id);
     for (const [idx, o] of found.entries()) {
@@ -154,7 +159,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       }
       const decision = openingDecision(prev, o.playbook, now);
       if (decision.action === "SKIP") { resting++; continue; } // période de repos du playbook, ou dossier différé
-      const row = { ...oppRow(o), groupKey: groups[idx] };
+      const row = { ...oppRow(o, scoring), groupKey: groups[idx] };
       if (decision.action === "REFRESH" && prev) {
         const sameChoice = prev.candidates?.[prev.selected]?.label === o.candidates[o.selected].label;
         await db.update(opportunities).set({ ...row, narrative: sameChoice && prev.narrative ? prev.narrative : deterministicNarrative(o) }).where(eq(opportunities.id, prev.id));

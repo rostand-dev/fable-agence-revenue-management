@@ -12,7 +12,7 @@ export const listProperties = cache(async (tenantId: string) => db.select().from
 export const lastReview = cache(async (tenantId: string) => (await db.select().from(reviewRuns).where(eq(reviewRuns.tenantId, tenantId)).orderBy(desc(reviewRuns.startedAt)).limit(1))[0] ?? null);
 
 export async function listOpportunities(tenantId: string, statuses: string[]) {
-  const rows = await db.select().from(opportunities).where(and(eq(opportunities.tenantId, tenantId), inArray(opportunities.status, statuses))).orderBy(desc(opportunities.priority), desc(opportunities.createdAt)).limit(200);
+  const rows = await db.select().from(opportunities).where(and(eq(opportunities.tenantId, tenantId), inArray(opportunities.status, statuses))).orderBy(desc(opportunities.veto), desc(opportunities.priority), desc(opportunities.createdAt)).limit(200);
   const acts = rows.length ? await db.select().from(revenueActions).where(inArray(revenueActions.opportunityId, rows.map((r) => r.id))) : [];
   const byOpp = new Map(acts.map((a) => [a.opportunityId, a]));
   return rows.map((o) => ({ ...o, action: byOpp.get(o.id) ?? null }));

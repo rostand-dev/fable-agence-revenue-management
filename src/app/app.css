@@ -325,3 +325,7 @@ a.fn-st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .linked-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .linked-list li { overflow-wrap: anywhere; }
 .linked-list li { padding-block: 10px; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+.btn-row .btn { min-height: 44px; }
+h3.sub { font-size: 14px; margin: 18px 0 8px; }
+.score-table { margin-top: 10px; }

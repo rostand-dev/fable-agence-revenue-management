@@ -57,6 +57,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   // actions/settings.ts
   updatePropertyAction: { events: ["property.updated", "property.draft_saved"] },
   renameAgentsAction: { events: ["settings.agents_renamed"] },
+  saveScoringAction: { events: ["settings.scoring_updated"] },
   setFlagAction: { events: ["flag.changed"] },
   killSwitchAction: { events: ["integration.kill_switch_on", "integration.kill_switch_off"] },
   // actions/portfolio.ts (US-020)

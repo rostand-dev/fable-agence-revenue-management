@@ -3,7 +3,9 @@ import { logoutEverywhereAction } from "@/app/actions/auth";
 import { resetDemoAction } from "@/app/actions/decisions";
 import { saveAgentModelsAction } from "@/app/actions/llm";
 import { renameTenantAction } from "@/app/actions/portfolio";
-import { renameAgentsAction } from "@/app/actions/settings";
+import { renameAgentsAction, saveScoringAction } from "@/app/actions/settings";
+import { IMPLEMENTED_PLAYBOOKS, PLAYBOOKS } from "@/lib/engine/playbooks";
+import { EXECUTION_MODES, MODE_LABEL, RISK_LABEL, RISKS, resolveScoring, SCORING_LIMITS } from "@/lib/engine/scoring";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
 import { FlagsPanel } from "@/components/FlagsPanel";
 import { loadFlags } from "@/lib/services/flags";
@@ -26,6 +28,7 @@ export default async function Reglages() {
   const names: Record<string, string> = user.settings.agentNames ?? {};
   const models: Record<string, string> = user.settings.agentModels ?? {};
   const llm = await getLlmStatus(user.tenantId);
+  const scoring = resolveScoring(user.settings.scoring);
   const [flagRows, props] = await Promise.all([loadFlags(user.tenantId), db.select({ id: schema.properties.id, name: schema.properties.name }).from(schema.properties).where(eq(schema.properties.tenantId, user.tenantId)).orderBy(schema.properties.name)]);
   return (
     <Page title="Réglages" sub="Compte, équipe et démonstration" crumbs={[{ label: "Configuration" }, { label: "Réglages" }]}>
@@ -51,6 +54,44 @@ export default async function Reglages() {
         <h2>Sécurité</h2>
         <p className="section-note">Si vous avez coché « Rester connecté » sur un appareil, il reste reconnu jusqu'à {rememberDaysFromEnv()} jours. « Se déconnecter partout » ferme toutes vos sessions et fait oublier tous vos appareils, celui-ci compris.</p>
         <ActionForm action={logoutEverywhereAction}><Submit className="btn btn-danger" icon="cross" pendingLabel="Déconnexion…">Se déconnecter partout</Submit></ActionForm>
+      </section>
+      <section className="section" id="priorisation" data-testid="priorisation">
+        <h2>Priorisation des dossiers</h2>
+        <p className="section-note">Les dossiers sont classés par : gain net attendu × confiance × urgence × poids du playbook − coût d'exécution − pénalité de risque. Ce classement organise le travail ; il ne contourne jamais un veto ni une approbation, et les dossiers sous veto restent en tête.</p>
+        <p className="section-note">Laissez les valeurs par défaut tant que vous n'avez pas de raison de les changer (poids : 1 = neutre). Saisissez les décimales avec un point.</p>
+        <ActionForm action={saveScoringAction}>
+          <h3 className="sub">Poids par playbook</h3>
+          <div className="form-grid">
+            {IMPLEMENTED_PLAYBOOKS.map((c) => (
+              <div className="field" key={c}>
+                <label htmlFor={"w-" + c}>{c} · {PLAYBOOKS[c].label}</label>
+                <input id={"w-" + c} name={"w-" + c} type="number" inputMode="decimal" step="0.1" min={SCORING_LIMITS.weight.min} max={SCORING_LIMITS.weight.max} defaultValue={scoring.strategicWeight[c]} />
+              </div>
+            ))}
+          </div>
+          <h3 className="sub">Pénalité selon le risque (points)</h3>
+          <div className="form-grid">
+            {RISKS.map((r) => (
+              <div className="field" key={r}>
+                <label htmlFor={"r-" + r}>Risque {RISK_LABEL[r]}</label>
+                <input id={"r-" + r} name={"r-" + r} type="number" inputMode="decimal" step="1" min={SCORING_LIMITS.penalty.min} max={SCORING_LIMITS.penalty.max} defaultValue={scoring.riskPenalty[r]} />
+              </div>
+            ))}
+          </div>
+          <h3 className="sub">Coût d'exécution (euros)</h3>
+          <div className="form-grid">
+            {EXECUTION_MODES.filter((m) => m !== "NONE").map((m) => (
+              <div className="field" key={m}>
+                <label htmlFor={"c-" + m}>{MODE_LABEL[m][0].toUpperCase() + MODE_LABEL[m].slice(1)}</label>
+                <input id={"c-" + m} name={"c-" + m} type="number" inputMode="decimal" step="1" min={SCORING_LIMITS.cost.min} max={SCORING_LIMITS.cost.max} defaultValue={scoring.executionCost[m]} />
+              </div>
+            ))}
+          </div>
+          <div className="btn-row" style={{ marginTop: 16 }}>
+            <Submit icon="check" pendingLabel="Enregistrement…">Enregistrer la priorisation</Submit>
+            <button type="submit" name="reset" value="1" className="btn" formNoValidate>Rétablir les valeurs par défaut</button>
+          </div>
+        </ActionForm>
       </section>
       <section className="section">
         <h2>Prénoms de l'équipe</h2>

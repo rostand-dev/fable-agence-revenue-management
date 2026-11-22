@@ -62,6 +62,7 @@ export const AUDIT_TYPES = {
   "tenant.renamed": { category: "CONFIGURATION", label: "Espace renommé" },
   "flag.changed": { category: "CONFIGURATION", label: "Fonction activée ou désactivée" },
   "settings.agents_renamed": { category: "CONFIGURATION", label: "Prénoms de l'équipe modifiés" },
+  "settings.scoring_updated": { category: "CONFIGURATION", label: "Priorisation des dossiers modifiée" },
   "llm.key_saved": { category: "CONFIGURATION", label: "Clé Anthropic enregistrée" },
   "llm.key_removed": { category: "CONFIGURATION", label: "Clé Anthropic supprimée" },
   "llm.models_saved": { category: "CONFIGURATION", label: "Modèles par agent enregistrés" },

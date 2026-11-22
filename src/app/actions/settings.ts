@@ -13,6 +13,8 @@ import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, type Provider } from "@/lib/integrations/capabilities";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
+import { IMPLEMENTED_PLAYBOOKS } from "@/lib/engine/playbooks";
+import { DEFAULT_SCORING, EXECUTION_MODES, RISKS, scoringOverrides, validateScoringInput } from "@/lib/engine/scoring";
 import { parseMarkupList } from "@/lib/pricing/published";
 import { FlagError, setFlag } from "@/lib/services/flags";
 import { connectPriceLabs, SyncError } from "@/lib/services/pricelabs-sync";
@@ -100,11 +102,36 @@ export async function renameAgentsAction(_: FormState, fd: FormData): Promise<Fo
   const names: Record<string, string> = {};
   for (const a of AGENTS) { const v = txt(fd, "agent-" + a.id).slice(0, 24); if (v && v !== a.name) names[a.id] = v; }
   await db.transaction(async (tx) => {
-  await tx.update(schema.tenants).set({ settings: { ...u.settings, agentNames: names } }).where(eq(schema.tenants.id, u.tenantId));
+  const [cur] = await tx.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, u.tenantId)).for("update");
+  await tx.update(schema.tenants).set({ settings: { ...(cur?.settings ?? {}), agentNames: names } }).where(eq(schema.tenants.id, u.tenantId));
   await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "settings.agents_renamed", entity: "Tenant", entityId: u.tenantId, summary: `${u.name} modifie les prénoms de l'équipe${Object.keys(names).length ? "" : " (retour aux prénoms d'origine)"}.`, payload: { from: u.settings.agentNames ?? {}, to: names } });
   });
   revalidatePath("/", "layout");
   return { ok: "Prénoms enregistrés. Les rôles ne changent pas." };
+}
+
+/** Priorisation des dossiers (US-062) : poids par playbook, pénalités de risque, coûts d'exécution. Seuls les écarts au réglage par défaut sont enregistrés. */
+export async function saveScoringAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  const group = (prefix: string, keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, txt(fd, `${prefix}-${k}`)]).filter(([, v]) => v !== ""));
+  const reset = txt(fd, "reset") === "1";
+  const checked = reset ? { ok: true as const, config: DEFAULT_SCORING } : validateScoringInput({ strategicWeight: group("w", IMPLEMENTED_PLAYBOOKS), riskPenalty: group("r", RISKS), executionCost: group("c", EXECUTION_MODES) });
+  if (!checked.ok) return { error: checked.error };
+  const overrides = scoringOverrides(checked.config);
+  const noop = await db.transaction(async (tx) => {
+    // relecture sous verrou : une autre modification des réglages (prénoms, modèles) faite entre-temps n'est pas écrasée
+    const [row] = await tx.select({ settings: schema.tenants.settings }).from(schema.tenants).where(eq(schema.tenants.id, u.tenantId)).for("update");
+    const current: Record<string, any> = row?.settings ?? {};
+    const previous = current.scoring ?? {};
+    if (JSON.stringify(previous) === JSON.stringify(overrides)) return true;
+    const { scoring: _old, ...rest } = current;
+    await tx.update(schema.tenants).set({ settings: Object.keys(overrides).length ? { ...rest, scoring: overrides } : rest }).where(eq(schema.tenants.id, u.tenantId));
+    await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "settings.scoring_updated", entity: "Tenant", entityId: u.tenantId, summary: `${u.name} ${Object.keys(overrides).length ? "modifie la priorisation des dossiers" : "rétablit la priorisation par défaut"}.`, payload: { from: previous, to: overrides } });
+    return false;
+  });
+  if (noop) return { ok: "Aucun changement : ces valeurs sont déjà enregistrées." };
+  revalidatePath("/", "layout");
+  return { ok: "Priorisation enregistrée. Elle s'applique à la prochaine revue des logements." };
 }
 
 /** Capacités d'un fournisseur sur un logement réel, pour la ligne créée par le coupe-circuit */

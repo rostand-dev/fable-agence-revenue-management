@@ -5,6 +5,7 @@ import { avgDay, expected, fmtPctFr, markupFactor, markupPctOf, overlaps, plural
 import { DEMAND_MODEL_NOTE, sellProbability } from "./demand";
 import { cumulativeDiscountPct, hardFloorCents, missingEconomics } from "./economics";
 import { threshold } from "./playbooks";
+import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
 import { strategyFloorOver } from "./seasons";
 import {
   detectChannelGap, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
@@ -663,8 +664,5 @@ export function reviewProperty(input: EngineInput): EngineResult {
 
 /** Score de priorité (blueprint §9.2). Il organise le travail ; il ne contourne jamais un veto. */
 export function priorityScore(o: DetectedOpportunity): number {
-  const c = o.candidates[o.selected];
-  const impact = Math.max(0, c?.expectedDeltaCents ?? 0) / 100;
-  const riskPenalty = { LOW: 0, MEDIUM: 4, HIGH: 10, CRITICAL: 25 }[c?.risk ?? "LOW"];
-  return Math.round((impact * o.diagnosis.confidence * o.urgency - riskPenalty + (o.veto ? 10000 : 0)) * 10) / 10;
+  return priorityScoreWith(o, DEFAULT_SCORING);
 }
