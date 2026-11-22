@@ -22,6 +22,8 @@ import { addDays, diffDays, fmtDate, fmtDateTime, fmtDay, fmtMonth, fmtMonthShor
 import { promosOn } from "@/lib/engine/detect";
 import { floorGrid, missingEconomics, simulateStack } from "@/lib/engine/economics";
 import { channelShare, lastMonths, leadTimes, medianLos, monthlyKpis, windowStats } from "@/lib/engine/metrics";
+import { getPace } from "@/lib/services/pace";
+import { PACE_REASON_LABEL, PACE_STATUS_LABEL } from "@/lib/metrics/pace";
 import { computeKpi, monthPeriod, nightFactsFromResas, NET_STATUS_LABEL } from "@/lib/metrics/kpi";
 import { CHANNEL_LABEL, type Channel, type EconomicModel, type Strategy } from "@/lib/engine/types";
 import { euro, pct, pts, signedEuro } from "@/lib/format";
@@ -64,6 +66,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const yearKpi = (() => { const { sold, blocked } = nightFactsFromResas(input.resas); blocked.push(...input.days.filter((d) => d.state === "BLOCKED").map((d) => d.date)); return computeKpi({ from: monthPeriod(months[0]).from, to: monthPeriod(months[months.length - 1]).to }, sold, blocked); })();
   const netNote = yearKpi.netStatus === "PARTIAL" || yearKpi.netStatus === "UNKNOWN" ? ` · ${NET_STATUS_LABEL[yearKpi.netStatus].toLowerCase()}${yearKpi.netCoverage !== null ? ` (${Math.round(yearKpi.netCoverage * 100)} % des nuits)` : ""}` : "";
   const stats = windowStats(input.days, today);
+  const pace = tab === "apercu" && input.days.length > 0 ? new Map((await getPace(user.tenantId, p.id, now)).windows.map((w) => [w.key, w])) : new Map<string, Awaited<ReturnType<typeof getPace>>["windows"][number]>();
   const lead = leadTimes(input.resas), los = medianLos(input.resas), share = channelShare(input.resas);
   const flagged = new Map<string, boolean>();
   for (const o of opps.filter((x) => x.playbook !== "PB-10" && x.playbook !== "PB-13")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
@@ -132,13 +135,15 @@ export default async function Logement({ params, searchParams }: { params: Promi
           {hasCal && (
             <section className="section">
               <h2>Rythme de réservation face au marché</h2>
-              <p className="section-note">Relevé par l'analyste marché sur les cinq fenêtres canoniques. Un écart négatif n'est pas un ordre de baisser : il ouvre un diagnostic.</p>
+              <p className="section-note">Relevé par l'analyste marché sur les cinq fenêtres canoniques. Un écart négatif n'est pas un ordre de baisser : il ouvre un diagnostic. Pickup et « face à l'an dernier » sont calculés sur les réservations lues (SuperHote) ; « Logement » vient du calendrier : les deux peuvent légèrement différer.</p>
               <div className="table-wrap"><table className="econ">
-                <thead><tr><th scope="col"><Term id="fenetre-reservation">Fenêtre</Term></th><th scope="col" className="num">Logement</th><th scope="col" className="num"><Term id="occupation-marche">Marché</Term></th><th scope="col" className="num"><Term id="ecart-marche">Écart</Term></th><th scope="col" className="num">Nuits libres</th><th scope="col" className="num"><Term id="position-de-prix">Position de prix</Term></th></tr></thead>
+                <thead><tr><th scope="col"><Term id="fenetre-reservation">Fenêtre</Term></th><th scope="col" className="num">Logement</th><th scope="col" className="num"><Term id="occupation-marche">Marché</Term></th><th scope="col" className="num"><Term id="ecart-marche">Écart</Term></th><th scope="col" className="num">Nuits libres</th><th scope="col" className="num"><Term id="position-de-prix">Position de prix</Term></th><th scope="col" className="num">Pickup 7 j</th><th scope="col">Face à l'an dernier</th></tr></thead>
                 <tbody>{stats.map((s) => (
                   <tr key={s.key}><th scope="row">{s.label}<span className="src">{fmtDay(s.from)} → {fmtDay(addDays(s.to, -1))}</span></th>
                     <td className="num">{pct(s.occupancy)}</td><td className="num">{s.marketOccupancy === null ? <Vq>inconnu</Vq> : pct(s.marketOccupancy)}</td>
-                    <td className="num">{s.gap === null ? "—" : pts(s.gap)}</td><td className="num">{s.free}</td><td className="num">{s.avgPercentile === null ? "—" : s.avgPercentile + "e pct."}</td></tr>
+                    <td className="num">{s.gap === null ? "—" : pts(s.gap)}</td><td className="num">{s.free}</td><td className="num">{s.avgPercentile === null ? "—" : s.avgPercentile + "e pct."}</td>
+                    <td className="num" data-testid="pickup-7">{pace.get(s.key) ? `${pace.get(s.key)!.pickup[7]} nuit${pace.get(s.key)!.pickup[7] > 1 ? "s" : ""}` : "—"}</td>
+                    <td data-testid="pace-status">{(() => { const w = pace.get(s.key); if (!w) return "—"; return w.status === "UNKNOWN" ? <Vq>inconnu{w.unknownReason ? ` : ${PACE_REASON_LABEL[w.unknownReason]}` : ""}</Vq> : `${PACE_STATUS_LABEL[w.status]} (${w.gapPoints! > 0 ? "+" : ""}${Math.round(w.gapPoints! * 100)} pts)`; })()}</td></tr>
                 ))}</tbody></table></div>
               <p className="kpi-note"><Byline agent="marche" names={names} what={`délai de réservation ${lead ? `médian ${lead.median} j` : "inconnu"} · durée médiane ${los ? los + " nuits" : "inconnue"}`} /></p>
             </section>

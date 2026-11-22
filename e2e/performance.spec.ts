@@ -60,3 +60,27 @@ test("fiche du logement : quatre indicateurs, période précisée, sans déborde
   await expectNoHorizontalOverflow(page, "fiche logement (aperçu)");
   expect(errors, "erreurs JavaScript").toEqual([]);
 });
+
+// US-051 : pickup et pacing
+test("API pace : cinq fenêtres, pickup 1/3/7/14, pacing inconnu avec sa raison si l'historique est court", async ({ page }) => {
+  const id = await demoPropertyId(page);
+  const res = await page.request.get(`/api/v1/properties/${id}/pace`);
+  expect(res.status()).toBe(200);
+  const v = await res.json();
+  expect(v.windows.map((w: { key: string }) => w.key)).toEqual(["D0_7", "D8_14", "D15_30", "D31_60", "D61_90"]);
+  for (const w of v.windows) {
+    expect(Object.keys(w.pickup)).toEqual(["1", "3", "7", "14"]);
+    expect(w.pickup[1]).toBeLessThanOrEqual(w.pickup[3]); expect(w.pickup[3]).toBeLessThanOrEqual(w.pickup[7]); expect(w.pickup[7]).toBeLessThanOrEqual(w.pickup[14]);
+    if (w.status === "UNKNOWN") expect(w.gapPoints).toBeNull();
+  }
+  expect((await page.request.get("/api/v1/properties/prop_inconnu/pace")).status()).toBe(404);
+});
+
+test("fiche du logement : pickup et pacing dans le tableau du rythme de réservation, sans débordement", async ({ page }) => {
+  const id = await demoPropertyId(page);
+  await page.goto(`/logements/${id}`);
+  await expect(page.getByTestId("pickup-7").first()).toBeVisible();
+  await expect(page.getByTestId("pace-status").first()).toBeVisible();
+  await expect(page.getByTestId("pickup-7")).toHaveCount(5);
+  await expectNoHorizontalOverflow(page, "fiche logement (pickup, pacing)");
+});
