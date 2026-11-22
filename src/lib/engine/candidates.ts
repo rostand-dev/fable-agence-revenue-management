@@ -37,7 +37,7 @@ export const CANDIDATE_SPECS: Record<CandidateType, CandidateSpec> = {
   BASE_PRICE_CHANGE: { label: "Prix de base", systems: ["PRICELABS"], modes: PL_MODES, touchesNights: true, executable: true, params: [dates, { key: "changePct", kind: "number", min: -30, max: 30 }, { key: "basePriceCents", kind: "nullableNumber", min: 1 }] },
   MIN_PRICE_CHANGE: { label: "Prix minimum", systems: ["PRICELABS"], modes: PL_MODES, touchesNights: false, executable: true, params: [{ key: "minPriceCents", kind: "int", min: 1 }, { key: "previousMinPriceCents", kind: "int", min: 1 }] },
   CHANNEL_PROMO: { label: "Promotion de canal", systems: CHANNELS, modes: ["MANUAL_RUNBOOK"], touchesNights: true, executable: true, params: [{ key: "kind", kind: "string" }, { key: "discountPct", kind: "number", min: 1, max: 40 }, { key: "label", kind: "string" }, { key: "stayFrom", kind: "string" }, { key: "stayTo", kind: "string" }] },
-  PROMO_REMOVAL: { label: "Retrait de promotion", systems: CHANNELS, modes: ["MANUAL_RUNBOOK"], touchesNights: true, executable: true, params: [{ key: "promotionId", kind: "string" }, { key: "promotionLabel", kind: "string" }] },
+  PROMO_REMOVAL: { label: "Retrait de promotion", systems: CHANNELS, modes: ["MANUAL_RUNBOOK"], touchesNights: true, executable: true, params: [{ key: "promotionId", kind: "string" }] },
   LISTING_AUDIT: { label: "Audit d'annonce", systems: ["INTERNAL"], modes: ["NONE", "INTERNAL"], touchesNights: false, executable: false, params: [] },
   INVESTIGATION: { label: "Vérification manuelle", systems: [...CHANNELS, "INTERNAL"], modes: ["MANUAL_RUNBOOK", "NONE", "INTERNAL"], touchesNights: false, executable: false, params: [{ key: "channel", kind: "string" }] },
   NO_ACTION: { label: "Ne rien faire", systems: ["INTERNAL"], modes: ["NONE"], touchesNights: false, executable: false, params: [] },
@@ -67,6 +67,7 @@ export function candidateIssues(c: Candidate, playbook: string): string[] {
   const spec = CANDIDATE_SPECS[c.type];
   if (!spec) return [`type d'action inconnu : ${c.type}`];
   const pb = playbookOf(playbook);
+  if (!pb) out.push(`playbook inconnu : ${playbook}`);
   if (pb && !pb.candidates.includes(c.type)) out.push(`${spec.label} n'est pas une action permise pour ${pb.code}`);
   if (!spec.systems.includes(c.target.system)) out.push(`système cible ${c.target.system} non permis pour ${spec.label}`);
   if (!spec.modes.includes(c.executionMode)) out.push(`mode d'exécution ${c.executionMode} non permis pour ${spec.label}`);
@@ -77,7 +78,7 @@ export function candidateIssues(c: Candidate, playbook: string): string[] {
     if (!c.rollbackPlan?.trim()) out.push("plan de retour arrière manquant");
     if (!(c.measurementWindowDays > 0)) out.push("fenêtre de mesure manquante");
   }
-  if (c.target.channel && c.target.system !== c.target.channel && CHANNELS.includes(c.target.system)) out.push("canal cible incohérent");
+  if (CHANNELS.includes(c.target.system) && c.target.channel !== c.target.system) out.push("canal cible manquant ou incohérent");
   if (!c.audit || !["APPROVE", "REJECT", "NEEDS_HUMAN"].includes(c.audit.verdict)) out.push("verdict d'audit manquant");
   return out;
 }
@@ -85,7 +86,7 @@ export function candidateIssues(c: Candidate, playbook: string): string[] {
 export type ConformityIssue = { opportunity: string; candidate: string; issues: string[] };
 
 /**
- * Retire les candidates non conformes d'un dossier. Sans candidate restante, le dossier n'est pas proposé. L'option retenue est conservée si elle est
+ * Retire les candidates non conformes d'un dossier. Sans candidate restante, le dossier n'est pas proposé, sauf s'il est sous veto (il reste visible). L'option retenue est conservée si elle est
  * conforme ; sinon on retient « ne rien faire » quand il est présent, à défaut la première candidate conforme.
  */
 export function conformOpportunity(o: DetectedOpportunity): { opportunity: DetectedOpportunity | null; issues: ConformityIssue[] } {
@@ -98,7 +99,12 @@ export function conformOpportunity(o: DetectedOpportunity): { opportunity: Detec
     if (i === o.selected) selected = kept.length;
     kept.push(c);
   });
-  if (!kept.length) return { opportunity: null, issues };
-  if (selected < 0) { const na = kept.findIndex((c) => c.type === "NO_ACTION"); selected = na >= 0 ? na : 0; }
+  // un dossier sous veto n'est jamais écarté en silence : un dépassement de plancher doit rester visible, l'écart est signalé au journal
+  if (!kept.length) return { opportunity: o.veto ? o : null, issues };
+  if (selected < 0) {
+    const na = kept.findIndex((c) => c.type === "NO_ACTION");
+    const ok = kept.findIndex((c) => c.audit.verdict !== "REJECT");
+    selected = na >= 0 ? na : ok >= 0 ? ok : 0;
+  }
   return { opportunity: issues.length ? { ...o, candidates: kept, selected } : o, issues };
 }

@@ -31,6 +31,16 @@ describe("contrat des actions candidates", () => {
     expect(candidateIssues(base({ target: { system: "BOOKING", channel: "BOOKING" } }), "PB-01").join()).toContain("système cible");
     expect(candidateIssues(base({ executionMode: "INTERNAL" }), "PB-01").join()).toContain("mode d'exécution");
   });
+  it("refuse un playbook inconnu, un verdict d'audit manquant et un canal cible incohérent", () => {
+    expect(candidateIssues(base(), "PB-99").join()).toContain("playbook inconnu");
+    expect(candidateIssues(base({ audit: undefined as any }), "PB-01").join()).toContain("verdict d'audit");
+    const promo = base({ type: "CHANNEL_PROMO", target: { system: "BOOKING" }, executionMode: "MANUAL_RUNBOOK", parameters: { kind: "MOBILE", discountPct: 10, label: "O", stayFrom: "2026-12-01", stayTo: "2026-12-05" } });
+    expect(candidateIssues(promo, "PB-01").join()).toContain("canal cible");
+  });
+  it("une promotion à retirer sans libellé reste valide si elle a un identifiant", () => {
+    const rm = base({ type: "PROMO_REMOVAL", target: { system: "BOOKING", channel: "BOOKING" }, executionMode: "MANUAL_RUNBOOK", parameters: { promotionId: "p1", promotionLabel: "" } });
+    expect(candidateIssues(rm, "PB-05")).toEqual([]);
+  });
   it("accepte le repli en procédure manuelle d'une action PriceLabs", () => { expect(candidateIssues(base({ executionMode: "MANUAL_RUNBOOK" }), "PB-01")).toEqual([]); });
   it("refuse les paramètres manquants, mal typés ou hors bornes", () => {
     expect(candidateIssues(base({ parameters: { nightlyCents: 12000 } }), "PB-01").join()).toContain("paramètre dates");
@@ -77,6 +87,17 @@ describe("conformité d'un dossier", () => {
     const r = conformOpportunity(opp([base({ rollbackPlan: "" }), base({ label: "Autre" }), noAction()], 0));
     expect(r.opportunity!.candidates[r.opportunity!.selected].type).toBe("NO_ACTION");
   });
+  it("un dossier sous veto n'est jamais écarté en silence", () => {
+    const o = { ...opp([base({ rollbackPlan: "" })], 0), veto: true } as DetectedOpportunity;
+    const r = conformOpportunity(o);
+    expect(r.opportunity).toBe(o);
+    expect(r.issues).toHaveLength(1);
+  });
+  it("sans « ne rien faire », le repli évite une candidate rejetée par l'auditeur", () => {
+    const rejected = base({ label: "Rejetée", audit: { verdict: "REJECT", rules: [] } });
+    const r = conformOpportunity(opp([base({ label: "Retirée", rollbackPlan: "" }), rejected, base({ label: "Valide" })], 0));
+    expect(r.opportunity!.candidates[r.opportunity!.selected].label).toBe("Valide");
+  });
   it("sans aucune candidate conforme, le dossier n'est pas proposé", () => {
     const r = conformOpportunity(opp([base({ rollbackPlan: "" })], 0));
     expect(r.opportunity).toBeNull();
@@ -84,6 +105,7 @@ describe("conformité d'un dossier", () => {
   });
 });
 
+const seen = { playbooks: new Set<string>(), types: new Set<string>(), total: 0 };
 describe("le moteur ne produit que des candidates conformes", () => {
   for (const day of ["2026-11-12", "2026-03-15", "2026-07-10"]) for (const key of ["chatillon", "evry"]) for (const isDemo of [true, false]) {
     it(`${key} au ${day}${isDemo ? " (démonstration, écriture simulée)" : " (réel, sans écriture, majorations)"}`, () => {
@@ -95,7 +117,12 @@ describe("le moteur ne produit que des candidates conformes", () => {
       };
       const r = reviewProperty(i);
       expect(r.conformity).toEqual([]);
-      for (const o of r.opportunities) for (const c of o.candidates) expect(candidateIssues(c, o.playbook), `${o.playbook} ${c.type}`).toEqual([]);
+      for (const o of r.opportunities) { seen.playbooks.add(o.playbook); for (const c of o.candidates) { seen.types.add(c.type); seen.total++; expect(candidateIssues(c, o.playbook), `${o.playbook} ${c.type}`).toEqual([]); } }
     });
   }
+  it("les scénarios couvrent assez de playbooks et de types pour que la vérification compte", () => {
+    expect(seen.total).toBeGreaterThan(20);
+    for (const pb of ["PB-01", "PB-03", "PB-05", "PB-06"]) expect([...seen.playbooks], pb).toContain(pb);
+    for (const t of ["PRICE_OVERRIDE", "CHANNEL_PROMO", "PROMO_REMOVAL", "NO_ACTION"]) expect([...seen.types], t).toContain(t);
+  });
 });
