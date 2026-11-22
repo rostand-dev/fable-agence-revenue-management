@@ -22,6 +22,7 @@ import { addDays, diffDays, fmtDate, fmtDateTime, fmtDay, fmtMonth, fmtMonthShor
 import { promosOn } from "@/lib/engine/detect";
 import { floorGrid, missingEconomics, simulateStack } from "@/lib/engine/economics";
 import { channelShare, lastMonths, leadTimes, medianLos, monthlyKpis, windowStats } from "@/lib/engine/metrics";
+import { computeKpi, monthPeriod, nightFactsFromResas, NET_STATUS_LABEL } from "@/lib/metrics/kpi";
 import { CHANNEL_LABEL, type Channel, type EconomicModel, type Strategy } from "@/lib/engine/types";
 import { euro, pct, pts, signedEuro } from "@/lib/format";
 import { estimateAllChannels, estimatePublishedPrice, pickDefaultChannel, sentMinusRecommended, type ChannelMarkup } from "@/lib/pricing/published";
@@ -59,12 +60,16 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const firstStay = input.resas.filter((r) => r.status === "CONFIRMED").map((r) => r.checkIn).sort()[0];
   const partial = !!firstStay && firstStay.slice(0, 7) > months[0];
   const sum = (f: (k: (typeof kpis)[number]) => number) => kpis.reduce((a, k) => a + f(k), 0);
+  // KPI canoniques sur les douze mois (US-050) : le net inconnu n'est jamais compté comme nul
+  const yearKpi = (() => { const { sold, blocked } = nightFactsFromResas(input.resas); blocked.push(...input.days.filter((d) => d.state === "BLOCKED").map((d) => d.date)); return computeKpi({ from: monthPeriod(months[0]).from, to: monthPeriod(months[months.length - 1]).to }, sold, blocked); })();
+  const netNote = yearKpi.netStatus === "PARTIAL" || yearKpi.netStatus === "UNKNOWN" ? ` · ${NET_STATUS_LABEL[yearKpi.netStatus].toLowerCase()}${yearKpi.netCoverage !== null ? ` (${Math.round(yearKpi.netCoverage * 100)} % des nuits)` : ""}` : "";
   const stats = windowStats(input.days, today);
   const lead = leadTimes(input.resas), los = medianLos(input.resas), share = channelShare(input.resas);
   const flagged = new Map<string, boolean>();
   for (const o of opps.filter((x) => x.playbook !== "PB-10" && x.playbook !== "PB-13")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
   const first3 = sum((k) => 1) && kpis.slice(0, 3).reduce((a, k) => a + k.netRevpanCents, 0) / 3, last3 = kpis.slice(-3).reduce((a, k) => a + k.netRevpanCents, 0) / 3;
-  const trend = !hasHistory ? null : last3 > first3 * 1.05 ? "croissante" : last3 < first3 * 0.95 ? "décroissante" : "stable";
+  const trendKnown = !kpis.some((k) => k.netIncomplete);
+  const trend = !hasHistory || !trendKnown ? null : last3 > first3 * 1.05 ? "croissante" : last3 < first3 * 0.95 ? "décroissante" : "stable";
   const markups = (p.channelMarkups ?? []) as ChannelMarkup[];
   const channel = pickDefaultChannel(markups, sp.canal);            // null tant qu'aucune majoration n'est renseignée
   const unknownChannels = markups.filter((m) => m.pct === null).map((m) => m.label);
@@ -108,10 +113,10 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "apercu" && (
         <>
           <div className="synth">
-            <Metric label={<><Term id="revenu-net">Revenu net</Term> · 12 mois</>} value={hasHistory ? euro(sum((k) => k.netCents)) : <Vq>inconnu</Vq>} source={`${period} · montant des réservations${model.touristTaxPct ? " hors taxe de séjour" : ""} − commissions − frais de paiement`} />
+            <Metric label={<><Term id="revenu-net">Revenu net</Term> · 12 mois</>} value={hasHistory && yearKpi.netRoomCents !== null ? <>{euro(yearKpi.netRoomCents)}{yearKpi.netStatus === "PARTIAL" && <span className="muted"> · partiel</span>}</> : <Vq>inconnu</Vq>} source={`${period} · montant des réservations${model.touristTaxPct ? " hors taxe de séjour" : ""} − commissions − frais de paiement${netNote}`} />
             <Metric label={<><Term id="occupation">Occupation</Term> · 12 mois</>} value={hasHistory ? pct(sum((k) => k.nights) / sum((k) => k.available)) : <Vq>inconnue</Vq>} source={`${sum((k) => k.nights)} nuits vendues · ${period}`} />
-            <Metric label={<Term id="adr">Prix moyen net</Term>} value={hasHistory && sum((k) => k.nights) ? euro(sum((k) => k.netCents) / sum((k) => k.nights)) : <Vq>inconnu</Vq>} source="Par nuit occupée" />
-            <Metric label={<Term id="revpar">Revenu net par nuit disponible</Term>} value={hasHistory ? euro(sum((k) => k.netCents) / sum((k) => k.available)) : <Vq>inconnu</Vq>} source={trend ? `Tendance ${trend} sur 12 mois` : "Tendance inconnue"} />
+            <Metric label={<Term id="adr">Prix moyen net</Term>} value={hasHistory && yearKpi.netAdrCents !== null ? euro(yearKpi.netAdrCents) : <Vq>inconnu</Vq>} source={`Par nuit occupée${yearKpi.netStatus === "PARTIAL" ? " · nuits dont la commission est connue" : ""}`} />
+            <Metric label={<Term id="revpar">Revenu net par nuit disponible</Term>} value={hasHistory && yearKpi.netRevpanCents !== null ? euro(yearKpi.netRevpanCents) : <Vq>inconnu</Vq>} source={yearKpi.netStatus === "PARTIAL" ? "Inconnu tant que le net n'est pas connu pour toutes les nuits vendues" : trend ? `Tendance ${trend} sur 12 mois` : "Tendance inconnue"} />
           </div>
           {hasHistory && (
             <p className="kpi-note">Période : <strong>{period}</strong>, soit les douze derniers mois complets ; le mois en cours et les séjours à venir n'y figurent pas. Chaque nuit est comptée dans son mois de séjour.{partial && ` L'historique lu ne commence que le ${fmtDate(firstStay!)} : les mois antérieurs sont vides, pas nuls.`}{!p.isDemo && (model.touristTaxPct === null || model.touristTaxPct === undefined ? " Le montant transmis par PriceLabs est ce que paie le voyageur, ménage et taxe de séjour compris : tant que la part de taxe n'est pas déclarée (Coûts et seuils), ce revenu net est surestimé d'autant." : " Le montant des réservations comprend les frais de ménage ; la taxe de séjour déclarée en est retirée.")}</p>
