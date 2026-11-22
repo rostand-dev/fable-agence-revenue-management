@@ -335,10 +335,14 @@ export const opportunities = pgTable("opportunities", {
   status: text("status").notNull().default("OPEN"),
   decision: text("decision"),
   deferUntil: date("defer_until", { mode: "string" }),
+  /** Date de la décision humaine : point de départ de la période de repos du playbook (US-061). Remise à null à la réouverture. */
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  /** Regroupement (US-061) : les dossiers d'un même logement dont les nuits se touchent partagent cette clé. */
+  groupKey: text("group_key"),
   narrative: jsonb("narrative").$type<any>(),
   createdAt: created(),
   expiresAt: date("expires_at", { mode: "string" }).notNull(),
-}, (t) => [uniqueIndex("opps_code").on(t.tenantId, t.code), index("opps_status").on(t.tenantId, t.status), index("opps_dedupe").on(t.tenantId, t.dedupeKey)]);
+}, (t) => [uniqueIndex("opps_code").on(t.tenantId, t.code), index("opps_status").on(t.tenantId, t.status), index("opps_dedupe").on(t.tenantId, t.dedupeKey), index("opps_group").on(t.tenantId, t.propertyId, t.groupKey)]);
 
 export const revenueActions = pgTable("revenue_actions", {
   id: id(),

@@ -3,7 +3,7 @@ import type { SignalMeasure } from "@/lib/engine/types";
 import Link from "next/link";
 import { Term } from "@/components/Term";
 import { notFound } from "next/navigation";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { AgentChat } from "@/components/AgentChat";
 import { approveAction, deferAction, executeAction, rejectAction, reopenAction, rollbackAction, verifyAction } from "@/app/actions/decisions";
 import { ActionForm, Submit } from "@/components/forms";
@@ -16,6 +16,7 @@ import { agentName } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate, fmtDateTime, fmtDay, fmtPeriod } from "@/lib/dates";
 import { hardFloorCents, strategyFloorCents } from "@/lib/engine/economics";
+import { cooldownDaysOf, cooldownLabel, endOfCooldown } from "@/lib/engine/lifecycle";
 import { CYCLE, cycleProgress, STATE_LABEL, type ActionState } from "@/lib/engine/stateMachine";
 import { CHANNEL_LABEL, type Candidate, type EconomicModel } from "@/lib/engine/types";
 import { euro, signedEuro } from "@/lib/format";
@@ -58,13 +59,17 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const { code } = await params;
   const [o] = await db.select().from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), eq(schema.opportunities.code, decodeURIComponent(code))));
   if (!o) notFound();
-  const [[p], acts, runs, talk, ints] = await Promise.all([
+  const [[p], acts, runs, talk, ints, linked] = await Promise.all([
     db.select().from(schema.properties).where(eq(schema.properties.id, o.propertyId)),
     db.select().from(schema.revenueActions).where(eq(schema.revenueActions.opportunityId, o.id)),
     db.select().from(schema.agentRuns).where(eq(schema.agentRuns.opportunityId, o.id)).orderBy(asc(schema.agentRuns.createdAt)),
     db.select().from(schema.chatMessages).where(and(eq(schema.chatMessages.opportunityId, o.id), eq(schema.chatMessages.tenantId, user.tenantId))).orderBy(asc(schema.chatMessages.createdAt)),
     db.select().from(schema.integrations).where(eq(schema.integrations.tenantId, user.tenantId)),
+    o.groupKey
+      ? db.select().from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), eq(schema.opportunities.propertyId, o.propertyId), eq(schema.opportunities.groupKey, o.groupKey), ne(schema.opportunities.id, o.id), eq(schema.opportunities.status, "OPEN"))).orderBy(asc(schema.opportunities.stayFrom))
+      : Promise.resolve([]),
   ]);
+  const restUntil = o.status === "DECIDED" ? endOfCooldown(o.decidedAt ?? o.createdAt, o.playbook) : null;
   const names = user.settings.agentNames ?? null;
   const cands = o.candidates as Candidate[];
   const action = acts.find((a) => !["CANCELLED"].includes(a.status)) ?? null;
@@ -113,6 +118,25 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           })}
         </ol>
       </section>
+
+      {(linked.length > 0 || restUntil) && (
+        <section className="section" aria-labelledby="lies-h" data-testid="dossiers-lies" style={{ marginTop: 0 }}>
+          <h2 id="lies-h">{linked.length > 0 ? "Dossiers liés" : "Période de repos"}</h2>
+          {linked.length > 0 && (
+            <>
+              <p className="section-note">Ces dossiers du même logement portent sur des nuits qui se touchent : à lire ensemble avant de décider.</p>
+              <ul className="linked-list">
+                {linked.map((l) => (
+                  <li key={l.id}><Link href={`/dossier/${encodeURIComponent(l.code)}`}><strong>{l.code}</strong> · {l.title}</Link><span className="faint"> · {fmtPeriod(l.stayFrom, l.stayTo)}</span></li>
+                ))}
+              </ul>
+            </>
+          )}
+          {restUntil && (
+            <p className="section-note" data-testid="repos">Après cette décision, le même signal ne rouvre pas de dossier {cooldownLabel(restUntil)} ({cooldownDaysOf(o.playbook)} jours de repos pour ce playbook). Rouvrir le dossier à la main reste possible.</p>
+          )}
+        </section>
+      )}
 
       <section className="section" aria-labelledby="raison-h">
         <h2 id="raison-h">Raisonnement et preuves</h2>

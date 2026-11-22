@@ -67,7 +67,7 @@ export async function seedDemo(tenantId: string): Promise<void> {
     const oppId = newId("opp"), created = new Date(+pastNow + n * 3600000);
     await db.insert(s.opportunities).values({
       id: oppId, tenantId, propertyId: ids[h.key], code: `S-${past.slice(2, 4)}${past.slice(5, 7)}-${String(++n).padStart(2, "0")}`, dedupeKey: "demo-hist|" + dedupeKey(ids[h.key], o),
-      ...oppRow(o), narrative: deterministicNarrative(o), status: "DECIDED", decision: c.type === "NO_ACTION" ? "NO_ACTION" : "APPROVED", createdAt: created,
+      ...oppRow(o), narrative: deterministicNarrative(o), status: "DECIDED", decision: c.type === "NO_ACTION" ? "NO_ACTION" : "APPROVED", createdAt: created, decidedAt: created,
     });
     if (c.type === "NO_ACTION") {
       await recordAudit(db, { tenantId, actor: "demo", type: "opportunity.no_action", entity: "Opportunity", entityId: oppId, summary: `Inaction retenue sur le dossier (historique de démonstration).`, at: created });

@@ -322,3 +322,6 @@ a.fn-st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (min-width: 720px) { .playbook-facts { grid-template-columns: 1fr 1fr; } }
 .signal-measures { margin-top: 10px; }
 .signal-measures th[scope="row"] { font-weight: 500; }
+.linked-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.linked-list li { overflow-wrap: anywhere; }
+.linked-list li { padding-block: 10px; }

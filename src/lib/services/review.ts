@@ -3,6 +3,7 @@ import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { priorityScore, reviewProperty, type EngineInput } from "../engine/detect";
+import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveLlm } from "../agents/llm-config";
 import { capabilityFlags, capability } from "../integrations/capabilities";
@@ -98,7 +99,7 @@ export type ReviewOptions = {
  * Chaque étape laisse une trace (AgentRun) ; la revue est idempotente grâce aux clés de dédoublonnage.
  * À la fin, le rythme de suivi de chaque logement revu est recalculé et sa prochaine revue planifiée.
  */
-export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = "SCHEDULED", opts: ReviewOptions = {}): Promise<{ opened: number; refreshed: number; expired: number; blocked: number; reviewed: string[] }> {
+export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = "SCHEDULED", opts: ReviewOptions = {}): Promise<{ opened: number; refreshed: number; expired: number; blocked: number; resting: number; reviewed: string[] }> {
   const now = new Date(), today = todayISO(now);
   const runId = newId("rev");
   await db.insert(reviewRuns).values({ id: runId, tenantId, kind: "DAILY", startedAt: now, stats: { trigger } });
@@ -112,7 +113,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const blockedIds = new Set<string>();
   const code = await nextCode(tenantId, today);
   const llm = await resolveLlm(tenantId, "direction");
-  let opened = 0, refreshed = 0, expired = 0, blocked = 0, seq = 0, llmBudget = 10;
+  let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0, llmBudget = 10;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
 
   // les dossiers différés redeviennent ouverts à leur échéance
@@ -140,17 +141,21 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
 
     const existing = await db.select().from(opportunities).where(and(eq(opportunities.propertyId, p.id), inArray(opportunities.status, ["OPEN", "DEFERRED", "DECIDED"])));
     const seen = new Set<string>();
-    for (const o of res.opportunities) {
+    // un même signal ne produit qu'un dossier par revue (le plus prioritaire), puis les dossiers qui se touchent sont regroupés
+    const found = dedupeOpportunities(res.opportunities, priorityScore);
+    // la clé suit les dossiers détectés (y compris ceux laissés au repos) : elle peut changer d'une revue à l'autre, seuls les dossiers ouverts sont listés ensemble
+    const groups = groupKeys(found, p.id);
+    for (const [idx, o] of found.entries()) {
       const key = dedupeKey(p.id, o); seen.add(key);
       const prev = existing.filter((e) => e.dedupeKey === key).sort((a, b) => +b.createdAt - +a.createdAt)[0];
       for (const c of o.candidates) {
         counts.options++; counts[c.audit.verdict === "APPROVE" ? "approve" : c.audit.verdict === "REJECT" ? "reject" : "human"]++;
         if (c.agent === "pricing" || c.agent === "distribution" || c.agent === "annonce") counts[c.agent]++;
       }
-      if (prev && prev.status === "DECIDED" && +now - +prev.createdAt < 21 * 86400000) continue; // cooldown du playbook
-      if (prev && prev.status === "DEFERRED") continue;
-      const row = oppRow(o);
-      if (prev && prev.status === "OPEN") {
+      const decision = openingDecision(prev, o.playbook, now);
+      if (decision.action === "SKIP") { resting++; continue; } // période de repos du playbook, ou dossier différé
+      const row = { ...oppRow(o), groupKey: groups[idx] };
+      if (decision.action === "REFRESH" && prev) {
         const sameChoice = prev.candidates?.[prev.selected]?.label === o.candidates[o.selected].label;
         await db.update(opportunities).set({ ...row, narrative: sameChoice && prev.narrative ? prev.narrative : deterministicNarrative(o) }).where(eq(opportunities.id, prev.id));
         refreshed++; continue;
@@ -170,7 +175,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   }
 
   const measured = await measureDueActions(tenantId, today);
-  log("direction", "prioritize", `Revue terminée : ${opened} dossier${opened > 1 ? "s" : ""} ouvert${opened > 1 ? "s" : ""}, ${refreshed} mis à jour, ${expired} expiré${expired > 1 ? "s" : ""}${blocked ? `, ${blocked} logement${blocked > 1 ? "s" : ""} bloqué${blocked > 1 ? "s" : ""} faute de données` : ""}.`);
+  log("direction", "prioritize", `Revue terminée : ${opened} dossier${opened > 1 ? "s" : ""} ouvert${opened > 1 ? "s" : ""}, ${refreshed} mis à jour, ${expired} expiré${expired > 1 ? "s" : ""}${resting ? `, ${resting} en période de repos ou différé${resting > 1 ? "s" : ""}` : ""}${blocked ? `, ${blocked} logement${blocked > 1 ? "s" : ""} bloqué${blocked > 1 ? "s" : ""} faute de données` : ""}.`);
   if (counts.pricing) log("pricing", "proposeStrategy", `${counts.pricing} option${counts.pricing > 1 ? "s" : ""} tarifaire${counts.pricing > 1 ? "s" : ""} instruite${counts.pricing > 1 ? "s" : ""} et simulée${counts.pricing > 1 ? "s" : ""} en revenu net.`);
   if (counts.distribution) log("distribution", "compilePromotion", `${counts.distribution} option${counts.distribution > 1 ? "s" : ""} de distribution instruite${counts.distribution > 1 ? "s" : ""}, cumul des remises contrôlé sur chaque canal.`);
   if (counts.annonce) log("annonce", "auditListing", `${counts.annonce} audit${counts.annonce > 1 ? "s" : ""} d'annonce proposé${counts.annonce > 1 ? "s" : ""} avant toute remise.`);
@@ -179,7 +184,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   if (runs.length) await db.insert(agentRuns).values(runs);
   steps.push(...runs.map((r) => ({ agent: r.agentId, label: r.operation, detail: r.summary, ok: !r.error })));
   const scope = opts.propertyIds ? props.map((p) => p.name).join(", ") : null;
-  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm: !!llm } }).where(eq(reviewRuns.id, runId));
+  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, resting, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm: !!llm } }).where(eq(reviewRuns.id, runId));
   // les revues planifiées sont fréquentes (jusqu'à quatre par jour et par logement) : seules celles qui changent quelque chose entrent au journal
   if (!(trigger === "SCHEDULED" && opened === 0 && expired === 0)) {
     const how = trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : trigger === "EVENT" ? "après un changement de réservation" : "planifiée";
@@ -190,5 +195,5 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   for (const p of props) {
     try { await refreshCadence(tenantId, p.id, { reviewed: { blocked: blockedIds.has(p.id) } }, now); } catch (e) { console.error("[rythme]", p.id, e); }
   }
-  return { opened, refreshed, expired, blocked, reviewed: props.map((p) => p.id) };
+  return { opened, refreshed, expired, blocked, resting, reviewed: props.map((p) => p.id) };
 }
