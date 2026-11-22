@@ -40,3 +40,28 @@ test("Dossier : le signal affiche ses mesures face à leur seuil, sans débordem
   await card.screenshot({ path: test.info().outputPath("signal.png") });
   await test.info().attach("signal", { path: test.info().outputPath("signal.png"), contentType: "image/png" });
 });
+
+// US-064 : les règles de l'auditeur et leurs codes de veto sont lisibles sur la page Méthode.
+test("Méthode : les règles de l'auditeur distinguent veto et validation humaine, sans débordement", async ({ page }) => {
+  await page.goto("/methode");
+  const section = page.getByTestId("regles-auditeur");
+  await expect(section).toBeVisible();
+  const rules = section.locator("li.playbook");
+  expect(await rules.count()).toBeGreaterThanOrEqual(10);
+  const floor = rules.filter({ hasText: "HARD_FLOOR" });
+  await floor.locator("summary").click();
+  await expect(floor).toContainText("L'option est rejetée (veto).");
+  const scope = rules.filter({ hasText: "SCOPE" });
+  await scope.locator("summary").click();
+  await expect(scope).toContainText("Aucun veto");
+  await expect(scope).toContainText("Validation humaine avec commentaire.");
+  // un playbook cite les règles qui peuvent rejeter ses options
+  const pb01 = page.getByTestId("playbooks").locator("li.playbook").first();
+  await pb01.locator("summary").click();
+  await expect(pb01).toContainText("Règles qui peuvent rejeter une option");
+  await expect(pb01).toContainText("Plancher économique absolu");
+  await expectNoHorizontalOverflow(page, "méthode : règles de l'auditeur");
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: test.info().outputPath("auditeur.png") });
+  await test.info().attach("auditeur", { path: test.info().outputPath("auditeur.png"), contentType: "image/png" });
+});
