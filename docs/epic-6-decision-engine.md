@@ -44,3 +44,17 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 **Limites connues** : le regroupement est affiché sur le dossier seulement (pas encore sur la liste d'accueil) ; les clés de groupe suivent la première nuit du groupe et peuvent donc changer quand les fenêtres glissent.
 
 **Tests** : unitaires (`lifecycle.test.ts`), base (`lifecycle.db.test.ts` : rejouer la revue sans doublon, repos puis réouverture, date remise à zéro ; test de migrations existant rejoué deux fois), non-régression (golden), E2E (`e2e/cycle-dossiers.spec.ts`, 3 viewports).
+
+## US-062 — Scoring d'opportunité configurable
+
+**Ce qui change**
+- **Module pur `src/lib/engine/scoring.ts`**, formule du blueprint §9.2 : `priorité = gain net attendu × confiance × urgence × poids du playbook − coût d'exécution − pénalité de risque`. `priorityScore` (moteur) délègue au module avec le réglage par défaut : **les scores existants sont inchangés** (snapshot de non-régression).
+- **Réglable par espace** (Réglages → « Priorisation des dossiers ») : poids par playbook (0 à 5, 1 = neutre), pénalité par niveau de risque (0 à 1000 points ; défaut 0 / 4 / 10 / 25), coût d'exécution par mode (euros, 0 à 1000 ; défaut 0). Rétablir les valeurs par défaut en un bouton. Une saisie hors bornes est refusée avec le champ nommé ; une valeur enregistrée illisible retombe sur le défaut (jamais sur zéro). Seuls les écarts au défaut sont enregistrés. Chaque changement est inscrit au journal d'audit (`settings.scoring_updated`).
+- **Le score ne contourne jamais un veto** : un dossier sous veto remonte pour être traité, mais n'ouvre aucune action.
+- **Dossier** : encart « Pourquoi ce rang » avec la décomposition du score. Les changements s'appliquent à la prochaine revue des logements.
+- La déduplication (US-061) départage maintenant avec le score réglé de l'espace.
+- **Staging (Coolify)** : aucune migration (réglage stocké dans les paramètres existants de l'espace), aucune variable d'environnement.
+
+**Limites connues** : le coût d'exécution ne dépend que du mode d'exécution ; le poids stratégique est par playbook (pas encore par logement) ; le facteur d'urgence reste calculé par le moteur.
+
+**Tests** : unitaires (`scoring.test.ts`, 10 cas dont la formule calculée à la main, bornes, virgule française, veto), base (`scoring.db.test.ts` : le réglage change la priorité à la revue puis se rétablit, configuration illisible), non-régression (golden inchangé), E2E (`e2e/priorisation.spec.ts`, 3 viewports).

@@ -150,6 +150,22 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   <tbody>{(o.signals.signal.measures as SignalMeasure[]).map((m) => { const f = formatMeasure(m); return <tr key={m.key}><th scope="row">{f.label}</th><td className="mono">{f.observed}</td><td className="mono">{f.threshold ?? "—"}</td></tr>; })}</tbody></table></div>
               )}
               <div className="reg-foot"><span className="metric-source">Source : {o.signals.signalSource}{o.signals.signal?.playbook ? ` · ${o.signals.signal.playbook}, fenêtre ${o.signals.signal.horizon}` : ""}</span></div></article>
+            {o.signals.score && (
+              <article data-testid="rang-card"><span className="reg-key"><Icon name="signal" />Pourquoi ce rang</span>
+                <p>Priorité {o.signals.score.score}, utilisée pour classer l'Inbox. Elle organise le travail et n'autorise ni n'écarte aucune action.</p>
+                <div className="table-wrap score-table"><table className="econ"><caption className="sr-only">Composition du score de priorité</caption>
+                  <thead><tr><th scope="col">Terme</th><th scope="col">Valeur</th></tr></thead>
+                  <tbody>
+                    <tr><th scope="row">Gain net attendu</th><td className="mono">{euro(Math.round(o.signals.score.impact * 100))}</td></tr>
+                    <tr><th scope="row">× Confiance</th><td className="mono">{o.signals.score.confidence}</td></tr>
+                    <tr><th scope="row">× Urgence</th><td className="mono">{o.signals.score.urgency}</td></tr>
+                    <tr><th scope="row">× Poids du playbook</th><td className="mono">{o.signals.score.weight}</td></tr>
+                    <tr><th scope="row">− Coût d'exécution</th><td className="mono">{o.signals.score.executionCost} €</td></tr>
+                    <tr><th scope="row">− Pénalité de risque</th><td className="mono">{o.signals.score.riskPenalty} pts</td></tr>
+                    {o.signals.score.veto && <tr><th scope="row">+ Dossier sous veto, remonté pour être traité</th><td className="mono">oui</td></tr>}
+                  </tbody></table></div>
+              </article>
+            )}
             <article><span className="reg-key"><Icon name="calendar" />Période</span><p className="mono">{fmtPeriod(o.stayFrom, o.stayTo)}</p></article>
             <article>
               <span className="reg-key"><Icon name="bulb" />Diagnostic</span>
