@@ -1,5 +1,6 @@
 import type { AuditRule, AuditVerdict, Candidate, Channel, EconomicModel, Promo, Strategy } from "./types";
-import { hardFloorCents, strategyFloorCents } from "./economics";
+import { hardFloorCents } from "./economics";
+import { strategyFloorWindow } from "./seasons";
 import { euro } from "../format";
 import type { ISODate } from "../dates";
 import { evaluateStacking, overlapsWindow, promoKind, STACK_STATUS, type InPlayPromo } from "../stacking/rules";
@@ -72,7 +73,10 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
 
   if (state) {
     const hard = hardFloorCents(ctx.model, state.channel, state.nights);
-    const strat = strategyFloorCents(ctx.model, state.channel, state.nights);
+    // la saison se lit sur les nuits visées par l'option : le plancher le plus exigeant des saisons traversées s'applique
+    const sf = strategyFloorWindow(ctx.model, state.channel, state.nights, ctx.window.from, ctx.window.to > ctx.window.from ? ctx.window.to : undefined);
+    const strat = sf.floor;
+    const seasonNote = sf.season ? ` (saison « ${sf.season.label} »)` : "";
     if (state.soldNightlyCents < hard) {
       add("HARD_FLOOR", "Plancher économique absolu", "FAIL",
         c.type === "NO_ACTION"
@@ -82,12 +86,12 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
       add("HARD_FLOOR", "Plancher économique absolu", "PASS", `Prix vendu ${euro(state.soldNightlyCents)} ≥ plancher ${euro(hard)} (${state.nights} nuits).`);
       add("STRATEGY_FLOOR", "Plancher stratégique", state.soldNightlyCents < strat ? "WARN" : "PASS",
         state.soldNightlyCents < strat
-          ? `Prix vendu ${euro(state.soldNightlyCents)} sous le plancher stratégique de ${euro(strat)}.`
-          : `Prix vendu ${euro(state.soldNightlyCents)} ≥ plancher stratégique ${euro(strat)}.`);
+          ? `Prix vendu ${euro(state.soldNightlyCents)} sous le plancher stratégique de ${euro(strat)}${seasonNote}.`
+          : `Prix vendu ${euro(state.soldNightlyCents)} ≥ plancher stratégique ${euro(strat)}${seasonNote}.`);
     }
     if (c.type === "CHANNEL_PROMO") {
       const max = ctx.strategy.maxDiscountStackPct;
-      add("DISCOUNT_STACK", "Cumul des remises", state.cumulativeDiscountPct > max ? "FAIL" : "PASS",
+      add("DISCOUNT_STACK", "Cumul des remises", state.cumulativeDiscountPct > max + 1e-9 ? "FAIL" : "PASS",
         `Cumul simulé ${state.cumulativeDiscountPct.toFixed(1).replace(".", ",")} % pour un maximum de ${max} %.`);
     }
   } else if (c.type !== "NO_ACTION" && c.type !== "INVESTIGATION" && c.type !== "LISTING_AUDIT") {

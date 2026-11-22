@@ -2,7 +2,8 @@ import { addDays, diffDays, fmtDay, type ISODate } from "../dates";
 import { euro, pct } from "../format";
 import { auditCandidate, type AuditContext } from "./audit";
 import { DEMAND_MODEL_NOTE, percentileAfter, sellProbability } from "./demand";
-import { cumulativeDiscountPct, hardFloorCents, missingEconomics, simulateStack, strategyFloorCents, UnknownEconomics } from "./economics";
+import { cumulativeDiscountPct, hardFloorCents, missingEconomics, simulateStack, UnknownEconomics } from "./economics";
+import { strategyFloorOver } from "./seasons";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
 import type { Candidate, Channel, Day, DetectedOpportunity, Diagnosis, DiagnosisStep, EconomicModel, Evidence, Promo, Resa, StackResult, Strategy } from "./types";
 import { CHANNEL_LABEL } from "./types";
@@ -136,7 +137,7 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
     const a = avgDay(ctx, run); const price = a.price!;
     const promos = refPromos(ctx, channel, run);
     const cur = stack(ctx, channel, los, price, promos);
-    const hard = hardFloorCents(ctx.model, channel, los), strat = strategyFloorCents(ctx.model, channel, los);
+    const hard = hardFloorCents(ctx.model, channel, los), strat = strategyFloorOver(ctx.model, channel, los, from, to);
     const rule = ctx.byDate.get(run[0])!.rule;
     const ruleCut = rule ? Number((rule.match(/(\d+(?:[.,]\d+)?)\s*%/)?.[1] ?? "0").replace(",", ".")) : 0;
     const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d);
@@ -275,7 +276,7 @@ function stackRisk(ctx: Ctx): DetectedOpportunity[] {
       const ps = promosOn(ctx.promos, channel, d.date);
       if (ps.length < 2) return false;
       const s = stack(ctx, channel, los, d.priceCents, ps);
-      return s.cumulativeDiscountPct > ctx.strategy.maxDiscountStackPct || s.soldNightlyCents < strategyFloorCents(ctx.model, channel, los);
+      return s.cumulativeDiscountPct > ctx.strategy.maxDiscountStackPct || s.soldNightlyCents < strategyFloorOver(ctx.model, channel, los, d.date);
     }).map((d) => d.date);
     for (const run of runs(dates).filter((r) => r.length >= 2)) {
       const from = run[0], to = addDays(run[run.length - 1], 1);
@@ -283,7 +284,7 @@ function stackRisk(ctx: Ctx): DetectedOpportunity[] {
       const price = avgDay(ctx, run).price!;
       const promos = refPromos(ctx, channel, run);
       const cur = stack(ctx, channel, los, price, promos);
-      const strat = strategyFloorCents(ctx.model, channel, los);
+      const strat = strategyFloorOver(ctx.model, channel, los, from, to);
       const base = expected(ctx, run, channel, 1, (d) => promosOn(ctx.promos, channel, d), los);
       // remise à retirer : la plus petite dont le retrait rétablit le plancher stratégique, sinon la plus forte
       const sorted = [...promos].sort((a, b) => (a.stayFrom ? 0 : 1) - (b.stayFrom ? 0 : 1) || a.discountPct - b.discountPct);

@@ -1,4 +1,4 @@
-import type { ISODate } from "../dates";
+import { addDays, diffDays, type ISODate } from "../dates";
 import { floorGrossNightlyCents, floorGrid } from "./economics";
 import type { Channel, EconomicModel, Season } from "./types";
 
@@ -94,6 +94,30 @@ export function seasonOn(m: Pick<EconomicModel, "seasons">, date: ISODate): Seas
 export function strategyContributionOn(m: EconomicModel, date: ISODate): number | null {
   return seasonOn(m, date)?.strategyContributionPerNightCents ?? m.strategyContributionPerNightCents;
 }
+
+/**
+ * Plancher stratégique brut pour un séjour de `nights` nuits qui commence à `from`, ou pour des nuits visées [from, to[ : le plus exigeant
+ * des planchers des saisons que ces nuits traversent (prudence : un séjour à cheval sur deux saisons n'est jamais jugé sur la plus clémente).
+ * `season` est la saison qui fixe ce plancher (null : la valeur de base). Sans saison, c'est exactement le plancher de base.
+ * Une fenêtre est bornée à 400 nuits ; au-delà, une erreur plutôt qu'un plancher sous-estimé.
+ */
+export function strategyFloorWindow(m: EconomicModel, channel: Channel, nights: number, from: ISODate, to?: ISODate): { floor: number; season: Season | null } {
+  if (!(m.seasons ?? []).length) return { floor: floorGrossNightlyCents(m, channel, nights, m.strategyContributionPerNightCents!), season: null };
+  const count = Math.max(1, to && to > from ? diffDays(to, from) : nights);
+  if (count > 400) throw new Error("Fenêtre de plus de 400 nuits : les saisons ne peuvent pas être évaluées.");
+  let best = { floor: -1, season: null as Season | null };
+  const seen = new Set<string>();
+  for (let i = 0; i < count; i++) {
+    const s = seasonOn(m, addDays(from, i));
+    const key = s?.id ?? "";
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const floor = floorGrossNightlyCents(m, channel, nights, s?.strategyContributionPerNightCents ?? m.strategyContributionPerNightCents!);
+    if (floor > best.floor) best = { floor, season: s };
+  }
+  return best;
+}
+export const strategyFloorOver = (m: EconomicModel, channel: Channel, nights: number, from: ISODate, to?: ISODate): number => strategyFloorWindow(m, channel, nights, from, to).floor;
 
 /** Plancher stratégique brut par nuit à une date de séjour. Lève UnknownEconomics si le modèle est incomplet. */
 export function strategyFloorOn(m: EconomicModel, channel: Channel, nights: number, date: ISODate): number {

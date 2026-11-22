@@ -32,7 +32,7 @@ export default async function Saisons({ params }: { params: Promise<{ id: string
         <p>Une saison change la couverture des charges fixes par nuit vendue, donc le plancher stratégique, pendant une période qui revient chaque année. Le seuil de dérangement (plancher absolu) ne change jamais. Hors saison, la valeur de base s'applique{model.strategyContributionPerNightCents != null ? ` (${eur(model.strategyContributionPerNightCents)} € par nuit)` : ""}.</p>
       </div>
       {missingEconomics(model).length > 0 && <Banner role="attention" title="Modèle économique incomplet">Renseignez d'abord les coûts et seuils : les saisons s'appuient sur eux. <Link href={`/logements/${p.id}/couts`}>Compléter les coûts</Link></Banner>}
-      <Banner role="tech" title="Affichées, pas encore appliquées par l'auditeur">Les planchers saisonniers sont calculés et validables ; l'auditeur et le simulateur les appliqueront avec l'US-053. D'ici là, il continue d'utiliser le plancher de base.</Banner>
+      <Banner role="tech" title="Appliquées par l'auditeur et le simulateur">Pour un séjour qui traverse plusieurs saisons, le plancher le plus exigeant s'applique.</Banner>
       <ActionForm action={saveSeasonsAction} hidden={{ propertyId: p.id }} className="stack" style={{ gap: 16 }}>
         {Array.from({ length: rows }, (_, i) => {
           const s = seasons[i];

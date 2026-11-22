@@ -56,6 +56,20 @@ Blueprint §3 (principes 5 et 7), §7.2–7.3 (signaux, fenêtres), §8.2 (formu
 - Le parcours « Coûts et seuils » **conserve** les saisons ; il refuse un nouveau seuil de dérangement qui passerait au-dessus d'une saison (message clair, rien n'est écrit).
 - **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
 
-**Limites connues** : une saison s'exprime en dates récurrentes (pas d'année) ; le plancher saisonnier est calculé et affiché, il est consommé par le simulateur dès l'US-053 (l'auditeur actuel continue d'utiliser la grille de base tant que cette US n'est pas livrée).
+**Limites connues** : une saison s'exprime en dates récurrentes (pas d'année) ; le plancher saisonnier est consommé par l'auditeur, la détection et le simulateur (US-053). Le dossier d'opportunité affiche encore le plancher de base dans son encadré de bornes.
 
 **Tests** : unitaires (`seasons.test.ts` : dates, chevauchements dont nouvel an et 29 février, bornes, plancher calculé à la main, empreinte inchangée sans saison, versions), base (`seasons.db.test.ts` : version et audit, validation périmée puis rétablie, refus, cloisonnement, parcours des coûts), E2E (`e2e/seasons.spec.ts` : saisie, API, 401/403/400/404, bureau, mobile 390 et 360 px).
+
+## US-053 — Discount Stack Simulator explicable
+
+**Ce qui change**
+- **Module pur `src/lib/engine/simulator.ts`** (`simulate`) au-dessus de `simulateStack` : ordre canonique prix publié → remise de durée → promotions du canal (appliquées l'une après l'autre sur le montant restant, jamais additionnées) → commission → frais de paiement → coûts.
+- **Chaque étape est expliquée en une phrase** (d'où vient le montant, avec les chiffres). La cascade **se referme exactement sur la contribution** (`reconciles`, invariant testé sur 200 jeux reproductibles).
+- **Verdict** `OK`, `WARN` (sous le plancher stratégique), `NEEDS_HUMAN` (règle de cumul inconnue d'après le registre US-003, ou registre des promotions non vérifié depuis plus de 7 jours) ou `REJECT` (sous le plancher absolu ou cumul au-delà du plafond de la stratégie). Un rejet l'emporte, puis la décision humaine. Une règle inconnue n'est jamais devinée.
+- **Plancher de la saison du séjour** (US-052) : le plancher stratégique est celui de la saison des nuits simulées (le plus exigeant si le séjour en traverse plusieurs) ; le plancher absolu ne varie pas. Le même calcul est maintenant utilisé par l'auditeur (`STRATEGY_FLOOR`, avec la saison dans le message) et par la détection (PB de plancher et de cumul), au lieu de la valeur de base.
+- **API `GET /api/v1/properties/{id}/simulate?channel=&nights=&price=&from=&los=&promo=TYPE:%`** (lecture seule, session, isolée par locataire, `no-store`) : `price` est le prix publié par nuit sur le canal, en centimes, majoration comprise. Erreurs lisibles : 400 si le modèle est incomplet, le canal non déclaré ou le plafond de cumul inconnu ; 404 hors espace.
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Limites connues** : la simulation est une API (pas encore d'écran dédié ; la cascade de la fiche logement reste inchangée) ; les promotions du registre du logement ne sont pas ajoutées automatiquement, l'appelant donne celles qu'il veut simuler (le registre ne sert qu'à juger sa fraîcheur) ; le dossier d'opportunité affiche le plancher de base dans son encadré.
+
+**Tests** : unitaires (`simulator.test.ts` : cascade et remises calculées à la main, planchers par saison, cumul inconnu et documenté, registre périmé, invariant de fermeture, auditeur par saison), base (`simulator.db.test.ts` : lecture des paramètres, péremption du registre, refus, cloisonnement), E2E (`e2e/simulator.spec.ts`).
