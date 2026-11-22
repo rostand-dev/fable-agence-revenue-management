@@ -3,6 +3,7 @@ import { hardFloorCents } from "./economics";
 import { strategyFloorWindow } from "./seasons";
 import { euro } from "../format";
 import type { ISODate } from "../dates";
+import { policyCodes, verdictOf } from "./policy";
 import { evaluateStacking, overlapsWindow, promoKind, STACK_STATUS, type InPlayPromo } from "../stacking/rules";
 
 export type AuditContext = {
@@ -106,6 +107,11 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     else if (abs <= 15) add("MAX_VARIATION", "Variation maximale", "WARN", `Variation ${txt} au-delà de ±${max} % : validation commentée requise.`);
     else add("MAX_VARIATION", "Variation maximale", "FAIL", `Variation ${txt} au-delà de 15 % par action.`);
   }
+  {
+    const p = c.parameters as Record<string, unknown>;
+    const lowersMin = typeof p.minPriceCents === "number" && typeof p.previousMinPriceCents === "number" ? p.minPriceCents < p.previousMinPriceCents : (c.priceChangePct ?? 0) < 0;
+    if (c.type === "MIN_PRICE_CHANGE" && lowersMin) add("MIN_PRICE_DOWN", "Baisse du prix minimum", "WARN", "Baisse du prix minimum PriceLabs : validation commentée requise, et approbation du propriétaire ou du mandat.");
+  }
   if (c.type === "BASE_PRICE_CHANGE") add("STRUCTURAL", "Action structurelle", "WARN", "Modification du prix de base : une seule hypothèse structurante à la fois, commentaire obligatoire.");
   if (c.nightsTouched > 14 && c.type !== "BASE_PRICE_CHANGE") add("SCOPE", "Portée en nuits", "WARN", `${c.nightsTouched} nuits touchées pour un maximum de 14 sans validation renforcée.`);
   else if (c.nightsTouched > 0) add("SCOPE", "Portée en nuits", "PASS", `${c.nightsTouched} nuit${c.nightsTouched > 1 ? "s" : ""} touchée${c.nightsTouched > 1 ? "s" : ""}.`);
@@ -130,6 +136,7 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     }
   }
 
-  const verdict = rules.some((r) => r.outcome === "FAIL") ? "REJECT" : rules.some((r) => r.outcome === "WARN") ? "NEEDS_HUMAN" : "APPROVE";
-  return { verdict, rules };
+  const out: AuditVerdict = { verdict: verdictOf(rules), rules };
+  const codes = policyCodes(out);
+  return { ...out, vetoCodes: codes.veto, humanCodes: codes.human };
 }

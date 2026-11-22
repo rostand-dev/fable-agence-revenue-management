@@ -70,3 +70,18 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 **Limites connues** : le contrat vérifie la forme et les bornes de chaque candidate, pas la pertinence économique (rôle de l'auditeur, US-064) ; les limites de variation de prix par action et par semaine relèvent du policy engine.
 
 **Tests** : unitaires (`candidates.test.ts` : contrat de chaque type, bornes, refus, retrait et re-sélection, et 12 scénarios réels vérifiant que le moteur ne produit que des candidates conformes), non-régression (golden inchangé), suites existantes (markups, PB-13).
+
+## US-064 — Policy engine et codes de veto
+
+**Ce qui change**
+- **Registre unique `src/lib/engine/policy.ts`** des 12 règles de l'auditeur, chacune avec son code stable : ce qu'elle contrôle, ce que produit un **échec** (veto : l'option est rejetée) ou une **alerte** (validation humaine avec commentaire), l'origine de son seuil et sa référence au blueprint. Codes : `HARD_FLOOR`, `STRATEGY_FLOOR`, `DISCOUNT_STACK`, `STACK_RULES`, `MAX_VARIATION`, `SCOPE`, `STRUCTURAL`, `MIN_PRICE_DOWN`, `PROMO_FRESHNESS`, `CONFLICT`, `ROLLBACK`, `CAPABILITY`.
+- **Verdict** : `verdictOf` (un échec rejette, une alerte demande un humain, sinon conforme) est la seule définition ; chaque verdict enregistre maintenant ses `vetoCodes` et `humanCodes`. `explainVerdict` en donne une phrase lisible.
+- **Nouvelle règle `MIN_PRICE_DOWN`** : toute baisse du prix minimum PriceLabs est signalée à valider avec commentaire, l'approbation du propriétaire ou du mandat restant portée par l'approbateur du playbook (blueprint §11.2, risque critique) ; elle se lit dans les paramètres de l'option, pas seulement dans le pourcentage. Aucune option actuelle du moteur ne baisse le prix minimum ; la règle verrouille ce cas avant qu'il n'existe.
+- **Cohérence contrôlée** : un test échoue si le moteur émet une règle absente du registre, un résultat qu'elle ne déclare pas (par exemple un veto sur une règle d'alerte), ou si un playbook cite une règle de veto inconnue.
+- **Page Méthode** : section « Les règles de l'auditeur » (une fiche dépliable par code) et, dans chaque playbook, « Règles qui peuvent rejeter une option ».
+- Les décisions du moteur sont inchangées (snapshot de non-régression) ; les verdicts déjà enregistrés restent lisibles (champs de codes facultatifs).
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Limites connues** : la limite de variation par période de sept jours et les permissions par rôle (RBAC, épic 8) ne sont pas encore des règles ; la fraîcheur des sources autres que le registre de promotions est contrôlée à la collecte (épic 4), pas ici.
+
+**Tests** : unitaires (`policy.test.ts` : verdicts, registre, chaque veto nommé, bornes de variation, règle MIN_PRICE_DOWN, cohérence sur 12 scénarios de revue), non-régression (golden), E2E (`e2e/playbooks.spec.ts`, 3 viewports).

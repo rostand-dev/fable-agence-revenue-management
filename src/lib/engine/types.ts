@@ -81,7 +81,11 @@ export type StackResult = {
 };
 
 export type AuditRule = { code: string; label: string; outcome: "PASS" | "WARN" | "FAIL"; detail: string };
-export type AuditVerdict = { verdict: "APPROVE" | "REJECT" | "NEEDS_HUMAN"; rules: AuditRule[] };
+export type AuditVerdict = {
+  verdict: "APPROVE" | "REJECT" | "NEEDS_HUMAN"; rules: AuditRule[];
+  /** Codes des règles en échec (veto) et en alerte (validation humaine), US-064. Absents des verdicts enregistrés avant cette version. */
+  vetoCodes?: string[]; humanCodes?: string[];
+};
 
 export type CandidateType =
   | "MIN_STAY_OVERRIDE" | "PRICE_OVERRIDE" | "RULE_EXCLUSION" | "BASE_PRICE_CHANGE" | "MIN_PRICE_CHANGE" | "CHANNEL_PROMO"
