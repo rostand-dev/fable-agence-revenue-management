@@ -70,7 +70,7 @@ export function oppRow(o: DetectedOpportunity) {
   const c = o.candidates[o.selected];
   return {
     playbook: o.playbook, reasonCode: o.reasonCode, title: o.title, stayFrom: o.stayFrom, stayTo: o.stayTo,
-    signals: { ...o.signals, signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null },
+    signals: { ...o.signals, signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null },
     diagnosis: o.diagnosis, candidates: o.candidates, selected: o.selected, priority: priorityScore(o), confidence: o.diagnosis.confidence,
     risk: c.risk, impactCents: c.type === "NO_ACTION" ? 0 : c.expectedDeltaCents, veto: o.veto, expiresAt: o.expiresAt,
   };

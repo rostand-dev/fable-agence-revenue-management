@@ -1,82 +1,23 @@
 import { addDays, diffDays, fmtDay, type ISODate } from "../dates";
 import { euro, pct } from "../format";
-import { auditCandidate, type AuditContext } from "./audit";
-import { DEMAND_MODEL_NOTE, percentileAfter, sellProbability } from "./demand";
-import { cumulativeDiscountPct, hardFloorCents, missingEconomics, simulateStack, UnknownEconomics } from "./economics";
+import { auditCandidate } from "./audit";
+import { avgDay, expected, fmtPctFr, markupFactor, markupPctOf, overlaps, plural, promosOn, runs, stack, type Ctx, type EngineInput } from "./context";
+import { DEMAND_MODEL_NOTE, sellProbability } from "./demand";
+import { cumulativeDiscountPct, hardFloorCents, missingEconomics } from "./economics";
+import { threshold } from "./playbooks";
 import { strategyFloorOver } from "./seasons";
+import {
+  detectChannelGap, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
+  type ChannelGapPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
+} from "./signals";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
-import type { Candidate, Channel, Day, DetectedOpportunity, Diagnosis, DiagnosisStep, EconomicModel, Evidence, Promo, Resa, StackResult, Strategy } from "./types";
+import type { Candidate, Channel, DetectedOpportunity, Diagnosis, DiagnosisStep, Evidence, Promo, StackResult } from "./types";
 import { CHANNEL_LABEL } from "./types";
 
-export type EngineInput = {
-  today: ISODate;
-  property: { id: string; name: string; isDemo: boolean };
-  model: EconomicModel;
-  strategy: Strategy;
-  days: Day[];
-  promos: Promo[];
-  resas: Resa[];
-  capabilities: Record<string, boolean>;
-  /** Plages de dates couvertes par une action encore en observation */
-  activeRanges: { from: ISODate; to: ISODate }[];
-  now: Date;
-  /**
-   * Majoration SuperHote par canal, en % : prix du calendrier SuperHote (avant majoration) → prix affiché sur le canal.
-   * `null` = majoration inconnue : le canal est exclu de la revue (jamais traité comme 0 %).
-   * Absent = sans objet (prix de catalogue de démonstration, déjà au prix du canal).
-   */
-  markups?: Partial<Record<Channel, number | null>>;
-  /** Origine du prix du calendrier : SuperHote fait foi dès qu'il est rattaché et lisible ; sinon prix recommandé PriceLabs. */
-  priceSource?: "SUPERHOTE" | "PRICELABS";
-};
+// Compatibilité : ces symboles vivaient ici avant l'extraction du contexte (`context.ts`).
+export { markupFactor, promosOn };
+export type { EngineInput };
 
-type Ctx = EngineInput & {
-  byDate: Map<ISODate, Day>; channels: Channel[]; refChannel: Channel; refLos: number;
-  lead: ReturnType<typeof leadTimes>; share: Record<string, number>; audit: AuditContext; claimed: Set<ISODate>;
-  stale: Channel[];
-};
-
-const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
-const plural = (n: number, w: string) => `${n} ${w}${n > 1 ? "s" : ""}`;
-
-export function promosOn(promos: Promo[], channel: Channel, date: ISODate): Promo[] {
-  return promos.filter((p) => p.channel === channel && (!p.stayFrom || p.stayFrom <= date) && (!p.stayTo || date < p.stayTo));
-}
-function runs(dates: ISODate[]): ISODate[][] {
-  const out: ISODate[][] = []; const s = [...dates].sort();
-  for (const d of s) { const last = out[out.length - 1]; if (last && addDays(last[last.length - 1], 1) === d) last.push(d); else out.push([d]); }
-  return out;
-}
-const overlaps = (ctx: Ctx, from: ISODate, to: ISODate) => ctx.activeRanges.some((r) => r.from < to && from < r.to);
-
-/** Multiplicateur du prix du calendrier vers le prix affiché sur le canal : 1 + majoration ÷ 100. Majoration inconnue = erreur, jamais 0 %. */
-export function markupFactor(markups: EngineInput["markups"], channel: Channel): number {
-  if (!markups) return 1;
-  const m = markups[channel];
-  if (m === undefined || m === null) throw new UnknownEconomics(["majoration " + CHANNEL_LABEL[channel]]);
-  return 1 + m / 100;
-}
-/** `price` = prix du calendrier (avant majoration). Le prix publié sur le canal est price × (1 + majoration), puis remises, commission, coûts. */
-function stack(ctx: Ctx, channel: Channel, nights: number, price: number, promos: Promo[] | { label: string; discountPct: number }[]): StackResult {
-  return simulateStack({ model: ctx.model, channel, nights, publishedNightlyCents: Math.round(price * markupFactor(ctx.markups, channel)), promos: promos.map((p) => ({ label: p.label, discountPct: p.discountPct })) });
-}
-const markupPctOf = (ctx: Ctx, channel: Channel): number => (ctx.markups?.[channel] ?? 0);
-const fmtPctFr = (x: number) => (Math.round(x * 100) / 100).toString().replace(".", ",") + " %";
-/** Espérance de contribution sur un ensemble de nuits libres, pour un prix et des remises donnés. */
-function expected(ctx: Ctx, dates: ISODate[], channel: Channel, priceFactor: number, promosFor: (d: ISODate) => { label: string; discountPct: number }[], los: number, demandFactor = 1): number | null {
-  let total = 0;
-  for (const date of dates) {
-    const d = ctx.byDate.get(date);
-    if (!d || d.priceCents === null || d.marketOccupancy === null || d.pricePercentile === null) return null;
-    const promos = promosFor(date);
-    // seul l'écart de remise par rapport à la situation actuelle déplace la position de prix
-    const promoDelta = cumulativeDiscountPct(promos.map((p) => p.discountPct)) - cumulativeDiscountPct(promosOn(ctx.promos, channel, date).map((p) => p.discountPct));
-    const effChange = (priceFactor - 1) * 100 - promoDelta * (ctx.share[channel] ?? 0.5);
-    const p = sellProbability(Math.min(0.98, d.marketOccupancy * demandFactor), percentileAfter(d.pricePercentile, effChange));
-    total += p * stack(ctx, channel, los, d.priceCents * priceFactor, promos).contributionPerNightCents;
-  }
-  return Math.round(total);
-}
 function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: ISODate): Candidate {
   return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && draft.type !== "MIN_PRICE_CHANGE" && overlaps(ctx, from, to) }) };
 }
@@ -109,31 +50,16 @@ function confidence(parts: [boolean, number][], base = 0.5): number {
   return Math.round(Math.min(0.92, Math.max(0.2, parts.reduce((a, [ok, w]) => a + (ok ? w : 0), base))) * 100) / 100;
 }
 function refPromos(ctx: Ctx, channel: Channel, dates: ISODate[]): Promo[] { return dates.length ? promosOn(ctx.promos, channel, dates[0]) : []; }
-function avgDay(ctx: Ctx, dates: ISODate[]) {
-  const ds = dates.map((d) => ctx.byDate.get(d)!).filter(Boolean);
-  const num = (f: (d: Day) => number | null) => { const xs = ds.map(f).filter((x): x is number => x !== null); return xs.length ? avg(xs) : null; };
-  return { price: num((d) => d.priceCents), occ: num((d) => d.marketOccupancy), pctl: num((d) => d.pricePercentile), minStay: num((d) => d.minStay) };
-}
 const srcCal = (ctx: Ctx) => (ctx.property.isDemo ? "Calendrier de démonstration" : "PriceLabs · disponibilités");
 const srcMkt = (ctx: Ctx) => (ctx.property.isDemo ? "Marché de démonstration" : "PriceLabs · marché");
 const srcPL = (ctx: Ctx) => (ctx.property.isDemo ? "Grille de démonstration" : ctx.priceSource === "SUPERHOTE" ? "SuperHote · calendrier" : "PriceLabs · prix recommandé");
 
 /* ------------------------------------------------------------------ PB-06 */
-function floorBreach(ctx: Ctx): DetectedOpportunity[] {
+function floorBreach(ctx: Ctx, signals: Signal<FloorBreachPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
-  const los = Math.max(ctx.strategy.minStay ?? 2, 2);
-  const hit: { date: ISODate; channel: Channel }[] = [];
-  for (const d of ctx.days) {
-    if (d.state !== "FREE" || d.priceCents === null) continue;
-    for (const ch of ctx.channels) {
-      const sold = stack(ctx, ch, los, d.priceCents, promosOn(ctx.promos, ch, d.date)).soldNightlyCents;
-      if (sold < hardFloorCents(ctx.model, ch, los)) { hit.push({ date: d.date, channel: ch }); break; }
-    }
-  }
-  for (const run of runs(hit.map((h) => h.date))) {
-    const channel = hit.find((h) => h.date === run[0])!.channel;
-    const from = run[0], to = addDays(run[run.length - 1], 1);
-    run.forEach((d) => ctx.claimed.add(d));
+  for (const sig of signals) {
+    const { run, channel, los } = sig.payload;
+    const from = sig.from, to = sig.to;
     const a = avgDay(ctx, run); const price = a.price!;
     const promos = refPromos(ctx, channel, run);
     const cur = stack(ctx, channel, los, price, promos);
@@ -192,7 +118,7 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
       evidence,
     };
     out.push({
-      playbook: "PB-06", reasonCode: "FLOOR_BREACH",
+      playbook: "PB-06", signal: summarize(sig, ctx.today), reasonCode: "FLOOR_BREACH",
       title: `Le prix vendu ${CHANNEL_LABEL[channel]} passe sous le plancher absolu sur ${plural(run.length, "nuit")}`,
       stayFrom: from, stayTo: to,
       signalText: `Prix vendu ${euro(cur.soldNightlyCents)} la nuit pour un plancher de ${euro(hard)}`, signalSource: `${srcPL(ctx)} + simulateur de cumul`,
@@ -215,18 +141,11 @@ function floorBreach(ctx: Ctx): DetectedOpportunity[] {
  * PriceLabs peut vendre sous ce plancher dès que la demande baisse. L'agent d'onboarding propose de relever ce minimum.
  * Il ne se déclenche jamais pour un canal dont la majoration est inconnue (ce canal est exclu de la revue).
  */
-function minPriceBelowFloor(ctx: Ctx): DetectedOpportunity[] {
-  const min = ctx.strategy.minPriceCents;
-  if (!min || min <= 0 || ctx.channels.length === 0) return [];
-  const los = Math.max(ctx.strategy.minStay ?? 2, 2);
-  const rows = ctx.channels.map((ch) => {
-    const cur = stack(ctx, ch, los, min, []);
-    const hard = hardFloorCents(ctx.model, ch, los);
-    return { ch, cur, hard, need: Math.ceil(hard / markupFactor(ctx.markups, ch) / 100) * 100 };
-  });
-  const bad = rows.filter((r) => r.cur.soldNightlyCents < r.hard).sort((a, b) => b.need - a.need);
-  if (!bad.length) return [];
-  const w = bad[0], newMin = w.need, from = ctx.today, to = addDays(ctx.today, 90);
+function minPriceBelowFloor(ctx: Ctx, signals: Signal<MinPricePayload>[]): DetectedOpportunity[] {
+  const sig = signals[0];
+  if (!sig) return [];
+  const { channel, los, minCents: min, hardCents, needed, current } = sig.payload;
+  const w = { ch: channel, cur: current, hard: hardCents, need: needed }, newMin = w.need, from = sig.from, to = sig.to;
   const mk = markupFactor(ctx.markups, w.ch), name = CHANNEL_LABEL[w.ch];
   const proposed = stack(ctx, w.ch, los, newMin, []);
   const cands: Candidate[] = [
@@ -248,7 +167,7 @@ function minPriceBelowFloor(ctx: Ctx): DetectedOpportunity[] {
     { kind: "comparaison", label: "Calcul du minimum proposé", value: `plancher ${euro(w.hard)} ÷ ${mk.toFixed(2).replace(".", ",")} de majoration, arrondi à l'euro supérieur = ${euro(newMin)}`, source: "Calcul" },
   ];
   return [{
-    playbook: "PB-13", dedupe: "min", reasonCode: "MIN_PRICE_BELOW_FLOOR",
+    playbook: "PB-13", signal: summarize(sig, ctx.today), dedupe: "min", reasonCode: "MIN_PRICE_BELOW_FLOOR",
     title: `Le prix minimum PriceLabs laisse vendre ${name} sous le plancher absolu`,
     stayFrom: from, stayTo: to,
     signalText: `Minimum PriceLabs ${euro(min)} : prix vendu ${euro(w.cur.soldNightlyCents)} au minimum, pour un plancher de ${euro(w.hard)}`, signalSource: "PriceLabs · réglages + simulateur de cumul",
@@ -267,20 +186,11 @@ function minPriceBelowFloor(ctx: Ctx): DetectedOpportunity[] {
 }
 
 /* ------------------------------------------------------------------ PB-05 */
-function stackRisk(ctx: Ctx): DetectedOpportunity[] {
+function stackRisk(ctx: Ctx, signals: Signal<StackRiskPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
-  const los = Math.max(ctx.refLos, 2);
-  for (const channel of ctx.channels) {
-    const dates = ctx.days.filter((d) => {
-      if (d.state !== "FREE" || d.priceCents === null || ctx.claimed.has(d.date)) return false;
-      const ps = promosOn(ctx.promos, channel, d.date);
-      if (ps.length < 2) return false;
-      const s = stack(ctx, channel, los, d.priceCents, ps);
-      return s.cumulativeDiscountPct > ctx.strategy.maxDiscountStackPct || s.soldNightlyCents < strategyFloorOver(ctx.model, channel, los, d.date);
-    }).map((d) => d.date);
-    for (const run of runs(dates).filter((r) => r.length >= 2)) {
-      const from = run[0], to = addDays(run[run.length - 1], 1);
-      run.forEach((d) => ctx.claimed.add(d));
+  for (const sig of signals) {
+      const { channel, run, los } = sig.payload;
+      const from = sig.from, to = sig.to;
       const price = avgDay(ctx, run).price!;
       const promos = refPromos(ctx, channel, run);
       const cur = stack(ctx, channel, los, price, promos);
@@ -303,7 +213,7 @@ function stackRisk(ctx: Ctx): DetectedOpportunity[] {
         noAction(ctx, from, to, cur, "Conserver les remises actives jusqu'à la prochaine revue hebdomadaire."),
       ];
       out.push({
-        playbook: "PB-05", reasonCode: "DISCOUNT_STACK_RISK",
+        playbook: "PB-05", signal: summarize(sig, ctx.today), reasonCode: "DISCOUNT_STACK_RISK",
         title: `${plural(promos.length, "remise")} ${CHANNEL_LABEL[channel]} se cumulent à ${cur.cumulativeDiscountPct.toFixed(0)} % sur ${plural(run.length, "nuit")}`,
         stayFrom: from, stayTo: to,
         signalText: `Cumul ${cur.cumulativeDiscountPct.toFixed(1).replace(".", ",")} % : prix vendu ${euro(cur.soldNightlyCents)} pour un plancher stratégique de ${euro(strat)}`,
@@ -327,31 +237,24 @@ function stackRisk(ctx: Ctx): DetectedOpportunity[] {
         },
         candidates: cands, selected: pick(cands, { veto: true }), veto: false, urgency: 1 + Math.max(0, 30 - diffDays(from, ctx.today)) / 30, expiresAt: to,
       });
-    }
   }
   return out;
 }
 
 /* ------------------------------------------------------------------ PB-03 */
-function orphanGaps(ctx: Ctx): DetectedOpportunity[] {
+function orphanGaps(ctx: Ctx, signals: Signal<OrphanGapPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
-  const free = ctx.days.filter((d) => d.state === "FREE" && !ctx.claimed.has(d.date) && diffDays(d.date, ctx.today) >= 2 && diffDays(d.date, ctx.today) <= 45).map((d) => d.date);
-  for (const run of runs(free)) {
-    if (run.length > 3) continue;
-    const before = ctx.byDate.get(addDays(run[0], -1)), after = ctx.byDate.get(addDays(run[run.length - 1], 1));
-    if (!before || !after || before.state === "FREE" || after.state === "FREE") continue;
+  for (const sig of signals) {
+    const { run, minStay, channel, price } = sig.payload;
     const a = avgDay(ctx, run);
-    const minStay = Math.round(a.minStay ?? ctx.strategy.minStay ?? 0);
-    if (!minStay || minStay <= run.length || a.price === null) continue;
-    const from = run[0], to = addDays(run[run.length - 1], 1), L = run.length, channel = ctx.refChannel;
-    run.forEach((d) => ctx.claimed.add(d));
+    const from = sig.from, to = sig.to, L = run.length;
     const promos = refPromos(ctx, channel, run);
-    const proposed = stack(ctx, channel, L, a.price, promos);
+    const proposed = stack(ctx, channel, L, price, promos);
     const p = a.occ !== null && a.pctl !== null ? sellProbability(a.occ, a.pctl) : null;
     const cands: Candidate[] = [
       finalize(ctx, {
         type: "MIN_STAY_OVERRIDE", label: `Ramener le séjour minimum à ${plural(L, "nuit")} sur ces dates`,
-        detail: `Les ${plural(L, "nuit")} deviennent réservables au prix publié de ${euro(a.price)} ; aucun prix n'est modifié.`, agent: "pricing",
+        detail: `Les ${plural(L, "nuit")} deviennent réservables au prix publié de ${euro(price)} ; aucun prix n'est modifié.`, agent: "pricing",
         target: { system: "PRICELABS" }, parameters: { minStay: L, previousMinStay: minStay, dates: run }, nightsTouched: L, priceChangePct: null,
         current: null, proposed, expectedDeltaCents: p === null ? null : Math.round(p * proposed.contributionCents),
         hypothesis: p === null ? "Probabilité de vente inconnue : données de marché absentes." : `Contribution d'un séjour de ${plural(L, "nuit")} (${euro(proposed.contributionCents)}) × probabilité de vente approchée (${pct(p)}). ${DEMAND_MODEL_NOTE}`,
@@ -360,7 +263,7 @@ function orphanGaps(ctx: Ctx): DetectedOpportunity[] {
       noAction(ctx, from, to, null, "Laisser le trou invendable : les nuits restent bloquées par le séjour minimum."),
     ];
     out.push({
-      playbook: "PB-03", reasonCode: "ORPHAN_GAP",
+      playbook: "PB-03", signal: summarize(sig, ctx.today), reasonCode: "ORPHAN_GAP",
       title: `${plural(L, "nuit")} invendable${L > 1 ? "s" : ""} entre deux réservations`,
       stayFrom: from, stayTo: to,
       signalText: `Trou de ${plural(L, "nuit")} encadré par deux séjours, avec un séjour minimum de ${minStay} nuits`, signalSource: srcCal(ctx),
@@ -389,12 +292,11 @@ function orphanGaps(ctx: Ctx): DetectedOpportunity[] {
 }
 
 /* ------------------------------------------------------------------ PB-07 */
-function eventUplift(ctx: Ctx): DetectedOpportunity[] {
+function eventUplift(ctx: Ctx, signals: Signal<EventUpliftPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
-  const dates = ctx.days.filter((d) => d.state === "FREE" && d.event && !ctx.claimed.has(d.date) && (d.marketOccupancy ?? 0) >= 0.8 && d.pricePercentile !== null && d.pricePercentile <= 45 && d.priceCents !== null).map((d) => d.date);
-  for (const run of runs(dates)) {
-    const from = run[0], to = addDays(run[run.length - 1], 1), channel = ctx.refChannel, los = Math.max(Math.min(ctx.refLos, run.length), ctx.strategy.minStay ?? 1, 1);
-    run.forEach((d) => ctx.claimed.add(d));
+  for (const sig of signals) {
+    const run = sig.payload.run;
+    const from = sig.from, to = sig.to, channel = ctx.refChannel, los = Math.max(Math.min(ctx.refLos, run.length), ctx.strategy.minStay ?? 1, 1);
     const a = avgDay(ctx, run), ev = ctx.byDate.get(run[0])!.event!;
     const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d);
     const promos = refPromos(ctx, channel, run), cur = stack(ctx, channel, los, a.price!, promos);
@@ -412,7 +314,7 @@ function eventUplift(ctx: Ctx): DetectedOpportunity[] {
     };
     const cands = [mk(12), mk(5), noAction(ctx, from, to, cur, "Laisser PriceLabs ajuster seul à l'approche de la date.")];
     out.push({
-      playbook: "PB-07", reasonCode: "EVENT_UPLIFT",
+      playbook: "PB-07", signal: summarize(sig, ctx.today), reasonCode: "EVENT_UPLIFT",
       title: `Demande d'événement non reflétée dans le prix sur ${plural(run.length, "nuit")}`,
       stayFrom: from, stayTo: to,
       signalText: `Marché occupé à ${pct(a.occ)} pour « ${ev} », prix au ${Math.round(a.pctl!)}e percentile`, signalSource: srcMkt(ctx),
@@ -441,19 +343,17 @@ function eventUplift(ctx: Ctx): DetectedOpportunity[] {
 }
 
 /* ------------------------------------------------------------------ PB-01 */
-function paceLow(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
+function paceLow(ctx: Ctx, signals: Signal<PaceLowPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
-  for (const w of stats.slice(1)) {
-    if (w.gap === null || w.gap > -0.18) continue;
-    const free = w.freeDates.filter((d) => !ctx.claimed.has(d));
-    if (free.length < 4) continue;
+  for (const sig of signals) {
+    const { window: w, free } = sig.payload;
     const a = avgDay(ctx, free);
     if (a.price === null || a.occ === null) continue;
     const from = w.from, to = w.to, channel = ctx.refChannel, los = Math.max(ctx.refLos, ctx.strategy.minStay ?? 1, 1);
     const notOpen = ctx.lead !== null && w.startOffset > ctx.lead.p75;
-    const weak = a.occ < 0.35;
-    const priceHigh = a.pctl !== null && a.pctl >= 65;
-    const restr = a.minStay !== null && a.minStay >= 3 && a.minStay > ctx.refLos;
+    const weak = a.occ < threshold("PB-01", "weakMarketOccupancy");
+    const priceHigh = a.pctl !== null && a.pctl >= threshold("PB-01", "priceHighPercentile");
+    const restr = a.minStay !== null && a.minStay >= threshold("PB-01", "restrictiveMinStay") && a.minStay > ctx.refLos;
     const promosAll = ctx.channels.flatMap((c) => promosOn(ctx.promos, c, free[0]));
     const tree: DiagnosisStep[] = [
       { question: "La demande du marché est-elle elle-même faible ?", answer: `${pct(a.occ)} d'occupation marché sur la fenêtre.`, verdict: weak ? "oui" : "non" },
@@ -469,7 +369,7 @@ function paceLow(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
       PRICE_HIGH: "Le prix est positionné au-dessus du marché comparable", RESTRICTION_MISMATCH: "Le séjour minimum écarte une partie de la demande",
       VISIBILITY_CONVERSION: "Ni le prix ni les restrictions n'expliquent l'écart : visibilité ou conversion de l'annonce",
     };
-    const target = free.slice(0, 14);
+    const target = free.slice(0, threshold("PB-01", "maxTargetNights"));
     const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d);
     const promos = refPromos(ctx, channel, target);
     const cur = stack(ctx, channel, los, a.price, promos);
@@ -513,7 +413,7 @@ function paceLow(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
     const preferNo = weak || notOpen;
     const selected = pick(cands, { preferNoAction: preferNo, forceType: primary === "VISIBILITY_CONVERSION" ? "LISTING_AUDIT" : undefined });
     out.push({
-      playbook: "PB-01", dedupe: w.key, reasonCode: preferNo ? "PACE_BELOW_MARKET_EXPECTED" : "PACE_BELOW_MARKET",
+      playbook: "PB-01", signal: summarize(sig, ctx.today), dedupe: w.key, reasonCode: preferNo ? "PACE_BELOW_MARKET_EXPECTED" : "PACE_BELOW_MARKET",
       title: preferNo ? `Remplissage en retrait sur ${w.label}, sans cause tarifaire` : `Remplissage ${Math.round(-w.gap * 100)} points sous le marché sur ${w.label}`,
       stayFrom: from, stayTo: to,
       signalText: `Occupation ${pct(w.occupancy)} pour un marché à ${pct(w.marketOccupancy)} · ${plural(free.length, "nuit")} libre${free.length > 1 ? "s" : ""}`, signalSource: `${srcCal(ctx)} + ${srcMkt(ctx)}`,
@@ -546,13 +446,10 @@ function paceLow(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
 }
 
 /* ------------------------------------------------------------------ PB-02 */
-function paceHigh(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
+function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
-  for (const w of stats.slice(3)) {
-    if (w.gap === null || w.occupancy === null || w.gap < 0.25 || w.occupancy < 0.55) continue;
-    const horizonFree = ctx.days.filter((d) => d.state === "FREE" && d.date >= w.from && !ctx.claimed.has(d.date) && d.priceCents !== null).map((d) => d.date);
-    const winFree = w.freeDates.filter((d) => !ctx.claimed.has(d));
-    if (horizonFree.length < 4) continue;
+  for (const sig of signals) {
+    const { window: w, horizonFree, winFree } = sig.payload;
     const channel = ctx.refChannel, los = Math.max(ctx.refLos, ctx.strategy.minStay ?? 1, 1);
     const a = avgDay(ctx, horizonFree);
     const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d);
@@ -579,9 +476,8 @@ function paceHigh(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
       }, w.from, w.to));
     }
     cands.push(noAction(ctx, w.from, w.to, cur, "Conserver le prix de base et vérifier le rythme à la prochaine revue hebdomadaire."));
-    horizonFree.forEach((d) => ctx.claimed.add(d));
     out.push({
-      playbook: "PB-02", dedupe: "base", reasonCode: "PACE_ABOVE_MARKET",
+      playbook: "PB-02", signal: summarize(sig, ctx.today), dedupe: "base", reasonCode: "PACE_ABOVE_MARKET",
       title: `Réservations très en avance sur le marché sur ${w.label}`,
       stayFrom: w.from, stayTo: w.to,
       signalText: `Occupation ${pct(w.occupancy)} pour un marché à ${pct(w.marketOccupancy)}, à plus de ${w.startOffset} jours`, signalSource: `${srcCal(ctx)} + ${srcMkt(ctx)}`,
@@ -609,18 +505,90 @@ function paceHigh(ctx: Ctx, stats: WindowStat[]): DetectedOpportunity[] {
       },
       candidates: cands, selected: pick(cands), veto: false, urgency: 1, expiresAt: addDays(ctx.today, 14),
     });
-    break; // une seule hypothèse structurante à la fois par logement
   }
   return out;
 }
 
+/* ------------------------------------------------------------------ PB-04 */
+/**
+ * PB-04 · un canal sous-performe. Le logement suit son marché dans son ensemble, mais un canal pèse nettement moins dans les nuits déjà réservées
+ * qu'il ne pèse d'habitude. Le diagnostic reste ouvert : visibilité, promotion absente ou inventaire non distribué ne se distinguent pas sans accès
+ * partenaire. L'option retenue est donc l'audit de l'annonce quand une promotion est déjà active sur ce canal (jamais deux remises pour un même signal),
+ * sinon la meilleure espérance, et l'inaction quand le gain attendu est faible.
+ */
+function channelGap(ctx: Ctx, signals: Signal<ChannelGapPayload>[]): DetectedOpportunity[] {
+  const out: DetectedOpportunity[] = [];
+  for (const sig of signals) {
+    const { channel, onBooksShare, historicalShare, onBooksNights, historyStays } = sig.payload;
+    const target = sig.dates, from = sig.from, to = sig.to, name = CHANNEL_LABEL[channel];
+    const los = Math.max(ctx.refLos, ctx.strategy.minStay ?? 1, 1);
+    const a = avgDay(ctx, target);
+    if (a.price === null) continue;
+    const promos = refPromos(ctx, channel, target);
+    const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d);
+    const cur = stack(ctx, channel, los, a.price, promos);
+    const kind = channel === "BOOKING" ? { kind: "MOBILE", label: "Offre mobile ciblée" } : { kind: "LAST_MINUTE", label: "Remise dernière minute" };
+    const add = { label: kind.label, discountPct: 10 };
+    const next = stack(ctx, channel, los, a.price, [...promos, add]);
+    const b0 = expected(ctx, target, channel, 1, promoFn, los);
+    const b1 = expected(ctx, target, channel, 1, (d) => [...promoFn(d), add], los);
+    const cands: Candidate[] = [
+      finalize(ctx, {
+        type: "CHANNEL_PROMO", label: `${kind.label} ${name} à 10 % sur la fenêtre`,
+        detail: `Remise limitée à ${name}, séjours du ${fmtDay(from)} au ${fmtDay(to)} ; le prix de l'autre canal reste inchangé.`, agent: "distribution",
+        target: { system: channel, channel }, parameters: { kind: kind.kind, discountPct: 10, label: kind.label, stayFrom: from, stayTo: to }, nightsTouched: target.length, priceChangePct: null,
+        current: cur, proposed: next, expectedDeltaCents: b0 !== null && b1 !== null ? Math.round((b1 - b0) * (ctx.share[channel] ?? 0.5)) : null,
+        hypothesis: `${DEMAND_MODEL_NOTE} Écart pondéré par la part habituelle du canal (${pct(historicalShare)}) ; le gain de visibilité propre à la promotion n'est pas chiffré, et la distribution de l'inventaire sur ce canal n'est pas vérifiable sans accès partenaire.`,
+        rollbackPlan: `Désactiver la promotion dans l'extranet ${name}.`, executionMode: "MANUAL_RUNBOOK", risk: "MEDIUM", measurementWindowDays: 14,
+      }, from, to),
+      finalize(ctx, {
+        type: "LISTING_AUDIT", label: `Auditer l'annonce ${name} avant toute remise`,
+        detail: `Contrôle du titre, des photos, des équipements, des avis et de la distribution de l'inventaire sur ${name}.`, agent: "annonce",
+        target: { system: "INTERNAL" }, parameters: { channel }, nightsTouched: 0, priceChangePct: null, current: cur, proposed: null, expectedDeltaCents: null,
+        hypothesis: "Effet non chiffrable : aucun taux de conversion par canal n'est disponible sans accès partenaire.", rollbackPlan: "Aucune écriture externe : rien à annuler.",
+        executionMode: "INTERNAL", risk: "LOW", measurementWindowDays: 14,
+      }, from, to),
+      noAction(ctx, from, to, cur, `Attendre une revue supplémentaire : l'écart de part peut venir de quelques séjours longs sur l'autre canal.`, 7),
+    ];
+    const promoActive = promos.length > 0;
+    const selected = pick(cands, { forceType: promoActive ? "LISTING_AUDIT" : undefined });
+    out.push({
+      playbook: "PB-04", signal: summarize(sig, ctx.today), dedupe: channel, reasonCode: "CHANNEL_UNDERPERFORMS",
+      title: `${name} pèse ${Math.round((historicalShare - onBooksShare) * 100)} points de moins que d'habitude dans les nuits réservées`,
+      stayFrom: from, stayTo: to,
+      signalText: `${name} : ${pct(onBooksShare)} des nuits réservées sur ${threshold("PB-04", "horizonDays")} jours contre ${pct(historicalShare)} d'habitude`, signalSource: "Historique et réservations à venir",
+      hypothesisText: "Le canal est moins visible ou moins attractif qu'avant ; l'ensemble du logement suit pourtant son marché.",
+      signals: { channel, onBooksShare: Math.round(onBooksShare * 1000) / 1000, historicalShare: Math.round(historicalShare * 1000) / 1000, onBooksNights, historyStays, freeNights: target.length },
+      diagnosis: {
+        primary: "VISIBILITY_CONVERSION", primaryLabel: `Visibilité ou conversion de l'annonce sur ${name}`,
+        alternatives: [
+          { cause: "DISCOUNT_STACK", label: "Promotion absente ou déjà active", why: promoActive ? `Plausible : ${promos.map((p) => `${p.label} ${p.discountPct} %`).join(", ")} déjà active${promos.length > 1 ? "s" : ""} sur le canal ; une remise de plus s'ajouterait.` : "Aucune promotion active relevée sur le canal : une offre ciblée est possible." },
+          { cause: "PRICE_HIGH", label: "Prix publié plus haut sur ce canal", why: ctx.markups ? `Majoration ${name} de ${fmtPctFr(markupPctOf(ctx, channel))} : le prix publié du canal est plus élevé que celui de l'autre.` : "Non vérifiable : majoration du canal inconnue." },
+        ],
+        confidence: confidence([[historyStays >= 24, 0.08], [onBooksNights >= 20, 0.06], [!ctx.stale.includes(channel), 0.06]], 0.4),
+        confidenceNote: "Diagnostic par comparaison de parts de canal : aucune mesure directe de visibilité ni de conversion.",
+        tree: [
+          { question: "Le problème est-il propre à un canal ?", answer: `Oui : ${name} perd ${Math.round((historicalShare - onBooksShare) * 100)} points de part, le logement suit son marché.`, verdict: "oui" },
+          { question: "Une promotion est-elle déjà active sur ce canal ?", answer: promoActive ? promos.map((p) => `${p.label} (${p.discountPct} %)`).join(", ") + "." : "Aucune promotion active relevée.", verdict: promoActive ? "oui" : "non" },
+          { question: "L'inventaire est-il bien distribué sur ce canal ?", answer: "Inconnu : non vérifiable sans accès partenaire.", verdict: "inconnu" },
+        ],
+        evidence: [
+          { kind: "fait", label: `Part de ${name} dans les nuits réservées à venir`, value: `${pct(onBooksShare)} (${onBooksNights} nuits)`, source: "Réservations SuperHote" },
+          { kind: "comparaison", label: `Part habituelle de ${name}`, value: `${pct(historicalShare)} (${historyStays} séjours sur douze mois)`, source: "Historique des réservations" },
+          { kind: "fait", label: "Prix publié moyen des nuits libres", value: euro(a.price), source: srcPL(ctx) },
+        ],
+      },
+      candidates: cands, selected, veto: false, urgency: 1 + Math.max(0, 30 - diffDays(from, ctx.today)) / 60, expiresAt: addDays(ctx.today, 14),
+    });
+  }
+  return out;
+}
 /* ------------------------------------------------------------------ PB-10 */
-function dataDrift(ctx: Ctx): DetectedOpportunity[] {
-  return ctx.stale.map((channel) => {
+function dataDrift(ctx: Ctx, signals: Signal<DataDriftPayload>[]): DetectedOpportunity[] {
+  return signals.map((sig) => {
+    const { channel, ageDays: age } = sig.payload;
     const ps = ctx.promos.filter((p) => p.channel === channel);
-    const oldest = ps.map((p) => p.verifiedAt).filter((x): x is Date => !!x).sort((a, b) => +a - +b)[0];
-    const age = oldest ? Math.floor((+ctx.now - +oldest) / 86400000) : null;
-    const from = ctx.today, to = addDays(ctx.today, 30);
+    const from = sig.from, to = sig.to;
     const cands: Candidate[] = [
       finalize(ctx, {
         type: "INVESTIGATION", label: `Vérifier les promotions actives dans l'extranet ${CHANNEL_LABEL[channel]}`,
@@ -631,7 +599,7 @@ function dataDrift(ctx: Ctx): DetectedOpportunity[] {
       }, from, to),
     ];
     return {
-      playbook: "PB-10", dedupe: channel, reasonCode: "DATA_STALE",
+      playbook: "PB-10", signal: summarize(sig, ctx.today), dedupe: channel, reasonCode: "DATA_STALE",
       title: `Registre des promotions ${CHANNEL_LABEL[channel]} non vérifié depuis ${age === null ? "une date inconnue" : age + " jours"}`,
       stayFrom: from, stayTo: to,
       signalText: `${plural(ps.length, "promotion")} déclarée${ps.length > 1 ? "s" : ""}, dernière vérification ${age === null ? "inconnue" : "il y a " + age + " jours"} (seuil : 7 jours)`, signalSource: `Registre des promotions ${CHANNEL_LABEL[channel]}`,
@@ -649,7 +617,7 @@ function dataDrift(ctx: Ctx): DetectedOpportunity[] {
 }
 
 /* ------------------------------------------------------------------ entrée */
-export type EngineResult = { opportunities: DetectedOpportunity[]; stats: WindowStat[]; blocked: string[]; /** Canaux exclus de la revue faute de majoration renseignée */ missingMarkups: Channel[] };
+export type EngineResult = { opportunities: DetectedOpportunity[]; /** Signaux observés, y compris ceux dont le constructeur n'a rien retenu */ signals: Signal[]; stats: WindowStat[]; blocked: string[]; /** Canaux exclus de la revue faute de majoration renseignée */ missingMarkups: Channel[] };
 
 /**
  * Revue déterministe d'un logement : signaux → diagnostic → options → simulation → audit.
@@ -659,12 +627,12 @@ export type EngineResult = { opportunities: DetectedOpportunity[]; stats: Window
 export function reviewProperty(input: EngineInput): EngineResult {
   const stats = windowStats(input.days, input.today);
   const blocked = missingEconomics(input.model);
-  if (blocked.length) return { opportunities: [], stats, blocked, missingMarkups: [] };
+  if (blocked.length) return { opportunities: [], signals: [], stats, blocked, missingMarkups: [] };
   const declared = Object.keys(input.model.channels) as Channel[];
   // une majoration inconnue n'est jamais traitée comme 0 % : le canal est exclu et l'application demande de la saisir
   const missingMarkups = input.markups ? declared.filter((c) => input.markups![c] === undefined || input.markups![c] === null) : [];
   const channels = declared.filter((c) => !missingMarkups.includes(c));
-  if (channels.length === 0) return { opportunities: [], stats, blocked: [], missingMarkups };
+  if (channels.length === 0) return { opportunities: [], signals: [], stats, blocked: [], missingMarkups };
   const share = channelShare(input.resas);
   const refChannel = [...channels].sort((a, b) => (input.model.channels[b]!.commissionPct + input.model.channels[b]!.paymentFeePct) - (input.model.channels[a]!.commissionPct + input.model.channels[a]!.paymentFeePct))[0];
   const stale = channels.filter((c) => {
@@ -676,8 +644,21 @@ export function reviewProperty(input: EngineInput): EngineResult {
     lead: leadTimes(input.resas), share, claimed: new Set(), stale,
     audit: { model: input.model, strategy: input.strategy, stalePromoChannels: stale, conflict: false, capabilities: input.capabilities, demo: input.property.isDemo, promos: input.promos, window: { from: input.today, to: input.today } },
   };
-  const opportunities = [...floorBreach(ctx), ...minPriceBelowFloor(ctx), ...stackRisk(ctx), ...orphanGaps(ctx), ...eventUplift(ctx), ...paceHigh(ctx, stats), ...paceLow(ctx, stats), ...dataDrift(ctx)];
-  return { opportunities, stats, blocked: [], missingMarkups };
+  // chaque règle observe (signals.ts), puis son constructeur instruit : l'ordre est fixe car une règle retire ses nuits aux suivantes
+  const signals: Signal[] = [];
+  const step = <P,>(found: Signal<P>[], build: (s: Signal<P>[]) => DetectedOpportunity[]) => { signals.push(...(found as Signal[])); return build(found); };
+  const opportunities = [
+    ...step(detectFloorBreach(ctx), (s) => floorBreach(ctx, s)),
+    ...step(detectMinPriceBelowFloor(ctx), (s) => minPriceBelowFloor(ctx, s)),
+    ...step(detectStackRisk(ctx), (s) => stackRisk(ctx, s)),
+    ...step(detectOrphanGap(ctx), (s) => orphanGaps(ctx, s)),
+    ...step(detectEventUplift(ctx), (s) => eventUplift(ctx, s)),
+    ...step(detectPaceHigh(ctx, stats), (s) => paceHigh(ctx, s)),
+    ...step(detectPaceLow(ctx, stats), (s) => paceLow(ctx, s)),
+    ...step(detectChannelGap(ctx, stats), (s) => channelGap(ctx, s)),
+    ...step(detectDataDrift(ctx), (s) => dataDrift(ctx, s)),
+  ];
+  return { opportunities, signals, stats, blocked: [], missingMarkups };
 }
 
 /** Score de priorité (blueprint §9.2). Il organise le travail ; il ne contourne jamais un veto. */

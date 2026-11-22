@@ -1,3 +1,5 @@
+import { formatMeasure } from "@/lib/engine/signal-format";
+import type { SignalMeasure } from "@/lib/engine/types";
 import Link from "next/link";
 import { Term } from "@/components/Term";
 import { notFound } from "next/navigation";
@@ -117,7 +119,13 @@ export default async function Dossier({ params, searchParams }: { params: Promis
         <p className="section-note">À gauche, la chaîne du raisonnement. À droite, les pièces qui la soutiennent, avec leur source.</p>
         <div className="dcols">
           <div className="registry">
-            <article><span className="reg-key"><Icon name="signal" />Signal observé</span><p>{o.signals.signalText}</p><div className="reg-foot"><span className="metric-source">Source : {o.signals.signalSource}</span></div></article>
+            <article data-testid="signal-card"><span className="reg-key"><Icon name="signal" />Signal observé</span><p>{o.signals.signalText}</p>
+              {Array.isArray(o.signals.signal?.measures) && o.signals.signal.measures.length > 0 && (
+                <div className="table-wrap signal-measures"><table className="econ"><caption className="sr-only">Mesures du signal face à leur seuil</caption>
+                  <thead><tr><th scope="col">Mesure</th><th scope="col">Observé</th><th scope="col">Seuil</th></tr></thead>
+                  <tbody>{(o.signals.signal.measures as SignalMeasure[]).map((m) => { const f = formatMeasure(m); return <tr key={m.key}><th scope="row">{f.label}</th><td className="mono">{f.observed}</td><td className="mono">{f.threshold ?? "—"}</td></tr>; })}</tbody></table></div>
+              )}
+              <div className="reg-foot"><span className="metric-source">Source : {o.signals.signalSource}{o.signals.signal?.playbook ? ` · ${o.signals.signal.playbook}, fenêtre ${o.signals.signal.horizon}` : ""}</span></div></article>
             <article><span className="reg-key"><Icon name="calendar" />Période</span><p className="mono">{fmtPeriod(o.stayFrom, o.stayTo)}</p></article>
             <article>
               <span className="reg-key"><Icon name="bulb" />Diagnostic</span>
