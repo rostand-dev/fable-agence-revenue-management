@@ -29,3 +29,18 @@ Blueprint §3 (principes 5 et 7), §7.2–7.3 (signaux, fenêtres), §8.2 (formu
 **Limites connues** : l'occupation à venir ne compare pas encore au marché (c'est le rôle des fenêtres de `windowStats`, US-051) ; un frais de paiement absent compte pour 0 sans signal (seule la commission décide si le net est connu, Airbnb n'ayant pas de frais de paiement) ; la taxe de séjour n'est pas retirée par ce module (le montant d'hébergement est pris tel que stocké, voir le dictionnaire).
 
 **Tests** : unitaires (`kpi.test.ts` : cas calculé à la main, blocages, net partiel/inconnu/nul, double réservation, bornes, mois bissextile, répartition des centimes, 5 jeux aléatoires reproductibles qui vérifient l'additivité exacte et les bornes), base (`performance.db.test.ts` : 12 mois, période libre, blocages du calendrier, isolation locataire, bornes, validation des paramètres), E2E navigateur (API et fiche du logement, bureau, mobile 390 et 360 px, sans débordement).
+
+## US-051 — Pickup et pacing par horizon
+
+**Ce qui change**
+- **Module pur `src/lib/metrics/pace.ts`** sur les cinq fenêtres canoniques (D+0–7, D+8–14, D+15–30, D+31–60, D+61–90).
+- **Pickup 1, 3, 7 et 14 jours** : nuits de la fenêtre dont la réservation date des N derniers jours civils, aujourd'hui compris. Les **annulations** des mêmes jours sont données à part (`cancelled`), jamais retranchées en silence. Elles viennent de l'historique `reservation_changes` : une annulation compte tant que la réservation n'a pas été réactivée depuis.
+- **Pacing** : occupation déjà réservée de la fenêtre, comparée à la même fenêtre 52 semaines plus tôt, au même délai avant le séjour (nuits réservées à la date de comparaison). Écart en points ; `AHEAD` / `ON_TRACK` / `BEHIND` au-delà de ±5 points. **Sans historique d'un an, le statut est `UNKNOWN`** avec sa raison (`NO_HISTORY`, `HISTORY_TOO_SHORT`, `NO_AVAILABILITY`) : jamais « dans la cible » par défaut.
+- **API `GET /api/v1/properties/{id}/pace`** (lecture seule, session, isolée par locataire). **Fiche du logement** : deux colonnes ajoutées au tableau « Rythme de réservation » (Pickup 7 j, Face à l'an dernier).
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Choix de conception** : une annulation est datée de son enregistrement chez nous (lecture), pas de la date indiquée par la source ; elle reste comptée tant que la réservation n'est pas remise en vigueur, même si un évènement ultérieur la modifie ; le pacing exige que l'historique couvre aussi les nuits comparées (première nuit connue au moins aussi ancienne que la fenêtre de l'an dernier). Écarts de 5 points arrondis avant comparaison.
+
+**Limites connues** : les blocages du calendrier lu n'existent qu'à partir d'aujourd'hui, la disponibilité de l'an dernier peut donc être surévaluée ; une réservation annulée n'a plus de nuits, donc le « même jour l'an dernier » est sous-évalué des annulations tardives ; les annulations ne sont connues que depuis la mise en route de l'ingestion SuperHote ; sur un logement dont l'historique a moins d'un an, le pacing reste inconnu (pickup disponible).
+
+**Tests** : unitaires (`pace.test.ts` : bornes du pickup, annulations, avance/cible/retard, réservation faite après la date de comparaison, historique court, blocages, fenêtres jointives), base (`pace.db.test.ts` : pickup par fenêtre, pacing, annulations avec réactivation, isolation locataire), E2E (API et tableau, bureau, mobile 390 et 360 px).
