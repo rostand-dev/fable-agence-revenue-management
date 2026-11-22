@@ -77,7 +77,7 @@ export default async function Methode() {
                       <div><dt>Approbation</dt><dd>{APPROVER_LABEL[p.approver]}</dd></div>
                       <div><dt>Vérification</dt><dd>{p.verification}</dd></div>
                       <div><dt>Horizon de mesure</dt><dd>{p.measurementHorizonDays > 0 ? `${p.measurementHorizonDays} jours` : "sans objet"}</dd></div>
-                      {p.vetoRules.length > 0 && <div><dt>Règles qui peuvent rejeter une option</dt><dd>{p.vetoRules.map((v) => POLICY_RULES[v]?.label ?? v).join(", ")}</dd></div>}
+                      {p.vetoRules.length > 0 && <div><dt>Règles de l'auditeur concernées</dt><dd>{p.vetoRules.map((v) => `${POLICY_RULES[v]?.label ?? v} (${POLICY_RULES[v]?.onFail === "VETO" ? "veto" : "validation humaine"})`).join(", ")}</dd></div>}
                       {p.exclusions.length > 0 && <div><dt>Ce qui écarte l'action</dt><dd>{p.exclusions.join(" ; ")}</dd></div>}
                     </dl>
                   </div>
@@ -96,7 +96,7 @@ export default async function Methode() {
             return (
               <li key={c} className="playbook">
                 <details className="fold">
-                  <summary><span className="mono">{r.code}</span> {r.label} {r.onFail === "VETO" && <State role="veto">veto</State>}</summary>
+                  <summary><span className="mono">{r.code}</span> {r.label} {r.onFail === "VETO" ? <State role="veto">veto</State> : <State role="attention">validation humaine</State>}</summary>
                   <div className="fold-body">
                     <p>{r.checks}</p>
                     <dl className="playbook-facts">

@@ -329,3 +329,4 @@ a.fn-st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .btn-row .btn { min-height: 44px; }
 h3.sub { font-size: 14px; margin: 18px 0 8px; }
 .score-table { margin-top: 10px; }
+.playbooks summary { flex-wrap: wrap; overflow-wrap: anywhere; }

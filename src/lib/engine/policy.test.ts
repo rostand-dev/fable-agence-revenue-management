@@ -40,6 +40,11 @@ describe("registre des codes", () => {
   it("les règles de veto déclarées par les playbooks existent toutes au registre", () => {
     for (const p of Object.values(PLAYBOOKS)) for (const v of p.vetoRules) expect(POLICY_RULES[v], `${p.code} → ${v}`).toBeTruthy();
   });
+  it("la page Méthode ne promet un veto que pour les règles qui peuvent rejeter", () => {
+    expect(POLICY_RULES.SCOPE.onFail).toBeNull();
+    expect(POLICY_RULES.HARD_FLOOR.onFail).toBe("VETO");
+    expect(POLICY_RULES.STRATEGY_FLOOR.onWarn).toBe("HUMAN");
+  });
   it("un résultat que la règle ne déclare pas est signalé comme défaut du moteur", () => {
     expect(policyViolations([rule("STRATEGY_FLOOR", "FAIL")])).toHaveLength(1);
     expect(policyViolations([rule("DISCOUNT_STACK", "WARN")])).toHaveLength(1);
@@ -66,6 +71,10 @@ describe("l'auditeur applique le registre", () => {
     const v = auditCandidate(cand({ type: "MIN_PRICE_CHANGE", parameters: { minPriceCents: 6000, previousMinPriceCents: 7000 }, nightsTouched: 0, priceChangePct: -14, target: { system: "PRICELABS" } }), ctx());
     expect(v.humanCodes).toContain("MIN_PRICE_DOWN");
   });
+  it("la baisse du prix minimum se lit aussi dans les paramètres, même sans pourcentage", () => {
+    const v = auditCandidate(cand({ type: "MIN_PRICE_CHANGE", parameters: { minPriceCents: 6000, previousMinPriceCents: 7000 }, nightsTouched: 0, priceChangePct: null, target: { system: "PRICELABS" } }), ctx());
+    expect(v.humanCodes).toContain("MIN_PRICE_DOWN");
+  });
   it("une hausse de prix minimum n'appelle pas MIN_PRICE_DOWN", () => {
     const v = auditCandidate(cand({ type: "MIN_PRICE_CHANGE", parameters: { minPriceCents: 8000, previousMinPriceCents: 7000 }, nightsTouched: 0, priceChangePct: 14, target: { system: "PRICELABS" } }), ctx());
     expect(v.rules.map((r) => r.code)).not.toContain("MIN_PRICE_DOWN");
@@ -73,7 +82,8 @@ describe("l'auditeur applique le registre", () => {
   it("une variation au-delà de 15 % est un veto, entre la limite et 15 % une validation humaine", () => {
     const max = base.strategy.maxPriceChangePct;
     expect(auditCandidate(cand({ priceChangePct: 16 }), ctx()).vetoCodes).toContain("MAX_VARIATION");
-    expect(auditCandidate(cand({ priceChangePct: Math.min(15, max + 2) }), ctx()).humanCodes).toContain("MAX_VARIATION");
+    expect(max, "le test suppose une limite sous 15 %").toBeLessThan(15);
+    expect(auditCandidate(cand({ priceChangePct: (max + 15) / 2 }), ctx()).humanCodes).toContain("MAX_VARIATION");
   });
   it("le plancher absolu est un veto, jamais une simple alerte", () => {
     const v = auditCandidate(cand({ priceChangePct: null, current: null, proposed: { channel: "BOOKING", nights: 2, publishedNightlyCents: 3000, soldNightlyCents: 3000, cumulativeDiscountPct: 0, grossRoomCents: 6000, netRoomCents: 4000, contributionCents: 0, contributionPerNightCents: 0, netAdrCents: 2000, steps: [] } }), ctx());
@@ -96,7 +106,7 @@ describe("le moteur n'émet que des règles du registre", () => {
         total++; for (const r of c.audit.rules) codes.add(r.code);
         expect(policyViolations(c.audit.rules), `${o.playbook} ${c.type}`).toEqual([]);
         expect(c.audit.verdict).toBe(verdictOf(c.audit.rules));
-        expect(c.audit.vetoCodes).toEqual(policyCodes(c.audit).veto);
+        for (const r of c.audit.rules) expect(r.label, r.code).toBe(POLICY_RULES[r.code].label);
       }
     }
     expect(total).toBeGreaterThan(20);

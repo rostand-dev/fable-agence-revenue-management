@@ -47,7 +47,7 @@ test("Méthode : les règles de l'auditeur distinguent veto et validation humain
   const section = page.getByTestId("regles-auditeur");
   await expect(section).toBeVisible();
   const rules = section.locator("li.playbook");
-  expect(await rules.count()).toBeGreaterThanOrEqual(10);
+  await expect(rules).toHaveCount(12);
   const floor = rules.filter({ hasText: "HARD_FLOOR" });
   await floor.locator("summary").click();
   await expect(floor).toContainText("L'option est rejetée (veto).");
@@ -58,7 +58,8 @@ test("Méthode : les règles de l'auditeur distinguent veto et validation humain
   // un playbook cite les règles qui peuvent rejeter ses options
   const pb01 = page.getByTestId("playbooks").locator("li.playbook").first();
   await pb01.locator("summary").click();
-  await expect(pb01).toContainText("Règles qui peuvent rejeter une option");
+  await expect(pb01).toContainText("Règles de l'auditeur concernées");
+  await expect(pb01).toContainText("(veto)");
   await expect(pb01).toContainText("Plancher économique absolu");
   await expectNoHorizontalOverflow(page, "méthode : règles de l'auditeur");
   await section.scrollIntoViewIfNeeded();
