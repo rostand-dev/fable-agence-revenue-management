@@ -558,6 +558,7 @@ Moyenne du prix retenu sur les nuits libres d'une fenêtre canonique (J+0–7, 8
 | Montant | Noms dans le code | Source | Nature | Taxe de séjour | TVA | Ménage | Commission | Frais de paiement | Signe | Statut |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Montant comparé entre sources | `shCents`, `plCents` | SuperHote / PriceLabs | lu | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
+| Net d'hébergement d'une réservation : application et relevé de la source | `appNetCents`, `sourceNetCents`, `sourceNetRoomCents`, `signedGapCents` | Calcul / SuperHote | calculé | exclu | **inconnu** | exclu | exclu | exclu | signé | à confirmer |
 | Écart entre deux montants | `gapCents`, `maxGapCents`, `medianGapCents` | Calcul | calculé | — | — | — | — | — | signé | établi |
 | Tolérance de comparaison | `toleranceCents` | Calcul | calculé | — | — | — | — | — | ≥ 0 | établi |
 
@@ -570,6 +571,19 @@ Total de réservation (`total_price` SuperHote contre `total_cost` PriceLabs) ou
 `null` = inconnu.
 
 - Réserve : Les deux côtés doivent avoir la même composition pour que l'écart ait un sens ; PriceLabs arrondit à l'euro.
+
+### Net d'hébergement d'une réservation : application et relevé de la source
+
+`check.reconciliation_net` · metrics/reconcile.ts · SampleRow.sourceNetRoomCents · RowGap (US-054)
+
+Côté application : hébergement − commission − frais de paiement d'une réservation (null si la commission est inconnue). Côté source : net indiqué par le relevé du canal ou par SuperHote (null s'il est absent). Les deux sont comparés à ±1 % ; `signedGapCents` = application − source (positif si l'application dépasse le relevé).
+
+Signe : Un net négatif est possible si les retenues dépassent l'hébergement.
+
+`null` = inconnu.
+
+- Réserve : Une valeur absente n'est jamais un zéro : la ligne est « inconnue » et l'échantillon ne peut pas être attesté.
+- Réserve : Le net du relevé doit avoir la même composition que celui de l'application (hors ménage et taxes).
 
 ### Écart entre deux montants
 
@@ -591,7 +605,7 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 
 ## À confirmer
 
-45 montants sur 51 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
+46 montants sur 52 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
 
 - TVA : SuperHote ne dit pas si `total_price` est TTC. Lire `vat_rate` des lignes `price_details` sur des réservations réelles. — `reservation.gross_room`
 - TVA sur le ménage : lire `vat_rate` de la ligne `cleaning_fee` sur des réservations réelles. — `reservation.cleaning`
@@ -607,3 +621,4 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 - Fixer une inclusion par clé d'étape (`published`, `promo`, `gross`, `commission`, `fee`, `net`, `stay`, `variable`, `contribution`) si ce montant doit être consommé automatiquement. — `sim.waterfall_step`
 - Hérite de la TVA de `reservation.gross_room`. — `kpi.gross`, `kpi.adr`, `kpi.gross_revpan`, `kpi.net`, `kpi.net_adr`, `kpi.net_by_channel`
 - Confirmer que `total_cost` PriceLabs a la même composition que `total_price` SuperHote (taxe, ménage) sur des réservations réelles. — `check.compared_amount`
+- Confirmer, sur le premier échantillon réel, que le net du relevé Airbnb et celui de Booking.com excluent le ménage et la taxe de séjour comme l'application. — `check.reconciliation_net`

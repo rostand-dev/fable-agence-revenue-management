@@ -420,6 +420,14 @@ export const MONEY_DICTIONARY: MoneyField[] = [
     toVerify: "Confirmer que `total_cost` PriceLabs a la même composition que `total_price` SuperHote (taxe, ménage) sur des réservations réelles.",
   }),
   f({
+    id: "check.reconciliation_net", label: "Net d'hébergement d'une réservation : application et relevé de la source", names: ["appNetCents", "sourceNetCents", "sourceNetRoomCents", "signedGapCents"], group: "CHECK",
+    location: "metrics/reconcile.ts · SampleRow.sourceNetRoomCents · RowGap (US-054)", sources: ["COMPUTED", "SUPERHOTE"], derivation: "DERIVED",
+    definition: "Côté application : hébergement − commission − frais de paiement d'une réservation (null si la commission est inconnue). Côté source : net indiqué par le relevé du canal ou par SuperHote (null s'il est absent). Les deux sont comparés à ±1 % ; `signedGapCents` = application − source (positif si l'application dépasse le relevé).",
+    taxes: { cityTax: EXC, vat: UNK }, fees: { cleaning: EXC, commission: EXC, paymentFee: EXC }, currency: "EUR", sign: "SIGNED", signNote: "Un net négatif est possible si les retenues dépassent l'hébergement.", nullable: true,
+    caveats: ["Une valeur absente n'est jamais un zéro : la ligne est « inconnue » et l'échantillon ne peut pas être attesté.", "Le net du relevé doit avoir la même composition que celui de l'application (hors ménage et taxes)."],
+    toVerify: "Confirmer, sur le premier échantillon réel, que le net du relevé Airbnb et celui de Booking.com excluent le ménage et la taxe de séjour comme l'application.",
+  }),
+  f({
     id: "check.gap", label: "Écart entre deux montants", names: ["gapCents", "maxGapCents", "medianGapCents"], group: "CHECK",
     location: "PriceCheck.gapCents · PriceCheckSummary", sources: ["COMPUTED"], derivation: "DERIVED",
     definition: "Différence (constaté − estimé, ou SuperHote − envoyé) entre deux prix de nuit ; maximum et médiane sur une série.",

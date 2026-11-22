@@ -73,3 +73,17 @@ Blueprint §3 (principes 5 et 7), §7.2–7.3 (signaux, fenêtres), §8.2 (formu
 **Limites connues** : la simulation est une API (pas encore d'écran dédié ; la cascade de la fiche logement reste inchangée) ; les promotions du registre du logement ne sont pas ajoutées automatiquement, l'appelant donne celles qu'il veut simuler (le registre ne sert qu'à juger sa fraîcheur) ; le dossier d'opportunité affiche le plancher de base dans son encadré.
 
 **Tests** : unitaires (`simulator.test.ts` : cascade et remises calculées à la main, planchers par saison, cumul inconnu et documenté, registre périmé, invariant de fermeture, auditeur par saison), base (`simulator.db.test.ts` : lecture des paramètres, péremption du registre, refus, cloisonnement), E2E (`e2e/simulator.spec.ts`).
+
+## US-054 — Réconciliation à ±1 % sur l'échantillon validé
+
+**Ce qui change**
+- **Module pur `src/lib/metrics/reconcile.ts`** : `reconcile(échantillon)` compare, réservation par réservation, le net d'hébergement de l'application (hébergement − commission − frais de paiement) au net du relevé de la source. Comparaison en **centimes entiers** (|écart| × 100 ≤ 1 × net de la source) : un écart d'exactement 1 % est conforme, 1,01 % est un écart. Statut `OK`, `GAP` (au moins une ligne au-delà du seuil (1 %), même si la moyenne est bonne), `UNKNOWN` (ligne dont la commission ou le relevé est absent : jamais un zéro, l'échantillon n'est pas attestable) ou `TOO_SMALL` (moins de lignes comparées que le seuil de la checklist US-024, `activation-gates.ts`).
+- **`toAttestation`** : transforme le résultat en attestation prête pour la checklist de qualité (taille, plus grand écart **arrondi par excès**, source) ; elle passe `parseReconciliation` et `reconciliationState`. Rien n'est attesté si une ligne est inconnue ou si l'écart est infini.
+- **Échantillon de référence synthétique** (`src/test/reference-sample.ts`) : 12 réservations Airbnb et Booking.com sur septembre et octobre 2026, tous les montants et résultats attendus **calculés à la main** (41 nuits, 410 000 d'hébergement, net 343 190, ADR 10 000, Net ADR 8 370, RevPAN 6 721, Net RevPAN 5 626), dont deux lignes où le relevé s'écarte de 0,33 % et 0,46 %.
+- **Tests de non-régression de l'épic** : les KPI (US-050) sur l'échantillon, au centime et à ±1 % ; somme des mois = période ; somme des nuits = montant de chaque réservation ; indépendance à l'ordre ; vendre au plancher (absolu, stratégique, saisonnier ; 2 canaux × 3 durées) laisse la contribution visée à ±1 % (US-052/053) ; le net simulé égale le net de l'échantillon ; le même échantillon traverse la vraie base (service de performance, rejeu idempotent, cloisonnement par espace).
+- Dictionnaire des montants : net de l'application et net du relevé documentés (`docs/dictionnaire-montants.md` régénéré).
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Limites connues** : l'échantillon est synthétique ; il verrouille l'arithmétique, pas les données réelles. La première attestation sur des relevés réels (Évry, Châtillon) reste une saisie humaine dans la checklist ; à cette occasion, confirmer que le net des relevés exclut le ménage et la taxe de séjour (réserve inscrite au dictionnaire).
+
+**Tests** : `reconcile.test.ts` (21 cas : échantillon, bornes 1,00 / 1,01 %, ligne en écart, inconnus, trop petit, net de source nul et écart non borné, paramètres invalides, séjour à cheval avec reliquat de centimes, attestation, cohérence planchers ↔ simulateur ↔ KPI) et `reconciliation.db.test.ts` (3 cas).
