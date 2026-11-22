@@ -393,6 +393,15 @@ export const agentRuns = pgTable("agent_runs", {
   mode: text("mode").notNull(),
   model: text("model"),
   promptVersion: text("prompt_version"),
+  /** US-074 : trace d'un appel de modèle. Fournisseur, prompt (identifiant, version, empreinte), nombre d'appels, correction, cause du repli et cibles essayées. */
+  provider: text("provider"),
+  promptId: text("prompt_id"),
+  promptHash: text("prompt_hash"),
+  attempts: integer("attempts"),
+  repaired: boolean("repaired"),
+  /** NO_PROVIDER | BUDGET_CALLS | BUDGET_TOKENS | BUDGET | PROVIDER_ERROR | INVALID_OUTPUT : pourquoi la version déterministe a été utilisée */
+  fallbackReason: text("fallback_reason"),
+  trace: jsonb("trace").$type<any>(),
   summary: text("summary").notNull(),
   output: jsonb("output").$type<any>(),
   inputTokens: integer("input_tokens"),

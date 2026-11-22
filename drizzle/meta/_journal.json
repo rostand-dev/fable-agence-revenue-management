@@ -169,6 +169,13 @@
       "when": 1795386962258,
       "tag": "0023_us_065_action_transitions",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795390243206,
+      "tag": "0024_us_074_agent_traces",
+      "breakpoints": true
     }
   ]
 }
