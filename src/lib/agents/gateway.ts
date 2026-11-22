@@ -39,7 +39,7 @@ export const anthropicProvider: LlmProvider = {
 
 const openaiBase = () => (process.env.OPENAI_API_BASE || "https://api.openai.com").replace(/\/$/, "");
 
-/** OpenAI (API « chat completions », mode JSON) : repli facultatif du serveur, jamais la clé d'un propriétaire. */
+/** OpenAI (API « chat completions », mode JSON) : repli facultatif du serveur, jamais la clé d'un propriétaire. Réservé à `generateJson`, qui masque les données personnelles avant l'appel. */
 export const openaiProvider: LlmProvider = {
   id: "openai",
   async complete(apiKey, req) {
@@ -52,11 +52,12 @@ export const openaiProvider: LlmProvider = {
         body: JSON.stringify({ model: req.model, max_completion_tokens: req.maxTokens, response_format: { type: "json_object" }, messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }] }),
       });
     } catch (e: any) {
+      clearTimeout(timer);
       throw new LlmError(e?.name === "AbortError" ? "OpenAI n'a pas répondu à temps." : "OpenAI est injoignable depuis le serveur.");
-    } finally { clearTimeout(timer); }
-    if (!res.ok) throw new LlmError(res.status === 401 ? "Clé API refusée par OpenAI." : res.status === 429 ? "Trop de requêtes vers OpenAI." : `OpenAI a répondu par une erreur (HTTP ${res.status}).`, res.status);
+    }
+    if (!res.ok) { clearTimeout(timer); throw new LlmError(res.status === 401 ? "Clé API refusée par OpenAI." : res.status === 429 ? "Trop de requêtes vers OpenAI." : `OpenAI a répondu par une erreur (HTTP ${res.status}).`, res.status); }
     let data: any;
-    try { data = await res.json(); } catch { throw new LlmError("Réponse OpenAI illisible."); }
+    try { data = await res.json(); } catch { throw new LlmError("Réponse OpenAI illisible ou trop lente."); } finally { clearTimeout(timer); }
     const choice = data?.choices?.[0];
     return {
       text: typeof choice?.message?.content === "string" ? choice.message.content.trim() : "",
@@ -76,7 +77,7 @@ export function scriptedProvider(respond: (req: ProviderRequest, callIndex: numb
     async complete(_apiKey, req) {
       calls.push(req);
       const out = await respond(req, calls.length - 1);
-      if (out instanceof Error) throw out instanceof LlmError ? out : new LlmError(out.message);
+      if (out instanceof Error) throw out instanceof LlmError ? out : new LlmError("Panne simulée du fournisseur scripté.");
       return { text: out, inputTokens: Math.ceil((req.system.length + req.user.length) / 4), outputTokens: Math.ceil(out.length / 4), truncated: false };
     },
   };
@@ -86,8 +87,9 @@ export function scriptedProvider(respond: (req: ProviderRequest, callIndex: numb
 
 /** Premier objet JSON de la réponse : tolère un bloc ``` et du texte autour, lit les accolades en respectant les chaînes. `null` si aucun objet complet. */
 export function parseJsonObject(text: string): unknown | null {
-  const src = text.replace(/```(?:json)?/gi, "");
-  for (let start = src.indexOf("{"); start >= 0; start = src.indexOf("{", start + 1)) {
+  // borné (entrée hostile) : 64 Ko analysés, 20 points de départ essayés. La première accolade qui donne un objet valide gagne ; le schéma de l'appelant borne ce que cela permet.
+  const src = text.slice(0, 65536).replace(/^[ \t]*```(?:json)?[ \t]*$/gim, "");
+  for (let start = src.indexOf("{"), tries = 0; start >= 0 && tries < 20; start = src.indexOf("{", start + 1), tries++) {
     let depth = 0, inStr = false, esc = false;
     for (let i = start; i < src.length; i++) {
       const ch = src[i];
@@ -114,7 +116,9 @@ export function schemaHint(schema: z.ZodType): string {
 
 /** Raison lisible d'un échec de validation, sans jamais citer la valeur reçue (elle peut contenir du contenu non fiable). */
 export function describeIssues(err: z.ZodError): string {
-  return err.issues.slice(0, 5).map((i) => `${i.path.join(".") || "(racine)"} : ${i.message}`).join(" ; ").slice(0, 400);
+  // seuls le code de l'erreur et un chemin de forme sûre sont repris : un message ou une clé venus du modèle ne sont jamais renvoyés au modèle ni conservés
+  const safePath = (p: PropertyKey[]) => p.map(String).filter((k) => /^[\w-]{1,40}$/.test(k)).join(".") || "(racine)";
+  return err.issues.slice(0, 5).map((i) => `${safePath(i.path)} : ${i.code}`).join(" ; ").slice(0, 300);
 }
 
 // ───────────────────────── Appel ─────────────────────────
@@ -131,6 +135,8 @@ export type JsonCall<T> = {
   repair?: boolean;
   /** Plafond d'appels au fournisseur pour cette tâche, corrections comprises (défaut 4). */
   maxAttempts?: number;
+  /** Durée totale maximale de la tâche, en ms (défaut 45 000) : aucun nouvel appel n'est lancé au-delà. */
+  deadlineMs?: number;
 };
 
 export type TriedTarget = { provider: ProviderId; model: string; outcome: "OK" | "PROVIDER_ERROR" | "INVALID_JSON" | "SCHEMA" | "TRUNCATED"; detail?: string };
@@ -160,10 +166,11 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
   const hint = schemaHint(call.schema);
   const system = maskPii(call.system) + "\n\nRéponds uniquement par UN objet JSON valide, sans texte autour ni bloc de code." + (hint ? `\nSchéma JSON attendu : ${hint}` : "");
   const user = maskPii(call.user);
-  const maxAttempts = call.maxAttempts ?? 4, maxTokens = call.maxTokens ?? 900, timeoutMs = call.timeoutMs ?? 25000;
-  let sawInvalid = false;
+  const maxAttempts = call.maxAttempts ?? 4, deadline = started + (call.deadlineMs ?? 45000), maxTokens = call.maxTokens ?? 900, timeoutMs = call.timeoutMs ?? 25000;
+  let sawInvalid = false, cut = false, ownerKeyRefused = false;
 
   const ask = async (t: GatewayTarget, prompt: string): Promise<ProviderReply> => {
+    if (Date.now() >= deadline) { cut = true; throw new LlmError("Délai total dépassé."); }
     meta.attempts++;
     const r = await t.provider.complete(t.apiKey, { model: t.model, system, user: prompt, maxTokens, timeoutMs });
     meta.inputTokens += r.inputTokens ?? 0; meta.outputTokens += r.outputTokens ?? 0;
@@ -177,11 +184,14 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
   };
 
   for (const t of targets) {
-    if (meta.attempts >= maxAttempts) break;
+    if (meta.attempts >= maxAttempts) { cut = true; break; }
+    // la clé du propriétaire refusée (401/403) n'est pas une panne : ses données ne partent pas chez un autre fournisseur à son insu
+    if (ownerKeyRefused && t.source === "serveur") break;
     const row: TriedTarget = { provider: t.provider.id, model: t.model, outcome: "OK" };
     try {
       let r = await ask(t, user);
       let v = check(r);
+      if (!v.ok) sawInvalid = true;
       if (!v.ok && v.outcome !== "TRUNCATED" && (call.repair ?? true) && meta.attempts < maxAttempts) {
         // une seule correction : on donne la raison de l'échec, jamais la réponse invalide (elle pourrait reprendre du contenu non fiable)
         r = await ask(t, `${user}\n\nTa réponse précédente a été refusée (${v.detail}). Réponds à nouveau par un seul objet JSON conforme au schéma.`);
@@ -193,13 +203,14 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
         meta.provider = t.provider.id; meta.model = t.model; meta.source = t.source; meta.durationMs = Date.now() - started;
         return { ok: true, data: v.data, meta };
       }
-      sawInvalid = true; row.outcome = v.outcome; row.detail = v.detail;
+      row.outcome = v.outcome; row.detail = v.detail;
     } catch (e) {
       row.outcome = "PROVIDER_ERROR"; row.detail = errorText(e);
+      if (e instanceof LlmError && (e.status === 401 || e.status === 403) && t.source === "utilisateur") ownerKeyRefused = true;
     }
     meta.tried.push(row);
   }
   meta.durationMs = Date.now() - started;
   const last = meta.tried[meta.tried.length - 1];
-  return { ok: false, kind: sawInvalid ? "INVALID_OUTPUT" : "PROVIDER_ERROR", message: last?.detail ? `${last.detail} Repli déterministe.` : "Aucune réponse exploitable : repli déterministe.", meta };
+  return { ok: false, kind: cut && !sawInvalid ? "BUDGET" : sawInvalid ? "INVALID_OUTPUT" : "PROVIDER_ERROR", message: last?.detail ? `${last.detail} Repli déterministe.` : "Aucune réponse exploitable : repli déterministe.", meta };
 }

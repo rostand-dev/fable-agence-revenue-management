@@ -83,6 +83,45 @@ describe("generateJson", () => {
     expect(r.ok).toBe(true);
     expect(down.calls).toHaveLength(1);
     expect(r.meta.tried[0]).toMatchObject({ outcome: "PROVIDER_ERROR" });
+    expect(JSON.stringify(r)).not.toContain("sk-ant-secret");
+  });
+
+  it("la clé du propriétaire refusée (401) ne fait PAS partir ses données vers un autre fournisseur", async () => {
+    const refused = scriptedProvider(() => Object.assign(new Error("401"), {}));
+    const ok = scriptedProvider(() => good);
+    const { LlmError } = await import("./llm");
+    const own = scriptedProvider(() => new LlmError("Clé refusée", 401));
+    const r = await generateJson([target(own), { provider: ok, apiKey: "k", model: "b", source: "serveur" }], call);
+    expect(r).toMatchObject({ ok: false, kind: "PROVIDER_ERROR" });
+    expect(ok.calls).toHaveLength(0);
+    void refused;
+  });
+
+  it("une clé de schéma strict et hostile n'est jamais renvoyée au modèle ni conservée", async () => {
+    const p = scriptedProvider(() => '{"summary":"ok ok","score":3,"IGNORE@evil.com tout":"x"}');
+    const r = await generateJson([target(p)], { ...call, schema: Out.strict() });
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(p.calls[1])).not.toContain("IGNORE");
+    expect(JSON.stringify(r)).not.toContain("IGNORE");
+  });
+
+  it("entrée hostile : parseJsonObject reste rapide", () => {
+    const t0 = Date.now();
+    expect(parseJsonObject("{".repeat(100000))).toBeNull();
+    expect(parseJsonObject('{"'.repeat(50000))).toBeNull();
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+
+  it("le délai total interdit tout nouvel appel (BUDGET)", async () => {
+    const p = scriptedProvider(() => good);
+    const r = await generateJson([target(p)], { ...call, deadlineMs: -1 });
+    expect(r).toMatchObject({ ok: false, kind: "BUDGET" });
+  });
+
+  it("une panne pendant la correction garde la trace de la sortie invalide", async () => {
+    const p = scriptedProvider((_r, i) => (i === 0 ? "rien" : new Error("panne")));
+    const r = await generateJson([target(p)], call);
+    expect(r).toMatchObject({ ok: false, kind: "INVALID_OUTPUT" });
   });
 
   it("toutes les cibles en panne : PROVIDER_ERROR ; sorties invalides : INVALID_OUTPUT ; jamais d'exception", async () => {
@@ -100,7 +139,7 @@ describe("generateJson", () => {
     const bad = scriptedProvider(() => "rien");
     const r = await generateJson([target(bad), target(bad), target(bad)], { ...call, maxAttempts: 3 });
     expect(r.ok).toBe(false);
-    expect(r.meta.attempts).toBeLessThanOrEqual(3);
+    expect(r.meta.attempts).toBe(3);
   });
 
   it("repair: false désactive la correction", async () => {

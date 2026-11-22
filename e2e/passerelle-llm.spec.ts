@@ -10,7 +10,7 @@ test("Intégrations : la carte du modèle de langage affiche le fournisseur prin
   await expect(carte).toContainText("Fournisseur");
   await expect(carte).toContainText("Anthropic");
   await expect(carte).toContainText("Repli en cas de panne");
-  await expect(carte).toContainText("Sans clé");
+  await expect(carte).toContainText("aucun fournisseur de repli");
   await expectNoHorizontalOverflow(page, "intégrations : modèle de langage");
   await carte.scrollIntoViewIfNeeded();
   await carte.screenshot({ path: test.info().outputPath("llm-carte.png") });
