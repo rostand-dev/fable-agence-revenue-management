@@ -21,6 +21,7 @@ export function LlmKeyPanel({ status }: { status: LlmStatus }) {
           ["Modèles disponibles", own ? String(status.models.length) : <Vq>saisissez votre clé pour les lister</Vq>, true],
           ["Dernière vérification", status.verifiedAt ? fmtDateTime(status.verifiedAt) : <Vq>jamais</Vq>, true],
           ["Modèle par défaut", serverDefaultModel(), true],
+          ["Repli en cas de panne", status.fallbackModel ? `OpenAI (${status.fallbackModel}), clé du serveur` : <Vq>aucun fournisseur de repli</Vq>, true],
           ["Sans clé", "Repli déterministe : la revue, les calculs et les garde-fous fonctionnent à l'identique."],
         ]} />
         <ActionForm action={saveLlmKeyAction} style={{ marginTop: 14 }}>
