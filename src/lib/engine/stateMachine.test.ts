@@ -32,6 +32,6 @@ describe("machine à états de RevenueAction (US-065)", () => {
   it("la chaîne principale est permise de bout en bout", () => {
     const main = ["DRAFT", "SIMULATED", "AUDITED", "PENDING_APPROVAL", "APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING", "CLOSED"] as const;
     for (let i = 0; i < main.length - 1; i++) expect(canTransition(main[i], main[i + 1]), `${main[i]}→${main[i + 1]}`).toBe(true);
-    expect(CYCLE.length).toBeGreaterThan(0);
+    expect(CYCLE.length).toBe(8);
   });
 });

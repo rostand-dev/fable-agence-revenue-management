@@ -15,6 +15,7 @@ test("Dossier tranché : l'historique des transitions est lisible et ordonné", 
     const items = tr.locator("li");
     expect(await items.count()).toBeGreaterThan(2);
     await expect(items.first()).toContainText("création");
+    await expect(items.last()).toContainText("Clôturée");
     await expectNoHorizontalOverflow(page, "historique des transitions");
     await tr.scrollIntoViewIfNeeded();
     await tr.screenshot({ path: test.info().outputPath("transitions.png") });

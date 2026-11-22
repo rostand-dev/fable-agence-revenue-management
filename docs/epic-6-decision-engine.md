@@ -90,7 +90,7 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 
 **Ce qui change**
 - **Le cycle de vie est verrouillé par la base elle-même.** La migration `0023_us_065_action_transitions.sql` ajoute un déclencheur `ns_action_check_transition` : une action ne naît qu'à l'état `DRAFT`, et tout changement d'état doit suivre le graphe de `src/lib/engine/stateMachine.ts` (pas de saut, pas de retour, états terminaux sans sortie). Une écriture qui ne change pas l'état reste neutre.
-- **Historique des transitions** : la table `action_transitions` (isolée par locataire, lecture et ajout seuls pour le rôle applicatif) reçoit une ligne à chaque changement d'état, écrite par un second déclencheur, donc impossible à oublier. Les actions déjà existantes reçoivent une ligne de départ (rattrapage rejouable).
+- **Historique des transitions** : la table `action_transitions` (isolée par locataire, lecture et ajout seuls pour le rôle applicatif) reçoit une ligne à chaque changement d'état, écrite par un second déclencheur, donc impossible à oublier. Les actions déjà existantes reçoivent une ligne de départ (rattrapage rejouable) ; leur statut n'est pas revalidé par la migration.
 - **Dossier** : section « Historique des transitions » (lisible sur mobile) sous le suivi d'application.
 - **Helpers** `nextStates`, `isTerminal`, `TERMINAL_STATES`, `allTransitions` ; un test compare la base au graphe applicatif sur toutes les paires d'états.
 - **Démo** : l'historique de démonstration rejoue la chaîne complète jusqu'à `CLOSED` au lieu d'insérer directement un état avancé.

@@ -433,7 +433,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
         <section className="section" aria-labelledby="transitions-h" data-testid="transitions">
           <h2 id="transitions-h">Historique des transitions</h2>
           <p className="section-note">Chaque changement d'état de l'action est consigné par la base elle-même : un état ne peut pas être sauté ni rétabli.</p>
-          <ol className="transition-list">
+          <ol className="transition-list" aria-label="Du plus ancien au plus récent">
             {history.map((h) => (
               <li key={h.id}>
                 <span className="tr-state">{STATE_LABEL[h.toStatus as ActionState] ?? h.toStatus}</span>
