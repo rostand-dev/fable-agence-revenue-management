@@ -57,6 +57,8 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 - **Fiche agent, onglet Activité** : budget de jetons du jour (utilisés sur plafond), fournisseur, prompt et version, nombre d'appels, cause du repli en français.
 - **Staging (Coolify)** : migration **0024** (7 colonnes de trace sur `agent_runs`, toutes `ADD COLUMN IF NOT EXISTS`, rejouable, appliquée au démarrage). Deux variables facultatives, documentées dans `docker-compose.yml` et `.env.example` : `AGENT_MAX_CALLS_PER_REVIEW` (12) et `AGENT_DAILY_TOKEN_BUDGET` (300000). **Sans rien définir, les valeurs par défaut s'appliquent.**
 
+**Précisions** : le plafond compte les appels HTTP réels (correction et repli compris) ; chaque trace est enregistrée dès son retour et le budget du jour est relu avant chaque appel (deux revues parallèles d'un même propriétaire ne le dépassent donc pas de beaucoup). La revue utilise aussi le repli OpenAI du serveur s'il est configuré (voir US-070, confidentialité).
+
 **Limites connues** : le budget de jetons est vérifié avant chaque appel (le dernier appel peut le dépasser) ; la conversation n'est pas encore comptée dans les plafonds d'appels (ses jetons comptent dans le budget du jour si elle est tracée comme `LLM`).
 
 **Tests** : unitaires (`prompts.test.ts` verrou, `budget.test.ts` valeurs et plafonds), base avec faux serveur de modèle (`runner.db.test.ts` : trace complète, sans clé, plafond d'appels, budget de jetons y compris la veille, panne 529, sortie inexploitable sans fuite, **revue complète** avec modèle puis sans clé), migrations rejouées deux fois (test existant), non-régression (golden inchangé, suites complètes), E2E (`e2e/budget-agents.spec.ts` : onglet Activité des 8 agents, bureau, mobile 390 et 360 px).

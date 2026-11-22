@@ -1,7 +1,7 @@
 /**
  * Exécuteur de tâches d'agent (US-074) : prompt versionné → budget → passerelle (US-070) → trace → repli déterministe.
  * Tout agent qui interroge un modèle passe ici ; c'est lui qui garantit qu'un appel est borné, tracé et qu'une panne ne bloque jamais la revue.
- * Il ne fait aucune écriture lui-même : il renvoie la ligne de trace (`run`) que l'appelant enregistre avec ses autres traces.
+ * Il ne fait aucune écriture lui-même : il renvoie la ligne de trace (`run`) que l'appelant doit enregistrer IMMÉDIATEMENT après chaque tâche (le budget du jour se lit dans ces traces).
  */
 import { and, eq, gte, sql } from "drizzle-orm";
 import type { z } from "zod";
@@ -22,9 +22,9 @@ export const FALLBACK_LABEL: Record<string, string> = {
 export type AgentBudget = BudgetState & { tenantId: string; targets: Map<string, GatewayTarget[]> };
 
 export async function tokensUsedToday(tenantId: string, now = new Date()): Promise<number> {
-  const [r] = await db.select({ n: sql<number>`coalesce(sum(coalesce(${schema.agentRuns.inputTokens}, 0) + coalesce(${schema.agentRuns.outputTokens}, 0)), 0)::int` })
+  const [r] = await db.select({ n: sql<string>`coalesce(sum(coalesce(${schema.agentRuns.inputTokens}, 0) + coalesce(${schema.agentRuns.outputTokens}, 0)), 0)::bigint` })
     .from(schema.agentRuns).where(and(eq(schema.agentRuns.tenantId, tenantId), gte(schema.agentRuns.createdAt, budgetDayStart(now))));
-  return r?.n ?? 0;
+  return Number(r?.n ?? 0);
 }
 
 export async function openBudget(tenantId: string, now = new Date(), limits = budgetLimits()): Promise<AgentBudget> {
@@ -59,10 +59,13 @@ export async function runAgentTask<T>(task: AgentTask<T>): Promise<AgentOutcome<
       error: reason === "NO_PROVIDER" || reason.startsWith("BUDGET_") ? null : (detail ?? FALLBACK_LABEL[reason]).slice(0, 200) },
   });
   if (targets.length === 0) return fallback("NO_PROVIDER", null);
+  // les traces déjà enregistrées (y compris par une revue parallèle du même propriétaire) comptent avant chaque appel
+  b.tokensUsedToday = Math.max(b.tokensUsedToday, await tokensUsedToday(b.tenantId));
   const verdict = checkBudget(b);
   if (!verdict.ok) return fallback(verdict.reason, null);
-  b.callsUsed++;
   const r = await generateJson(targets, { task: task.prompt, system: def.system, user: task.user, schema: task.schema, maxTokens: def.maxTokens });
+  // le plafond compte les appels réellement faits au fournisseur (corrections et replis compris), pas les tâches
+  b.callsUsed += r.meta.attempts;
   b.tokensUsedToday += r.meta.inputTokens + r.meta.outputTokens;
   if (!r.ok) return fallback(r.kind, r.meta, r.message);
   return {

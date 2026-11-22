@@ -173,7 +173,9 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       let narrative = deterministicNarrative(o);
       const id = newId("opp");
       if (llm.length) {
-        const w = await writeNarrative(budget, o, p.name, id); narrative = w.narrative; runs.push(w.outcome.run);
+        const w = await writeNarrative(budget, o, p.name, id); narrative = w.narrative;
+        // trace enregistrée tout de suite : le budget du jour la voit, même si la revue échoue plus loin ou si une autre revue tourne en parallèle
+        await db.insert(agentRuns).values(w.outcome.run);
       }
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;

@@ -100,6 +100,7 @@ describe("US-074 : la revue passe par l'exécuteur (non-régression comprise)", 
     expect(r.opened).toBeGreaterThan(0);
     const rows = await runs();
     expect(rows.length).toBe(r.opened);
+    expect(rows.every((x) => x.createdAt <= new Date())).toBe(true);
     for (const x of rows) expect(x).toMatchObject({ mode: "LLM", provider: "anthropic", promptId: "direction.explain_action", promptVersion: "2026-11-v1" });
     const opened = await db.select().from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, rt.tenantId), eq(schema.opportunities.status, "OPEN")));
     expect(opened.some((o) => o.narrative?.mode === "LLM" && o.narrative?.promptVersion === "2026-11-v1")).toBe(true);
