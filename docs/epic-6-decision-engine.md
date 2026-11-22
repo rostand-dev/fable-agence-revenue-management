@@ -51,7 +51,7 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 - **Module pur `src/lib/engine/scoring.ts`**, formule du blueprint §9.2 : `priorité = gain net attendu × confiance × urgence × poids du playbook − coût d'exécution − pénalité de risque`. `priorityScore` (moteur) délègue au module avec le réglage par défaut : **les scores existants sont inchangés** (snapshot de non-régression).
 - **Réglable par espace** (Réglages → « Priorisation des dossiers ») : poids par playbook (0 à 5, 1 = neutre), pénalité par niveau de risque (0 à 1000 points ; défaut 0 / 4 / 10 / 25), coût d'exécution par mode (euros, 0 à 1000 ; défaut 0). Rétablir les valeurs par défaut en un bouton. Une saisie hors bornes est refusée avec le champ nommé ; une valeur enregistrée illisible retombe sur le défaut (jamais sur zéro). Seuls les écarts au défaut sont enregistrés. Chaque changement est inscrit au journal d'audit (`settings.scoring_updated`).
 - **Le score ne contourne jamais un veto** : un dossier sous veto remonte pour être traité, mais n'ouvre aucune action.
-- **Dossier** : encart « Pourquoi ce rang » avec la décomposition du score. Les changements s'appliquent à la prochaine revue des logements.
+- **Dossier** : encart « Pourquoi cette priorité » avec la décomposition du score. Les changements s'appliquent à la prochaine revue des logements.
 - La déduplication (US-061) départage maintenant avec le score réglé de l'espace.
 - **Staging (Coolify)** : aucune migration (réglage stocké dans les paramètres existants de l'espace), aucune variable d'environnement.
 

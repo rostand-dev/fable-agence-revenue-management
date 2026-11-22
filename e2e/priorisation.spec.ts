@@ -24,10 +24,12 @@ test("Réglages : une valeur hors bornes est refusée avec le champ nommé", asy
   await s.locator('input[name="w-PB-01"]').fill("9");
   await s.getByRole("button", { name: "Enregistrer la priorisation" }).click();
   await expect(s).toContainText("Poids de PB-01");
-  await s.getByRole("button", { name: "Rétablir les valeurs par défaut" }).waitFor();
+  await expect(s.getByRole("alert")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("priorisation").locator('input[name="w-PB-01"]')).toHaveValue("1"); // rien n'a été enregistré
 });
 
-test("Dossier : « Pourquoi ce rang » décompose le score", async ({ page }) => {
+test("Dossier : « Pourquoi cette priorité » décompose le score", async ({ page }) => {
   await page.goto("/");
   await page.locator('a[href^="/dossier/"]').first().click();
   const card = page.getByTestId("rang-card");

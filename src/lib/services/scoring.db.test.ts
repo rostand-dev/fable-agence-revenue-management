@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { db, schema } from "@/db";
 import { makeTenant } from "@/test/db";
+import { listOpportunities } from "../queries";
 import { runDailyReview } from "./review";
 import { seedDemo } from "./seed";
 
@@ -38,5 +39,14 @@ describe("US-062 : la priorisation réglée par l'espace s'applique à la revue"
     const r = await runDailyReview(t.tenantId, "MANUAL");
     expect(r.reviewed.length).toBeGreaterThan(0);
     await db.update(schema.tenants).set({ settings: {} }).where(eq(schema.tenants.id, t.tenantId));
+  });
+
+  it("les dossiers sous veto restent en tête de l'Inbox, même face à un dossier à très forte priorité", async () => {
+    const rows = (await open()).filter((o) => o.status === "OPEN");
+    const target = rows.find((o) => !o.veto)!;
+    await db.update(schema.opportunities).set({ priority: 1_000_000 }).where(eq(schema.opportunities.id, target.id));
+    const list = await listOpportunities(t.tenantId, ["OPEN"]);
+    const firstNonVeto = list.findIndex((o) => !o.veto);
+    expect(list.slice(firstNonVeto).some((o) => o.veto), "un dossier sous veto apparaît après un dossier sans veto").toBe(false);
   });
 });

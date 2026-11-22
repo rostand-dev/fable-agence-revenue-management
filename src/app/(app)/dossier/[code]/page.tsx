@@ -151,16 +151,16 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               )}
               <div className="reg-foot"><span className="metric-source">Source : {o.signals.signalSource}{o.signals.signal?.playbook ? ` · ${o.signals.signal.playbook}, fenêtre ${o.signals.signal.horizon}` : ""}</span></div></article>
             {o.signals.score && (
-              <article data-testid="rang-card"><span className="reg-key"><Icon name="signal" />Pourquoi ce rang</span>
+              <article data-testid="rang-card"><span className="reg-key"><Icon name="signal" />Pourquoi cette priorité</span>
                 <p>Priorité {o.signals.score.score}, utilisée pour classer l'Inbox. Elle organise le travail et n'autorise ni n'écarte aucune action.</p>
                 <div className="table-wrap score-table"><table className="econ"><caption className="sr-only">Composition du score de priorité</caption>
                   <thead><tr><th scope="col">Terme</th><th scope="col">Valeur</th></tr></thead>
                   <tbody>
                     <tr><th scope="row">Gain net attendu</th><td className="mono">{euro(Math.round(o.signals.score.impact * 100))}</td></tr>
-                    <tr><th scope="row">× Confiance</th><td className="mono">{o.signals.score.confidence}</td></tr>
-                    <tr><th scope="row">× Urgence</th><td className="mono">{o.signals.score.urgency}</td></tr>
-                    <tr><th scope="row">× Poids du playbook</th><td className="mono">{o.signals.score.weight}</td></tr>
-                    <tr><th scope="row">− Coût d'exécution</th><td className="mono">{o.signals.score.executionCost} €</td></tr>
+                    <tr><th scope="row">× Confiance</th><td className="mono">{Math.round(o.signals.score.confidence * 100)} %</td></tr>
+                    <tr><th scope="row">× Urgence</th><td className="mono">{String(o.signals.score.urgency).replace(".", ",")}</td></tr>
+                    <tr><th scope="row">× Poids du playbook</th><td className="mono">{String(o.signals.score.weight).replace(".", ",")}</td></tr>
+                    <tr><th scope="row">− Coût d'exécution</th><td className="mono">{euro(Math.round(o.signals.score.executionCost * 100))}</td></tr>
                     <tr><th scope="row">− Pénalité de risque</th><td className="mono">{o.signals.score.riskPenalty} pts</td></tr>
                     {o.signals.score.veto && <tr><th scope="row">+ Dossier sous veto, remonté pour être traité</th><td className="mono">oui</td></tr>}
                   </tbody></table></div>

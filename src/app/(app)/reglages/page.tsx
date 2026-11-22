@@ -5,7 +5,7 @@ import { saveAgentModelsAction } from "@/app/actions/llm";
 import { renameTenantAction } from "@/app/actions/portfolio";
 import { renameAgentsAction, saveScoringAction } from "@/app/actions/settings";
 import { IMPLEMENTED_PLAYBOOKS, PLAYBOOKS } from "@/lib/engine/playbooks";
-import { EXECUTION_MODES, RISKS, resolveScoring, SCORING_LIMITS } from "@/lib/engine/scoring";
+import { EXECUTION_MODES, MODE_LABEL, RISK_LABEL, RISKS, resolveScoring, SCORING_LIMITS } from "@/lib/engine/scoring";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
 import { FlagsPanel } from "@/components/FlagsPanel";
 import { loadFlags } from "@/lib/services/flags";
@@ -57,7 +57,8 @@ export default async function Reglages() {
       </section>
       <section className="section" id="priorisation" data-testid="priorisation">
         <h2>Priorisation des dossiers</h2>
-        <p className="section-note">Les dossiers sont classés par : gain net attendu × confiance × urgence × poids du playbook − coût d'exécution − pénalité de risque. Ce classement organise le travail ; il ne contourne jamais un veto ni une approbation. Laissez les valeurs par défaut tant que vous n'avez pas de raison de les changer : 1 = neutre pour un poids.</p>
+        <p className="section-note">Les dossiers sont classés par : gain net attendu × confiance × urgence × poids du playbook − coût d'exécution − pénalité de risque. Ce classement organise le travail ; il ne contourne jamais un veto ni une approbation, et les dossiers sous veto restent en tête.</p>
+        <p className="section-note">Laissez les valeurs par défaut tant que vous n'avez pas de raison de les changer (poids : 1 = neutre). Saisissez les décimales avec un point.</p>
         <ActionForm action={saveScoringAction}>
           <h3 className="sub">Poids par playbook</h3>
           <div className="form-grid">
@@ -72,7 +73,7 @@ export default async function Reglages() {
           <div className="form-grid">
             {RISKS.map((r) => (
               <div className="field" key={r}>
-                <label htmlFor={"r-" + r}>Risque {{ LOW: "faible", MEDIUM: "moyen", HIGH: "élevé", CRITICAL: "critique" }[r]}</label>
+                <label htmlFor={"r-" + r}>Risque {RISK_LABEL[r]}</label>
                 <input id={"r-" + r} name={"r-" + r} type="number" inputMode="decimal" step="1" min={SCORING_LIMITS.penalty.min} max={SCORING_LIMITS.penalty.max} defaultValue={scoring.riskPenalty[r]} />
               </div>
             ))}
@@ -81,7 +82,7 @@ export default async function Reglages() {
           <div className="form-grid">
             {EXECUTION_MODES.filter((m) => m !== "NONE").map((m) => (
               <div className="field" key={m}>
-                <label htmlFor={"c-" + m}>{{ API_PRICELABS: "Écriture PriceLabs", MANUAL_RUNBOOK: "Pas-à-pas manuel (extranet)", INTERNAL: "Interne à NuitSignal", NONE: "" }[m]}</label>
+                <label htmlFor={"c-" + m}>{MODE_LABEL[m][0].toUpperCase() + MODE_LABEL[m].slice(1)}</label>
                 <input id={"c-" + m} name={"c-" + m} type="number" inputMode="decimal" step="1" min={SCORING_LIMITS.cost.min} max={SCORING_LIMITS.cost.max} defaultValue={scoring.executionCost[m]} />
               </div>
             ))}

@@ -7,12 +7,14 @@
  * La contribution est exprimée en euros. Les poids, pénalités et coûts sont réglables par espace (Réglages) ; les valeurs par défaut reproduisent
  * le score d'origine (poids 1, aucun coût d'exécution, pénalités 0 / 4 / 10 / 25). Module pur, sans accès base.
  */
-import { PLAYBOOK_CODES, type PlaybookCode } from "./playbooks";
+import { PLAYBOOK_CODES, playbookOf, type PlaybookCode } from "./playbooks";
 import type { Candidate, DetectedOpportunity } from "./types";
 
 export type Risk = Candidate["risk"];
 export type ExecutionMode = Candidate["executionMode"];
 export const RISKS: Risk[] = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
+export const RISK_LABEL: Record<Risk, string> = { LOW: "faible", MEDIUM: "moyen", HIGH: "élevé", CRITICAL: "critique" };
+export const MODE_LABEL: Record<ExecutionMode, string> = { API_PRICELABS: "écriture PriceLabs", MANUAL_RUNBOOK: "pas-à-pas manuel", INTERNAL: "interne", NONE: "aucune" };
 export const EXECUTION_MODES: ExecutionMode[] = ["API_PRICELABS", "MANUAL_RUNBOOK", "INTERNAL", "NONE"];
 
 export type ScoringConfig = {
@@ -78,13 +80,13 @@ export function resolveScoring(raw: unknown): ScoringConfig {
 export function validateScoringInput(raw: { strategicWeight?: Record<string, unknown>; riskPenalty?: Record<string, unknown>; executionCost?: Record<string, unknown> }):
   { ok: true; config: ScoringConfig } | { ok: false; error: string } {
   const check = (group: string, src: Record<string, unknown> | undefined, lim: { min: number; max: number }, label: (k: string) => string) => {
-    for (const [k, v] of Object.entries(src ?? {})) if (num(v, lim) === null) return `${label(k)} : saisissez un nombre entre ${lim.min} et ${lim.max}.`;
+    for (const [k, v] of Object.entries(src ?? {})) if (num(v, lim) === null) return `${label(k)} : saisissez un nombre entre ${lim.min} et ${lim.max.toLocaleString("fr-FR")}.`;
     return null;
   };
   const err =
-    check("w", raw.strategicWeight, SCORING_LIMITS.weight, (k) => `Poids de ${k}`) ??
-    check("r", raw.riskPenalty, SCORING_LIMITS.penalty, (k) => `Pénalité de risque ${k}`) ??
-    check("c", raw.executionCost, SCORING_LIMITS.cost, (k) => `Coût d'exécution ${k}`);
+    check("w", raw.strategicWeight, SCORING_LIMITS.weight, (k) => `Poids de ${k} · ${playbookOf(k)?.label ?? k}`) ??
+    check("r", raw.riskPenalty, SCORING_LIMITS.penalty, (k) => `Pénalité de risque ${RISK_LABEL[k as Risk] ?? k}`) ??
+    check("c", raw.executionCost, SCORING_LIMITS.cost, (k) => `Coût d'exécution (${MODE_LABEL[k as ExecutionMode] ?? k})`);
   return err ? { ok: false, error: err } : { ok: true, config: resolveScoring(raw) };
 }
 
