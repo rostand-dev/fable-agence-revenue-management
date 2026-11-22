@@ -20,6 +20,8 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   resetPasswordAction: { events: ["account.password_changed"] },
   // actions/costs.ts
   saveCostsAction: { events: ["property.costs_validated", "property.economics_versioned"] },
+  // actions/seasons.ts
+  saveSeasonsAction: { events: ["property.economics_versioned"] },
   // actions/decisions.ts
   approveAction: { events: ["action.approved", "opportunity.no_action"] },
   rejectAction: { events: ["opportunity.rejected"] },
@@ -102,6 +104,7 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/v1/properties/[id]": { events: ["property.updated", "property.deleted"] },
   "api/v1/properties/[id]/listings": { events: ["listing.created"] },
   "api/v1/properties/[id]/listings/[listingId]": { events: ["listing.updated", "listing.archived", "listing.restored", "listing.deleted"] },
+  "api/v1/properties/[id]/economics/seasons": { events: ["property.economics_versioned"] },
   "api/v1/properties/[id]/activate": { events: ["property.activated"] },
   "api/v1/properties/[id]/validations/floors": { events: ["property.floors_validated"] },
   "api/v1/properties/[id]/validations/reconciliation": { events: ["property.reconciliation_recorded"] },

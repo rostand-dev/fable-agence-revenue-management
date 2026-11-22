@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { floorGrid } from "./engine/economics";
+import { seasonalFloorGrid } from "./engine/seasons";
 import type { EconomicModel } from "./engine/types";
 
 /**
@@ -39,7 +40,10 @@ export function floorFingerprint(m: EconomicModel): string | null {
   try {
     const grid = floorGrid(m, [...FLOOR_LOS]).map((g) => [g.channel, g.nights, g.hardCents, g.strategyCents]).sort((a, b) => (a[0] as string).localeCompare(b[0] as string) || (a[1] as number) - (b[1] as number)); // ordre canonique : ne dépend pas de l'ordre des clés du modèle
     if (!grid.length || grid.some((g) => !Number.isFinite(g[2] as number) || !Number.isFinite(g[3] as number))) return null;
-    return createHash("sha256").update(JSON.stringify(grid)).digest("hex").slice(0, 32);
+    // Sans saison, l'empreinte reste celle d'avant l'US-052 (les validations existantes restent valables) ; avec saisons, la grille saisonnière entre dans l'empreinte.
+    const seasonal = (m.seasons ?? []).length ? seasonalFloorGrid(m, [...FLOOR_LOS]).flatMap((g) => g.seasons.map((s) => { const d = (m.seasons ?? []).find((x) => x.id === s.seasonId)!; return [g.channel, g.nights, s.seasonId, s.strategyCents, d.from, d.to, d.label]; })).sort((a, b) => String(a[0]).localeCompare(String(b[0])) || (a[1] as number) - (b[1] as number) || String(a[2]).localeCompare(String(b[2]))) : null;
+    if (seasonal && seasonal.some((x) => !Number.isFinite(x[3] as number))) return null;
+    return createHash("sha256").update(JSON.stringify(seasonal ? { grid, seasonal } : grid)).digest("hex").slice(0, 32);
   } catch { return null; }
 }
 

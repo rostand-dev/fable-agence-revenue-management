@@ -3,7 +3,7 @@ import { db, newId, schema } from "@/db";
 import { floorFingerprint, floorsState, parseReconciliation, reconciliationState, FLOOR_LOS, type FloorsState, type ReconciliationState } from "@/lib/activation-gates";
 import { recordAudit } from "@/lib/audit/log";
 import { userActor } from "@/lib/audit/types";
-import { floorGrid } from "@/lib/engine/economics";
+import { seasonalFloorGrid, type SeasonalFloorRow } from "@/lib/engine/seasons";
 import type { EconomicModel } from "@/lib/engine/types";
 import { PortfolioError, type PortfolioActor } from "./portfolio";
 
@@ -31,7 +31,7 @@ export async function loadGateFacts(ex: Ex, tenantId: string, propertyId: string
 export type ValidationsView = {
   name: string; status: string; isDemo: boolean;
   floors: FloorsState; fingerprint: string | null;
-  grid: { channel: string; nights: number; hardCents: number; strategyCents: number }[];
+  grid: SeasonalFloorRow[];
   reconciliation: ReconciliationState; reconciliationDetail: { source: string; note: string | null } | null;
 };
 
@@ -41,7 +41,7 @@ export async function getValidations(tenantId: string, propertyId: string): Prom
   const econ = p.economics as EconomicModel;
   const g = await loadGateFacts(db, tenantId, propertyId, econ);
   let grid: ValidationsView["grid"] = [];
-  if (g.fingerprint) grid = floorGrid(econ, [...FLOOR_LOS]);
+  if (g.fingerprint) grid = seasonalFloorGrid(econ, [...FLOOR_LOS]);
   return { name: p.name, status: p.status, isDemo: p.isDemo, floors: g.floors, fingerprint: g.fingerprint, grid, reconciliation: g.reconciliation, reconciliationDetail: g.reconciliationDetail };
 }
 
@@ -66,7 +66,7 @@ export async function validateFloors(u: PortfolioActor, propertyId: string, seen
     const fp = floorFingerprint(econ);
     if (!fp) throw new PortfolioError("INVALID", "Les planchers ne peuvent pas être validés : le modèle économique est incomplet.");
     if (typeof seenFingerprint !== "string" || seenFingerprint !== fp) throw new PortfolioError("CONFLICT", "Les planchers ont changé depuis l'affichage : rechargez la page et relisez la grille avant de valider.");
-    const grid = floorGrid(econ, [...FLOOR_LOS]);
+    const grid = seasonalFloorGrid(econ, [...FLOOR_LOS]);
     await tx.insert(av).values({ id: newId("val"), tenantId: u.tenantId, propertyId: p.id, kind: "FLOORS", fingerprint: fp, payload: { grid }, validatedBy: u.id, validatedByName: u.name, note: n || null, createdAt: new Date() }); // horodatage pris sous verrou : « la dernière » est bien la dernière
     await recordAudit(tx, { tenantId: u.tenantId, actor: userActor(u.id), type: "property.floors_validated", entity: "Property", entityId: p.id, summary: `${u.name} valide les planchers de ${p.name} (${grid.length} combinaisons canal × durée).`, payload: { fingerprint: fp, economicsVersion: p.economicsVersion, cells: grid.length } });
   });
