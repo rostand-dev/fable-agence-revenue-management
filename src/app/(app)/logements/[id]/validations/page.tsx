@@ -50,7 +50,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
         <p data-testid="validation-floors"><State role={frState(v.floors.status === "OK")}>{v.floors.status === "OK" ? "validés" : v.floors.status === "STALE" ? "à valider de nouveau" : v.floors.status === "INCOMPLETE" ? "incomplets" : "non validés"}</State> {q.items.find((i) => i.key === "floors")!.detail}</p>
         {v.floors.status === "INCOMPLETE" ? <Banner role="attention" title="Modèle économique incomplet">Les planchers se calculent à partir des coûts et commissions. <Link href={`/logements/${id}/couts`}>Compléter les coûts</Link></Banner> : (
           <>
-            <p className="section-note">Les planchers saisonniers sont validés avec la grille mais ne sont pas encore appliqués par l'auditeur (US-053). Plancher dur : en dessous, le revenu net ne couvre pas la contribution minimale. Plancher stratégie : la contribution visée. Montants par nuit.</p>
+            <p className="section-note">Les planchers saisonniers sont validés avec la grille et appliqués par l'auditeur selon les dates du séjour. Plancher dur : en dessous, le revenu net ne couvre pas la contribution minimale. Plancher stratégie : la contribution visée. Montants par nuit.</p>
             <div className="stack" style={{ gap: 16 }}>
               {[...byChannel].map(([ch, cells]) => (
                 <div key={ch} className="card" style={{ padding: 16 }} data-testid={`floor-${ch}`}>
