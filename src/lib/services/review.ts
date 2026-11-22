@@ -140,6 +140,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       blocked++; blockedIds.add(p.id); log("onboarding", "quality", `${p.name} : modèle économique incomplet (${res.blocked.join(", ")}). Aucune opportunité financière n'est ouverte tant que ces valeurs sont inconnues.`);
       continue;
     }
+    if (res.conformity.length) log("audit", "conformity", `${p.name} : ${res.conformity.length} option${res.conformity.length > 1 ? "s" : ""} retirée${res.conformity.length > 1 ? "s" : ""} faute de respecter le contrat de son type d'action (${res.conformity.map((c) => c.candidate + " : " + c.issues.join(", ")).join(" ; ").slice(0, 400)}).`, { error: "CANDIDATE_CONFORMITY" });
     if (res.missingMarkups.length) log("onboarding", "quality", `${p.name} : majoration ${res.missingMarkups.map((c) => (c === "AIRBNB" ? "Airbnb" : "Booking.com")).join(" et ")} non renseignée : ce canal est exclu de la revue (aucun prix vendu n'est calculé sans majoration). Saisissez-la dans les réglages du logement.`);
     const gaps = res.stats.filter((s) => s.gap !== null).map((s) => `${s.label} ${s.gap! >= 0 ? "+" : "−"}${Math.abs(Math.round(s.gap! * 100))} pts`).join(" · ");
     log("marche", "analyzeMarket", `${p.name} : écart d'occupation au marché — ${gaps || "données de marché inconnues"}.`, { output: res.stats.map(({ freeDates, ...s }) => s) });
