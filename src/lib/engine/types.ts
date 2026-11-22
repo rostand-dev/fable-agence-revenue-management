@@ -127,8 +127,26 @@ export type Diagnosis = {
   evidence: Evidence[];
 };
 
+/** Mesure d'un signal face à son seuil (US-060) : ce qui a été observé, ce qui déclenche, et le sens de la comparaison. `measured` null = inconnu. */
+export type SignalMeasure = {
+  key: string; label: string; measured: number | string | null; threshold: number | null;
+  op: "<=" | ">=" | "<" | ">" | null; unit: string;
+};
+/** Ce qui a déclenché une opportunité, sous une forme qui se range en base et s'affiche : jamais une conclusion, seulement des mesures et leurs seuils. */
+export type SignalSummary = {
+  playbook: string; trigger: string;
+  /** Fenêtre canonique (D0_7…D61_90) de la première nuit visée. */
+  horizon: string;
+  channel: Channel | null; from: ISODate; to: ISODate; nights: number;
+  measures: SignalMeasure[];
+  /** Données dont dépend le signal : leur fraîcheur est contrôlée avant d'ouvrir un dossier (US-061). */
+  requiredData: string[];
+};
+
 export type DetectedOpportunity = {
   playbook: string;
+  /** Signal à l'origine du dossier. */
+  signal?: SignalSummary;
   /** Clé de dédoublonnage stable d'un jour à l'autre (fenêtre, canal) ; à défaut, la date de début */
   dedupe?: string;
   reasonCode: string;

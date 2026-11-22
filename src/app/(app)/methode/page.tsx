@@ -6,6 +6,8 @@ import { State } from "@/components/ui";
 import { agentName, WORKFLOWS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { CYCLE } from "@/lib/engine/stateMachine";
+import { PLAYBOOK_CODES, PLAYBOOKS } from "@/lib/engine/playbooks";
+import { formatValue } from "@/lib/engine/signal-format";
 import { CHANNEL_LABEL } from "@/lib/engine/types";
 import { RULES_CHECKED_AT, STACK_STATUS, groupedRules } from "@/lib/stacking/rules";
 
@@ -21,6 +23,14 @@ const AUTONOMY: [string, string, string][] = [
   ["Prix daté dans ±5 %, 14 nuits au plus", "moyen", "Sur votre approbation"], ["Variation au-delà de ±5 % ou prix de base", "élevé", "Approbation commentée"],
   ["Promotion de canal jusqu'à 10 %", "moyen", "Approbation + procédure manuelle guidée"], ["Toute action sous le plancher absolu", "interdit", "Veto de l'auditeur"],
 ];
+
+const DATA_LABEL: Record<string, string> = {
+  RESERVATIONS: "réservations", AVAILABILITY: "disponibilités", PRICING: "prix", MARKET: "marché", PROMOTIONS: "promotions vérifiées",
+  CONFIG: "configuration PriceLabs", ECONOMICS: "modèle économique", STRATEGY: "stratégie",
+};
+const APPROVER_LABEL: Record<string, string> = {
+  REVENUE_MANAGER: "Votre validation", REVENUE_MANAGER_AND_OWNER: "Votre validation, avec commentaire", OPERATOR_AND_RM: "Votre validation, puis procédure manuelle dans l'extranet", NONE: "Aucune",
+};
 
 export default async function Methode() {
   const user = await requireUser();
@@ -43,6 +53,38 @@ export default async function Methode() {
           <ol className="flow">{w.steps.map((s, i) => <li key={i}><span className="n">{i + 1}</span><span className={`who${s.agent === "vous" ? " is-you" : ""}`}>{s.agent === "vous" ? "Vous" : <><Avatar agent={s.agent} size={24} />{agentName(s.agent, names)}</>}</span><span>{s.what}</span></li>)}</ol>
         </section>
       ))}
+      <section className="section" aria-labelledby="playbooks-h" data-testid="playbooks">
+        <h2 id="playbooks-h">Les playbooks de l'agence</h2>
+        <p className="section-note">Chaque situation que l'agence sait reconnaître a un déclencheur chiffré, des données dont elle dépend, une période de repos après décision, un approbateur et une vérification. Ces seuils sont ceux que le moteur utilise.</p>
+        <ul className="playbooks">
+          {PLAYBOOK_CODES.map((c) => {
+            const p = PLAYBOOKS[c];
+            return (
+              <li key={c} className="playbook">
+                <details className="fold">
+                  <summary><span className="mono">{p.code}</span> {p.label} {p.status === "PLANNED" && <State role="tech">pas encore actif</State>}</summary>
+                  <div className="fold-body">
+                    <p>{p.trigger}</p>
+                    {Object.keys(p.thresholds).length > 0 && (
+                      <div className="table-wrap"><table className="econ"><caption className="sr-only">Seuils du playbook {p.code}</caption>
+                        <thead><tr><th scope="col">Seuil</th><th scope="col">Valeur</th></tr></thead>
+                        <tbody>{Object.entries(p.thresholds).map(([k, th]) => <tr key={k}><th scope="row">{th.label}</th><td className="mono">{formatValue(th.value, th.unit)}</td></tr>)}</tbody></table></div>
+                    )}
+                    <dl className="playbook-facts">
+                      <div><dt>Données nécessaires</dt><dd>{p.requiredData.map((d) => DATA_LABEL[d] ?? d).join(", ")}</dd></div>
+                      <div><dt>Période de repos après décision</dt><dd>{p.cooldownDays} jour{p.cooldownDays > 1 ? "s" : ""}</dd></div>
+                      <div><dt>Approbation</dt><dd>{APPROVER_LABEL[p.approver]}</dd></div>
+                      <div><dt>Vérification</dt><dd>{p.verification}</dd></div>
+                      <div><dt>Horizon de mesure</dt><dd>{p.measurementHorizonDays > 0 ? `${p.measurementHorizonDays} jours` : "sans objet"}</dd></div>
+                      {p.exclusions.length > 0 && <div><dt>Ce qui écarte l'action</dt><dd>{p.exclusions.join(" ; ")}</dd></div>}
+                    </dl>
+                  </div>
+                </details>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
       <section className="section">
         <h2>Règles ou modèle de langage ?</h2>
         <p className="section-note">Le partage est fixe. Si le fournisseur de modèle est indisponible, la revue, les métriques et les garde-fous continuent.</p>

@@ -1,0 +1,263 @@
+[
+ {
+  "playbook": "PB-05",
+  "dedupe": null,
+  "reasonCode": "DISCOUNT_STACK_RISK",
+  "title": "3 remises Booking.com se cumulent à 31 % sur 8 nuits",
+  "from": "2026-12-18",
+  "to": "2026-12-26",
+  "veto": false,
+  "urgency": 1,
+  "expiresAt": "2026-12-26",
+  "primary": "DISCOUNT_STACK",
+  "confidence": 0.92,
+  "score": 5.8,
+  "selected": 0,
+  "candidates": [
+   {
+    "type": "PROMO_REMOVAL",
+    "label": "Retirer « Offre à durée limitée » sur ces dates",
+    "verdict": "APPROVE",
+    "risk": "MEDIUM",
+    "mode": "MANUAL_RUNBOOK",
+    "nights": 8,
+    "delta": 1064,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "SCOPE:PASS",
+     "PROMO_FRESHNESS:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:WARN"
+    ]
+   }
+  ]
+ },
+ {
+  "playbook": "PB-03",
+  "dedupe": null,
+  "reasonCode": "ORPHAN_GAP",
+  "title": "2 nuits invendables entre deux réservations",
+  "from": "2026-11-22",
+  "to": "2026-11-24",
+  "veto": false,
+  "urgency": 1.6666666666666665,
+  "expiresAt": "2026-11-22",
+  "primary": "RESTRICTION_MISMATCH",
+  "confidence": 0.92,
+  "score": 136.9,
+  "selected": 0,
+  "candidates": [
+   {
+    "type": "MIN_STAY_OVERRIDE",
+    "label": "Ramener le séjour minimum à 2 nuits sur ces dates",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "API_PRICELABS",
+    "nights": 2,
+    "delta": 8927,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": []
+   }
+  ]
+ },
+ {
+  "playbook": "PB-01",
+  "dedupe": "D15_30",
+  "reasonCode": "PACE_BELOW_MARKET",
+  "title": "Remplissage 43 points sous le marché sur J+15 à J+30",
+  "from": "2026-11-27",
+  "to": "2026-12-13",
+  "veto": false,
+  "urgency": 1.5,
+  "expiresAt": "2026-11-27",
+  "primary": "PRICE_HIGH",
+  "confidence": 0.8,
+  "score": 24.1,
+  "selected": 0,
+  "candidates": [
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Baisser le prix de 5 % sur 13 nuits libres",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 13,
+    "delta": 2343,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:PASS",
+     "SCOPE:PASS",
+     "STACK_RULES:WARN",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "CHANNEL_PROMO",
+    "label": "Offre mobile Booking.com à 10 % sur la fenêtre",
+    "verdict": "REJECT",
+    "risk": "MEDIUM",
+    "mode": "MANUAL_RUNBOOK",
+    "nights": 13,
+    "delta": -1117,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "DISCOUNT_STACK:FAIL",
+     "SCOPE:PASS",
+     "PROMO_FRESHNESS:PASS",
+     "STACK_RULES:WARN",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS"
+    ]
+   }
+  ]
+ },
+ {
+  "playbook": "PB-01",
+  "dedupe": "D61_90",
+  "reasonCode": "PACE_BELOW_MARKET_EXPECTED",
+  "title": "Remplissage en retrait sur J+61 à J+90, sans cause tarifaire",
+  "from": "2027-01-12",
+  "to": "2027-02-11",
+  "veto": false,
+  "urgency": 1,
+  "expiresAt": "2027-01-12",
+  "primary": "BOOKING_WINDOW_NOT_OPEN",
+  "confidence": 0.8,
+  "score": 0,
+  "selected": 2,
+  "candidates": [
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Baisser le prix de 5 % sur 14 nuits libres",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 14,
+    "delta": -261,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:PASS",
+     "SCOPE:PASS",
+     "STACK_RULES:WARN",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "CHANNEL_PROMO",
+    "label": "Offre mobile Booking.com à 10 % sur la fenêtre",
+    "verdict": "REJECT",
+    "risk": "MEDIUM",
+    "mode": "MANUAL_RUNBOOK",
+    "nights": 14,
+    "delta": -1361,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "DISCOUNT_STACK:FAIL",
+     "SCOPE:PASS",
+     "PROMO_FRESHNESS:PASS",
+     "STACK_RULES:WARN",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS"
+    ]
+   }
+  ]
+ },
+ {
+  "playbook": "PB-10",
+  "dedupe": "AIRBNB",
+  "reasonCode": "DATA_STALE",
+  "title": "Registre des promotions Airbnb non vérifié depuis 12 jours",
+  "from": "2026-11-12",
+  "to": "2026-12-12",
+  "veto": false,
+  "urgency": 1.2,
+  "expiresAt": "2026-12-12",
+  "primary": "DATA_STALE",
+  "confidence": 0.9,
+  "score": 0,
+  "selected": 0,
+  "candidates": [
+   {
+    "type": "INVESTIGATION",
+    "label": "Vérifier les promotions actives dans l'extranet Airbnb",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "MANUAL_RUNBOOK",
+    "nights": 0,
+    "delta": null,
+    "rules": [
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   }
+  ]
+ }
+]

@@ -1,0 +1,239 @@
+/**
+ * Catalogue des playbooks (blueprint §9.5, US-060). Source unique des seuils, des données nécessaires, du cooldown, des candidates,
+ * des règles de veto, de l'approbateur, de la vérification et de l'horizon de mesure de chaque playbook : « chaque playbook définit
+ * seuils, données nécessaires, cooldown, candidates, règles de veto, approbateur, vérification et horizon de mesure ».
+ *
+ * Module pur, sans accès base. Les règles de signal (`signals.ts`) lisent leurs seuils ici et nulle part ailleurs : changer un seuil se fait
+ * à un seul endroit, et la page « Méthode » affiche ce catalogue tel quel.
+ *
+ * Le blueprint s'arrête à PB-12 ; PB-13 (minimum PriceLabs sous le plancher) est une extension décidée avec la propriétaire.
+ */
+import type { FreshnessKind } from "../freshness";
+import type { CandidateType } from "./types";
+
+export type PlaybookCode = "PB-01" | "PB-02" | "PB-03" | "PB-04" | "PB-05" | "PB-06" | "PB-07" | "PB-08" | "PB-09" | "PB-10" | "PB-11" | "PB-12" | "PB-13";
+/** Donnée dont dépend un signal : sa fraîcheur est contrôlée avant d'ouvrir une opportunité (US-061). */
+export type DataKind = FreshnessKind | "ECONOMICS" | "STRATEGY";
+/** Qui valide une action du playbook (blueprint §11.2) : jamais un agent. */
+export type Approver = "REVENUE_MANAGER" | "REVENUE_MANAGER_AND_OWNER" | "OPERATOR_AND_RM" | "NONE";
+
+export type Threshold = { value: number; unit: string; label: string };
+
+export type Playbook = {
+  code: PlaybookCode;
+  key: string;
+  label: string;
+  /** Déclencheur résumé (§9.5). */
+  trigger: string;
+  /** IMPLEMENTED = le moteur ouvre des opportunités ; PLANNED = décrit au blueprint, pas encore codé. */
+  status: "IMPLEMENTED" | "PLANNED";
+  thresholds: Record<string, Threshold>;
+  requiredData: DataKind[];
+  /** Jours pendant lesquels un dossier tranché par un humain n'est pas rouvert pour le même signal (US-061). */
+  cooldownDays: number;
+  candidates: CandidateType[];
+  /** Exclusions majeures (§9.5) : cas où le playbook ne propose pas d'action commerciale. */
+  exclusions: string[];
+  /** Règles de l'auditeur qui peuvent opposer un veto à une candidate de ce playbook. */
+  vetoRules: string[];
+  approver: Approver;
+  verification: string;
+  /** Fenêtre d'observation avant de mesurer le résultat d'une action, en jours. */
+  measurementHorizonDays: number;
+};
+
+const t = (value: number, unit: string, label: string): Threshold => ({ value, unit, label });
+
+export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
+  "PB-01": {
+    code: "PB-01", key: "PACE_LOW", label: "Rythme sous le marché", status: "IMPLEMENTED",
+    trigger: "L'occupation d'une fenêtre à venir est nettement sous celle du marché, avec assez de nuits libres pour agir.",
+    thresholds: {
+      paceGap: t(-0.18, "points", "Écart d'occupation au marché à partir duquel on parle de retard (fenêtre J+8 et au-delà)"),
+      minFreeNights: t(4, "nuits", "Nuits libres minimales dans la fenêtre"),
+      weakMarketOccupancy: t(0.35, "ratio", "Occupation du marché en dessous de laquelle la demande est jugée faible"),
+      priceHighPercentile: t(65, "percentile", "Position de prix à partir de laquelle le prix est jugé au-dessus du marché"),
+      restrictiveMinStay: t(3, "nuits", "Séjour minimum à partir duquel la restriction peut écarter la demande"),
+      maxTargetNights: t(14, "nuits", "Nuits ciblées au plus par action"),
+    },
+    requiredData: ["AVAILABILITY", "MARKET", "PRICING"],
+    cooldownDays: 14,
+    candidates: ["PRICE_OVERRIDE", "CHANNEL_PROMO", "LISTING_AUDIT", "NO_ACTION"],
+    exclusions: ["Marché également faible, sans avantage clair à baisser le prix", "Fenêtre de réservation pas encore ouverte pour ce logement"],
+    vetoRules: ["HARD_FLOOR", "DISCOUNT_STACK", "CONFLICT"],
+    approver: "REVENUE_MANAGER",
+    verification: "Relire les prix datés dans PriceLabs, ou la promotion dans l'extranet du canal, puis comparer le rythme de réservation à celui d'avant l'action.",
+    measurementHorizonDays: 7,
+  },
+  "PB-02": {
+    code: "PB-02", key: "PACE_HIGH", label: "Réservations trop précoces", status: "IMPLEMENTED",
+    trigger: "Une fenêtre lointaine se remplit bien plus vite que le marché : le prix de base est probablement trop bas à cet horizon.",
+    thresholds: {
+      paceGap: t(0.25, "points", "Avance sur le marché à partir de laquelle on parle d'avance (fenêtre J+31 et au-delà)"),
+      minOccupancy: t(0.55, "ratio", "Occupation minimale de la fenêtre"),
+      minFreeNights: t(4, "nuits", "Nuits libres minimales à l'horizon pour que la hausse serve"),
+      strongGap: t(0.35, "points", "Avance au-delà de laquelle la confiance augmente"),
+    },
+    requiredData: ["AVAILABILITY", "MARKET", "PRICING", "STRATEGY"],
+    cooldownDays: 21,
+    candidates: ["BASE_PRICE_CHANGE", "PRICE_OVERRIDE", "NO_ACTION"],
+    exclusions: ["Événement mal capturé : un séjour long unique ou une date précise peut produire le même signal"],
+    vetoRules: ["MAX_VARIATION", "CONFLICT"],
+    approver: "REVENUE_MANAGER_AND_OWNER",
+    verification: "Relire le prix de base dans PriceLabs ; une seule hypothèse structurante à la fois par logement, fenêtre d'observation de 14 jours.",
+    measurementHorizonDays: 14,
+  },
+  "PB-03": {
+    code: "PB-03", key: "ORPHAN_GAP", label: "Trou invendable entre deux séjours", status: "IMPLEMENTED",
+    trigger: "Un trou de 1 à 3 nuits, encadré par deux séjours, est bloqué par un séjour minimum plus long que lui.",
+    thresholds: {
+      maxGapNights: t(3, "nuits", "Longueur maximale du trou"),
+      minLeadDays: t(2, "jours", "Délai minimal avant la première nuit du trou"),
+      maxLeadDays: t(45, "jours", "Délai maximal avant la première nuit du trou"),
+    },
+    requiredData: ["AVAILABILITY", "PRICING"],
+    cooldownDays: 7,
+    candidates: ["MIN_STAY_OVERRIDE", "NO_ACTION"],
+    exclusions: ["Coût de séjour non couvert sur une durée aussi courte"],
+    vetoRules: ["HARD_FLOOR", "CONFLICT", "SCOPE"],
+    approver: "REVENUE_MANAGER",
+    verification: "Relire le séjour minimum daté dans PriceLabs, puis constater si les nuits se réservent.",
+    measurementHorizonDays: 7,
+  },
+  "PB-04": {
+    code: "PB-04", key: "CHANNEL_GAP", label: "Un canal sous-performe", status: "IMPLEMENTED",
+    trigger: "La part d'un canal dans les nuits déjà réservées à venir est nettement sous sa part habituelle, alors que le logement dans son ensemble suit son marché.",
+    thresholds: {
+      shareGap: t(-0.2, "points", "Écart de part du canal, face à sa part habituelle, à partir duquel il sous-performe"),
+      horizonDays: t(60, "jours", "Horizon des nuits réservées comparées"),
+      minOnBooksNights: t(10, "nuits", "Nuits réservées minimales à l'horizon pour comparer"),
+      minHistoryStays: t(12, "séjours", "Séjours confirmés minimaux dans l'historique pour établir la part habituelle"),
+      maxUnknownChannelShare: t(0.2, "ratio", "Part maximale de séjours au canal non identifié (au-delà, la comparaison n'est pas fiable)"),
+      minHistoricalShare: t(0.3, "ratio", "Part habituelle minimale du canal : sous ce seuil, l'écart n'a pas de sens"),
+      minFreeNights: t(4, "nuits", "Nuits libres minimales dans l'horizon"),
+      maxTargetNights: t(14, "nuits", "Nuits ciblées au plus par action"),
+    },
+    requiredData: ["RESERVATIONS", "AVAILABILITY", "PROMOTIONS"],
+    cooldownDays: 14,
+    candidates: ["CHANNEL_PROMO", "LISTING_AUDIT", "NO_ACTION"],
+    exclusions: ["Retard général du logement (traité par PB-01)", "Inventaire non distribué sur le canal : non vérifiable sans accès partenaire, à contrôler avant toute remise"],
+    vetoRules: ["HARD_FLOOR", "DISCOUNT_STACK", "STACK_RULES"],
+    approver: "OPERATOR_AND_RM",
+    verification: "Relire la promotion dans l'extranet du canal, puis comparer la part du canal dans les réservations des 14 jours suivants.",
+    measurementHorizonDays: 14,
+  },
+  "PB-05": {
+    code: "PB-05", key: "STACK_RISK", label: "Remises cumulées", status: "IMPLEMENTED",
+    trigger: "Au moins deux remises d'un même canal se cumulent sur les mêmes nuits au-delà du plafond de la stratégie, ou sous le plancher stratégique.",
+    thresholds: {
+      minPromotions: t(2, "promotions", "Promotions simultanées minimales"),
+      minRunNights: t(2, "nuits", "Nuits contiguës minimales"),
+    },
+    requiredData: ["PROMOTIONS", "ECONOMICS", "STRATEGY"],
+    cooldownDays: 14,
+    candidates: ["PROMO_REMOVAL", "NO_ACTION"],
+    exclusions: ["Engagement de campagne : une promotion de campagne ne se retire pas librement"],
+    vetoRules: ["STACK_RULES", "PROMO_FRESHNESS"],
+    approver: "OPERATOR_AND_RM",
+    verification: "Relire la liste des promotions actives dans l'extranet du canal et confirmer le registre.",
+    measurementHorizonDays: 14,
+  },
+  "PB-06": {
+    code: "PB-06", key: "FLOOR_BREACH", label: "Prix net sous le plancher", status: "IMPLEMENTED",
+    trigger: "Le prix vendu simulé d'une nuit libre, après majoration et remises, passe sous le plancher économique absolu.",
+    thresholds: {
+      minStayFloor: t(2, "nuits", "Durée de séjour retenue pour calculer le plancher quand la stratégie n'en fixe pas"),
+    },
+    requiredData: ["AVAILABILITY", "PRICING", "ECONOMICS"],
+    cooldownDays: 3,
+    candidates: ["RULE_EXCLUSION", "PRICE_OVERRIDE", "NO_ACTION"],
+    exclusions: [],
+    vetoRules: ["HARD_FLOOR"],
+    approver: "REVENUE_MANAGER",
+    verification: "Relire le prix daté dans PriceLabs puis recalculer le prix vendu net : il doit atteindre le plancher.",
+    measurementHorizonDays: 7,
+  },
+  "PB-07": {
+    code: "PB-07", key: "EVENT_UPLIFT", label: "Demande événementielle", status: "IMPLEMENTED",
+    trigger: "Un événement déclaré coïncide avec un marché très occupé alors que le prix reste bas dans le marché.",
+    thresholds: {
+      marketOccupancy: t(0.8, "ratio", "Occupation du marché minimale"),
+      maxPricePercentile: t(45, "percentile", "Position de prix maximale"),
+    },
+    requiredData: ["AVAILABILITY", "MARKET", "PRICING"],
+    cooldownDays: 7,
+    candidates: ["PRICE_OVERRIDE", "NO_ACTION"],
+    exclusions: ["Signal d'événement non confirmé par le marché"],
+    vetoRules: ["MAX_VARIATION", "CONFLICT"],
+    approver: "REVENUE_MANAGER",
+    verification: "Relire le prix daté dans PriceLabs et suivre le rythme de réservation de ces dates.",
+    measurementHorizonDays: 14,
+  },
+  "PB-08": {
+    code: "PB-08", key: "CANCELLATION", label: "Dates rouvertes par une annulation", status: "PLANNED",
+    trigger: "Une annulation rouvre des dates : réévaluer la fenêtre et les promotions, sans remise automatique.",
+    thresholds: {}, requiredData: ["RESERVATIONS", "AVAILABILITY"], cooldownDays: 3, candidates: ["INVESTIGATION", "NO_ACTION"],
+    exclusions: ["Action immédiate non justifiée"], vetoRules: [], approver: "REVENUE_MANAGER",
+    verification: "Relire le calendrier et la réservation annulée.", measurementHorizonDays: 7,
+  },
+  "PB-09": {
+    code: "PB-09", key: "LONG_STAY", label: "Séjours longs en basse saison", status: "PLANNED",
+    trigger: "Basse saison et trou long : proposer une offre 7, 14 ou 28 nuits.",
+    thresholds: {}, requiredData: ["AVAILABILITY", "ECONOMICS"], cooldownDays: 14, candidates: ["CHANNEL_PROMO", "NO_ACTION"],
+    exclusions: ["Net mensuel insuffisant"], vetoRules: ["HARD_FLOOR"], approver: "REVENUE_MANAGER",
+    verification: "Relire l'offre dans l'extranet du canal.", measurementHorizonDays: 28,
+  },
+  "PB-10": {
+    code: "PB-10", key: "DATA_DRIFT", label: "Données incohérentes ou périmées", status: "IMPLEMENTED",
+    trigger: "Le registre des promotions d'un canal n'a pas été vérifié depuis plus de 7 jours : le cumul réel des remises est incertain.",
+    thresholds: { maxAgeDays: t(7, "jours", "Ancienneté maximale de la dernière vérification des promotions") },
+    requiredData: ["PROMOTIONS"],
+    cooldownDays: 7,
+    candidates: ["INVESTIGATION"],
+    exclusions: ["Aucune action commerciale : seule la donnée est à rétablir"],
+    vetoRules: [],
+    approver: "OPERATOR_AND_RM",
+    verification: "Confirmer le registre après relecture de l'extranet.",
+    measurementHorizonDays: 0,
+  },
+  "PB-11": {
+    code: "PB-11", key: "BASE_LOW", label: "Prix de base trop bas", status: "PLANNED",
+    trigger: "La fenêtre de réservation se referme trop tôt : relever le prix de base par paliers.",
+    thresholds: {}, requiredData: ["RESERVATIONS", "PRICING", "STRATEGY"], cooldownDays: 21, candidates: ["BASE_PRICE_CHANGE", "NO_ACTION"],
+    exclusions: ["Mix de canaux modifié"], vetoRules: ["MAX_VARIATION"], approver: "REVENUE_MANAGER_AND_OWNER",
+    verification: "Relire le prix de base dans PriceLabs.", measurementHorizonDays: 14,
+  },
+  "PB-12": {
+    code: "PB-12", key: "BASE_HIGH", label: "Prix de base trop haut", status: "PLANNED",
+    trigger: "Sous-performance durable : baisser le prix de base par paliers.",
+    thresholds: {}, requiredData: ["RESERVATIONS", "MARKET", "PRICING", "STRATEGY"], cooldownDays: 21, candidates: ["BASE_PRICE_CHANGE", "LISTING_AUDIT", "NO_ACTION"],
+    exclusions: ["Contenu ou visibilité non exclus"], vetoRules: ["HARD_FLOOR", "MAX_VARIATION"], approver: "REVENUE_MANAGER_AND_OWNER",
+    verification: "Relire le prix de base dans PriceLabs.", measurementHorizonDays: 14,
+  },
+  "PB-13": {
+    code: "PB-13", key: "MIN_PRICE_BELOW_FLOOR", label: "Minimum PriceLabs sous le plancher", status: "IMPLEMENTED",
+    trigger: "Le prix minimum configuré dans PriceLabs, majoration comprise, laisse vendre sous le plancher absolu d'un canal.",
+    thresholds: {},
+    requiredData: ["CONFIG", "ECONOMICS", "STRATEGY"],
+    cooldownDays: 7,
+    candidates: ["MIN_PRICE_CHANGE", "NO_ACTION"],
+    exclusions: ["Canal dont la majoration est inconnue (exclu de la revue)"],
+    vetoRules: ["HARD_FLOOR"],
+    approver: "REVENUE_MANAGER_AND_OWNER",
+    verification: "Relire le prix minimum dans PriceLabs.",
+    measurementHorizonDays: 14,
+  },
+};
+
+export const PLAYBOOK_CODES = Object.keys(PLAYBOOKS) as PlaybookCode[];
+export const IMPLEMENTED_PLAYBOOKS = PLAYBOOK_CODES.filter((c) => PLAYBOOKS[c].status === "IMPLEMENTED");
+
+/** Seuil d'un playbook, lu au catalogue. Un seuil inconnu est une erreur de programmation : elle éclate au premier test. */
+export function threshold(code: PlaybookCode, key: string): number {
+  const th = PLAYBOOKS[code].thresholds[key];
+  if (!th) throw new Error(`Seuil inconnu : ${code}.${key}`);
+  return th.value;
+}
+export function playbookOf(code: string): Playbook | null {
+  return (PLAYBOOKS as Record<string, Playbook>)[code] ?? null;
+}

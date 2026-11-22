@@ -1,0 +1,218 @@
+[
+ {
+  "playbook": "PB-06",
+  "dedupe": null,
+  "reasonCode": "FLOOR_BREACH",
+  "title": "Le prix vendu Booking.com passe sous le plancher absolu sur 3 nuits",
+  "from": "2026-11-14",
+  "to": "2026-11-17",
+  "veto": true,
+  "urgency": 2,
+  "expiresAt": "2026-11-17",
+  "primary": "FLOOR_BREACH",
+  "confidence": 0.92,
+  "score": 10014.7,
+  "selected": 1,
+  "candidates": [
+   {
+    "type": "RULE_EXCLUSION",
+    "label": "Exclure la règle « Dernière minute −30 % » sur ces dates",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 3,
+    "delta": 34,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:WARN",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Poser un prix daté à 124 € la nuit (plancher absolu)",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 3,
+    "delta": 1017,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:WARN",
+     "MAX_VARIATION:WARN",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Poser un prix daté à 144 € la nuit (plancher stratégique)",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 3,
+    "delta": 441,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:WARN",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "REJECT",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": [
+     "HARD_FLOOR:FAIL"
+    ]
+   }
+  ]
+ },
+ {
+  "playbook": "PB-07",
+  "dedupe": null,
+  "reasonCode": "EVENT_UPLIFT",
+  "title": "Demande d'événement non reflétée dans le prix sur 3 nuits",
+  "from": "2027-01-17",
+  "to": "2027-01-20",
+  "veto": false,
+  "urgency": 1,
+  "expiresAt": "2027-01-17",
+  "primary": "EVENT_NOT_PRICED",
+  "confidence": 0.83,
+  "score": 31.2,
+  "selected": 0,
+  "candidates": [
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Relever le prix de 12 % sur les dates de l'événement",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 3,
+    "delta": 4246,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:WARN",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Relever le prix de 5 % sur les dates de l'événement",
+    "verdict": "APPROVE",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 3,
+    "delta": 1770,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:PASS",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS"
+    ]
+   }
+  ]
+ },
+ {
+  "playbook": "PB-02",
+  "dedupe": "base",
+  "reasonCode": "PACE_ABOVE_MARKET",
+  "title": "Réservations très en avance sur le marché sur J+31 à J+60",
+  "from": "2026-12-13",
+  "to": "2027-01-12",
+  "veto": false,
+  "urgency": 1,
+  "expiresAt": "2026-11-26",
+  "primary": "BASE_PRICE_LOW",
+  "confidence": 0.73,
+  "score": 14.6,
+  "selected": 0,
+  "candidates": [
+   {
+    "type": "BASE_PRICE_CHANGE",
+    "label": "Relever le prix de base de 5 %",
+    "verdict": "NEEDS_HUMAN",
+    "risk": "HIGH",
+    "mode": "API_PRICELABS",
+    "nights": 22,
+    "delta": 3365,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:PASS",
+     "STRUCTURAL:WARN",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "PRICE_OVERRIDE",
+    "label": "Relever de 5 % les 2 nuits libres de la fenêtre",
+    "verdict": "APPROVE",
+    "risk": "MEDIUM",
+    "mode": "API_PRICELABS",
+    "nights": 2,
+    "delta": 1066,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS",
+     "MAX_VARIATION:PASS",
+     "SCOPE:PASS",
+     "CONFLICT:PASS",
+     "ROLLBACK:PASS",
+     "CAPABILITY:PASS"
+    ]
+   },
+   {
+    "type": "NO_ACTION",
+    "label": "Ne rien faire et réévaluer",
+    "verdict": "APPROVE",
+    "risk": "LOW",
+    "mode": "NONE",
+    "nights": 0,
+    "delta": 0,
+    "rules": [
+     "HARD_FLOOR:PASS",
+     "STRATEGY_FLOOR:PASS"
+    ]
+   }
+  ]
+ }
+]
