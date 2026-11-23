@@ -1,4 +1,5 @@
 import { getUser, type CurrentUser } from "@/lib/auth";
+import { DecisionError } from "@/lib/services/decisions";
 import { PortfolioError } from "@/lib/services/portfolio";
 
 /** Aides communes de l'API REST V1 (blueprint §13.1). Authentification par la session du cockpit ; le propriétaire d'espace n'est jamais un paramètre. */
@@ -45,3 +46,16 @@ export const ownerView = (o: { id: string; name: string; email: string | null; n
 /** Un logement vu par l'API : jamais les connexions (clés chiffrées, jetons) ni les réglages internes. */
 export const propertyView = (p: { id: string; ownerId: string | null; name: string; city: string; kind: string; bedrooms: number | null; capacity: number | null; status: string; isDemo: boolean; strategyVersion: number; economicsVersion: number; createdAt: Date }) => ({ id: p.id, ownerId: p.ownerId, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, status: p.status, isDemo: p.isDemo, strategyVersion: p.strategyVersion, economicsVersion: p.economicsVersion, createdAt: p.createdAt.toISOString() });
 export const listingView = (l: { id: string; propertyId: string; channel: string; externalId: string | null; url: string | null; title: string | null; status: string; createdAt: Date; updatedAt: Date }) => ({ id: l.id, propertyId: l.propertyId, channel: l.channel, externalId: l.externalId, url: l.url, title: l.title, status: l.status, createdAt: l.createdAt.toISOString(), updatedAt: l.updatedAt.toISOString() });
+
+/** Résultat d'un service de décision → réponse HTTP : 403 droits, 404 introuvable, 400 saisie, 409 état du dossier. */
+export async function decisionResponse(run: () => Promise<unknown>, ok: (body: unknown) => Response): Promise<Response> {
+  try { return ok(await run()); }
+  catch (e) {
+    if (e instanceof DecisionError) {
+      const map = { FORBIDDEN: [403, "FORBIDDEN"], NOT_FOUND: [404, "NOT_FOUND"], VALIDATION: [400, "VALIDATION"], CONFLICT: [409, "CONFLICT"] } as const;
+      const [status, code] = map[e.kind];
+      return apiError(status, code, e.message);
+    }
+    return fromError(e);
+  }
+}

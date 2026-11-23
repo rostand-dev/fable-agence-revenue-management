@@ -11,7 +11,7 @@ import { Byline, confidenceScale, OppStatus, riskScale, State, Steps, Vq } from 
 
 export function needsComment(c: Candidate) { return c.audit.verdict === "NEEDS_HUMAN" || c.risk === "HIGH" || c.risk === "CRITICAL"; }
 
-export function SitCard({ o, rank, propertyName, names, provisional }: { o: OppWithAction; rank: number | null; propertyName: string; names?: Record<string, string> | null; provisional?: boolean }) {
+export function SitCard({ o, rank, propertyName, names, provisional, canDecide }: { o: OppWithAction; rank: number | null; propertyName: string; names?: Record<string, string> | null; provisional?: boolean; /** US-084 : sans droit de décision, seuls la lecture et l'ouverture du dossier sont proposées. */ canDecide: boolean }) {
   const c = (o.candidates as Candidate[])[o.selected];
   const conf = confidenceScale(o.confidence), risk = riskScale(o.risk);
   const open = o.status === "OPEN";
@@ -58,13 +58,13 @@ export function SitCard({ o, rank, propertyName, names, provisional }: { o: OppW
           {o.veto && o.signals.vetoText && <div className="amount od-fill"><span className="gauge-label">Motif du veto</span><span className="amount-source" style={{ fontSize: 13, color: "var(--quiet)" }}>{o.signals.vetoText}</span></div>}
         </div>
         <div className="sit-actions">
-          {open && !needsComment(c) && (
+          {open && canDecide && !needsComment(c) && (
             <ActionForm action={approveAction} hidden={{ opportunityId: o.id, candidate: o.selected, comment: "" }} className="inline">
               <Submit icon={c.type === "NO_ACTION" ? "pause" : "check"}>{c.type === "NO_ACTION" ? "Retenir l'inaction" : "Approuver"}</Submit>
             </ActionForm>
           )}
-          {open && needsComment(c) && <Link className="btn btn-primary" href={`/dossier/${o.code}#decision`}><Icon name="folder" />Arbitrer dans le dossier</Link>}
-          {open && !o.veto && (
+          {open && canDecide && needsComment(c) && <Link className="btn btn-primary" href={`/dossier/${o.code}#decision`}><Icon name="folder" />Arbitrer dans le dossier</Link>}
+          {open && canDecide && !o.veto && (
             <ActionForm action={deferAction} hidden={{ opportunityId: o.id }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="clock">Différer de 3 jours</Submit></ActionForm>
           )}
           <span className="spacer" />

@@ -2,12 +2,13 @@ import Link from "next/link";
 import { Term } from "@/components/Term";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
-import { Metric, OppStatus, State, Vq } from "@/components/ui";
+import { Banner, Metric, OppStatus, State, Vq } from "@/components/ui";
 import { agentName } from "@/lib/agents/registry";
 import { withTenant } from "@/db/tenant";
 import { listAuditEvents } from "@/lib/audit/query";
 import { AUDIT_CATEGORIES, AUDIT_CATEGORY_ORDER, auditLabel, isAuditCategory } from "@/lib/audit/types";
 import { requireUser } from "@/lib/auth";
+import { can, denyMessage, rolesWith, ROLE_LABEL } from "@/lib/rbac";
 import { fmtDateTime, fmtDay } from "@/lib/dates";
 import { STATE_LABEL, type ActionState } from "@/lib/engine/stateMachine";
 import { signedEuro } from "@/lib/format";
@@ -22,7 +23,9 @@ export default async function Historique({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const cat = isAuditCategory(sp.cat) ? sp.cat : undefined;
   const names = user.settings.agentNames ?? null;
-  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, limit: PAGE, cursor: sp.apres ?? null }, tx))]);
+  // US-084 : le journal d'audit est réservé à certains rôles ; la requête n'est même pas lancée pour les autres
+  const canAudit = can(user.role, "audit.read");
+  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), canAudit ? withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, limit: PAGE, cursor: sp.apres ?? null }, tx)) : Promise.resolve({ events: [], nextCursor: null as string | null })]);
   const events = journal.events;
   const href = (c?: string, apres?: string | null) => `/historique?${[c ? `cat=${c}` : "", apres ? `apres=${apres}` : ""].filter(Boolean).join("&")}#journal`;
   const pname = new Map(props.map((p) => [p.id, p.name]));
@@ -66,6 +69,7 @@ export default async function Historique({ searchParams }: { searchParams: Promi
       <section className="section" id="journal">
         <h2>Journal d'audit</h2>
         <p className="section-note">Journal en ajout seul : chaque approbation, exécution, vérification et changement de réglage y est inscrit au moment où il a lieu, et personne ne peut le modifier ni l'effacer, pas même l'application.</p>
+        {!canAudit ? <div data-testid="journal-reserve"><Banner role="tech" icon="shield" title="Journal réservé">{denyMessage(user.role, "audit.read")} Il est lisible par : {rolesWith("audit.read").map((r) => ROLE_LABEL[r].toLowerCase()).join(", ")}.</Banner></div> : <>
         <div className="filters filters-scroll" role="group" aria-label="Filtrer le journal par famille">
           <Link className="chip" href={href()} aria-current={!cat ? "true" : undefined} scroll={false}>Tout</Link>
           {AUDIT_CATEGORY_ORDER.map((c) => <Link key={c} className="chip" href={href(c)} aria-current={cat === c ? "true" : undefined} scroll={false} title={AUDIT_CATEGORIES[c].hint}>{AUDIT_CATEGORIES[c].label}</Link>)}
@@ -80,6 +84,7 @@ export default async function Historique({ searchParams }: { searchParams: Promi
           {sp.apres && <Link className="btn btn-ghost btn-sm" href={href(cat)} scroll={false}>Revenir aux plus récents</Link>}
           {journal.nextCursor && <Link className="btn btn-ghost btn-sm" href={href(cat, journal.nextCursor)} scroll={false}>Événements plus anciens</Link>}
         </div>
+        </>}
       </section>
     </Page>
   );

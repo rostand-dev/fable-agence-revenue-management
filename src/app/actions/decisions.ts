@@ -1,15 +1,16 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
+import type { Role } from "@/lib/rbac";
 import type { FormState } from "@/components/forms";
 import * as D from "@/lib/services/decisions";
 import { runDailyReview } from "@/lib/services/review";
 import { seedDemo } from "@/lib/services/seed";
 import { askAgent } from "@/lib/services/chat";
 
-async function run(fn: (actor: { id: string; name: string; tenantId: string }) => Promise<unknown>, ok?: string): Promise<FormState> {
+async function run(fn: (actor: { id: string; name: string; tenantId: string; role: Role }) => Promise<unknown>, ok?: string): Promise<FormState> {
   const u = await requireUser();
-  try { await fn({ id: u.id, name: u.name, tenantId: u.tenantId }); }
+  try { await fn({ id: u.id, name: u.name, tenantId: u.tenantId, role: u.role }); }
   catch (e) { if (e instanceof D.DecisionError) return { error: e.message }; console.error(e); return { error: "Une erreur technique est survenue. Rien n'a été modifié." }; }
   revalidatePath("/", "layout");
   return ok ? { ok } : null;
@@ -24,9 +25,9 @@ export async function executeAction(_: FormState, fd: FormData) { return run((a)
 export async function verifyAction(_: FormState, fd: FormData) { return run((a) => D.verify(a, s(fd, "actionId"))); }
 export async function rollbackAction(_: FormState, fd: FormData) { return run((a) => D.rollback(a, s(fd, "actionId"), s(fd, "reason"))); }
 export async function reviewAction(_: FormState, __: FormData) {
-  return run(async (a) => { const r = await runDailyReview(a.tenantId, "MANUAL"); return r; }, "Revue terminée.");
+  return run(async (a) => { await D.requireDecide(a); const r = await runDailyReview(a.tenantId, "MANUAL"); return r; }, "Revue terminée.");
 }
-export async function resetDemoAction(_: FormState, __: FormData) { return run((a) => seedDemo(a.tenantId), "Démonstration réinstallée à la date du jour."); }
+export async function resetDemoAction(_: FormState, __: FormData) { return run(async (a) => { await D.requireDecide(a); return seedDemo(a.tenantId); }, "Démonstration réinstallée à la date du jour."); }
 export async function chatAction(_: FormState, fd: FormData) {
   const q = s(fd, "question").trim();
   if (q.length < 2) return { error: "Écrivez une question." };

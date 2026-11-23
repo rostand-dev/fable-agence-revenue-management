@@ -5,6 +5,7 @@ import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { eq, lt } from "drizzle-orm";
 import { db, ensureMigrated, schema } from "@/db";
 import { forgetThisDevice } from "@/lib/remember";
+import { normalizeRole, type Role } from "@/lib/rbac";
 import { idleMsFromEnv, isExpired, newExpiry, refreshedExpiry } from "@/lib/session-policy";
 
 const COOKIE = "ns_session";
@@ -39,7 +40,8 @@ export async function destroySession(): Promise<void> {
 }
 
 /** `sessionId` et `passwordVerified` servent aux actions sensibles (clés API) : voir lib/reauth.ts. */
-export type CurrentUser = { sessionId: string; passwordVerified: boolean; id: string; name: string; email: string; tenantId: string; tenantName: string; settings: Record<string, any> };
+/** `role` : droits dans le circuit de décision (US-084, voir lib/rbac.ts). */
+export type CurrentUser = { sessionId: string; passwordVerified: boolean; id: string; name: string; email: string; role: Role; tenantId: string; tenantName: string; settings: Record<string, any> };
 
 export const getUser = cache(async (): Promise<CurrentUser | null> => {
   await ensureMigrated();
@@ -57,7 +59,7 @@ export const getUser = cache(async (): Promise<CurrentUser | null> => {
   // expiration glissante : chaque requête authentifiée repousse l'échéance du délai d'inactivité (SESSION_IDLE_MINUTES, 15 min par défaut), par paliers d'une minute
   const next = refreshedExpiry(r.s.expiresAt, idleMsFromEnv());
   if (next) await db.update(schema.sessions).set({ expiresAt: next }).where(eq(schema.sessions.id, id));
-  return { sessionId: id, passwordVerified: !!r.s.passwordVerifiedAt, id: r.u.id, name: r.u.name, email: r.u.email, tenantId: r.u.tenantId, tenantName: r.t.name, settings: r.t.settings ?? {} };
+  return { sessionId: id, passwordVerified: !!r.s.passwordVerifiedAt, id: r.u.id, name: r.u.name, email: r.u.email, role: normalizeRole(r.u.role), tenantId: r.u.tenantId, tenantName: r.t.name, settings: r.t.settings ?? {} };
 });
 /** Toute page et toute action du cockpit passe par ici : l'isolation par propriétaire en dépend. */
 export async function requireUser(): Promise<CurrentUser> {

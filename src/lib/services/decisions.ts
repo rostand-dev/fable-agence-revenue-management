@@ -8,12 +8,30 @@ import { executionBlock, providerOfTarget } from "../integrations/capabilities";
 import { flagFor } from "./flags";
 import { recordAudit } from "../audit/log";
 import { agentActor, userActor, type AuditType } from "../audit/types";
+import { can, denyMessage, executePermission, PERMISSION_LABEL, ROLE_LABEL, type Permission, type Role } from "../rbac";
 
 const { opportunities, revenueActions, calendarDays, promotions, properties, integrations, agentRuns } = schema;
-type Actor = { id: string; name: string; tenantId: string };
+/** `role` : droits de la personne (US-084). Sans droit, le service refuse avant tout changement et consigne la tentative. */
+type Actor = { id: string; name: string; tenantId: string; role: Role };
 /** `db` ou une transaction : approbation, exécution, vérification et retour arrière écrivent leur événement d'audit dans la même transaction que le changement d'état (US-012). */
 type Exec = Pick<typeof db, "insert" | "update" | "select">;
-export class DecisionError extends Error {}
+/** `kind` : de quel ordre est le refus (l'API en déduit le code HTTP) ; par défaut, l'état courant ne permet pas l'opération. */
+export type DecisionErrorKind = "CONFLICT" | "VALIDATION" | "NOT_FOUND" | "FORBIDDEN";
+export class DecisionError extends Error { constructor(message: string, readonly kind: DecisionErrorKind = "CONFLICT") { super(message); } }
+/** Refus pour droits insuffisants (HTTP 403 côté API). */
+export class ForbiddenError extends DecisionError { constructor(message: string) { super(message, "FORBIDDEN"); } }
+
+/**
+ * Contrôle de droit (US-084). Un refus est inscrit au journal d'audit (famille « Accès », jamais le contenu de la demande) puis levé :
+ * rien n'a changé, mais l'auditeur voit qui a essayé quoi.
+ */
+async function requirePermission(actor: Actor, permission: Permission, entity: string, entityId: string) {
+  if (can(actor.role, permission)) return;
+  try {
+    await recordAudit(db, { tenantId: actor.tenantId, actor: userActor(actor.id), type: "access.denied", entity, entityId: entityId.slice(0, 64), summary: `${actor.name} (${ROLE_LABEL[actor.role]}) : tentative refusée — ${PERMISSION_LABEL[permission]}.`, payload: { permission, role: actor.role } });
+  } catch (e) { console.error("[rbac] refus non consigné", (e as Error).message); }
+  throw new ForbiddenError(denyMessage(actor.role, permission));
+}
 
 const audit = (ex: Exec, tenantId: string, actor: string, type: AuditType, entity: string, entityId: string, summary: string, payload?: unknown) =>
   recordAudit(ex, { tenantId, actor, type, entity, entityId, summary, payload });
@@ -32,25 +50,29 @@ async function moveOpp(ex: Exec, tenantId: string, id: string, from: string[], p
 }
 async function getOpp(tenantId: string, id: string) {
   const [o] = await db.select().from(opportunities).where(and(eq(opportunities.id, id), eq(opportunities.tenantId, tenantId)));
-  if (!o) throw new DecisionError("Dossier introuvable.");
+  if (!o) throw new DecisionError("Dossier introuvable.", "NOT_FOUND");
   return o;
 }
 async function getAction(tenantId: string, id: string) {
   const [a] = await db.select().from(revenueActions).where(and(eq(revenueActions.id, id), eq(revenueActions.tenantId, tenantId)));
-  if (!a) throw new DecisionError("Action introuvable.");
+  if (!a) throw new DecisionError("Action introuvable.", "NOT_FOUND");
   return a;
 }
 export function commentRequired(c: Candidate): boolean { return c.audit.verdict === "NEEDS_HUMAN" || c.risk === "HIGH" || c.risk === "CRITICAL"; }
 
 /** Approbation : seule une option non rejetée par l'auditeur peut être approuvée, et jamais par un agent. */
+/** Droit de décider, exposé pour les actions de portée large (revue, réinstallation de la démonstration) et les routes d'API. */
+export const requireDecide = (actor: Actor, entity = "Tenant", entityId = actor.tenantId) => requirePermission(actor, "decision.decide", entity, entityId);
+
 export async function approve(actor: Actor, opportunityId: string, candidateIndex: number, commentRaw: string): Promise<string | null> {
+  await requirePermission(actor, "decision.decide", "Opportunity", opportunityId);
   const comment = clip(commentRaw);
   const o = await getOpp(actor.tenantId, opportunityId);
   if (o.status !== "OPEN") throw new DecisionError("Ce dossier n'est plus ouvert.");
   const c = o.candidates[candidateIndex] as Candidate | undefined;
-  if (!c) throw new DecisionError("Option inconnue.");
+  if (!c) throw new DecisionError("Option inconnue.", "VALIDATION");
   if (c.audit.verdict === "REJECT") throw new DecisionError("Cette option est rejetée par l'auditeur : elle ne peut pas être approuvée.");
-  if (commentRequired(c) && comment.trim().length < 8) throw new DecisionError("Un commentaire est obligatoire pour cette option (risque élevé ou validation demandée par l'auditeur).");
+  if (commentRequired(c) && comment.trim().length < 8) throw new DecisionError("Un commentaire est obligatoire pour cette option (risque élevé ou validation demandée par l'auditeur).", "VALIDATION");
   if (c.type === "NO_ACTION") {
     await db.transaction(async (tx) => {
       await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decidedAt: new Date(), decision: "NO_ACTION", selected: candidateIndex, deferUntil: c.reviewAt ?? null });
@@ -87,6 +109,7 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
 }
 
 export async function reject(actor: Actor, opportunityId: string, commentRaw: string) {
+  await requirePermission(actor, "decision.decide", "Opportunity", opportunityId);
   const comment = clip(commentRaw);
   const o = await getOpp(actor.tenantId, opportunityId);
   if (o.status !== "OPEN") throw new DecisionError("Ce dossier n'est plus ouvert.");
@@ -96,6 +119,7 @@ export async function reject(actor: Actor, opportunityId: string, commentRaw: st
   });
 }
 export async function defer(actor: Actor, opportunityId: string, days = 3) {
+  await requirePermission(actor, "decision.decide", "Opportunity", opportunityId);
   const o = await getOpp(actor.tenantId, opportunityId);
   if (o.status !== "OPEN") throw new DecisionError("Ce dossier n'est plus ouvert.");
   if (o.veto) throw new DecisionError("Un dossier sous veto ne peut pas être différé.");
@@ -106,6 +130,7 @@ export async function defer(actor: Actor, opportunityId: string, days = 3) {
   });
 }
 export async function reopen(actor: Actor, opportunityId: string) {
+  await requirePermission(actor, "decision.decide", "Opportunity", opportunityId);
   const o = await getOpp(actor.tenantId, opportunityId);
   if (!["DECIDED", "DEFERRED", "EXPIRED"].includes(o.status)) throw new DecisionError("Ce dossier est déjà ouvert.");
   const acts = await db.select().from(revenueActions).where(eq(revenueActions.opportunityId, o.id));
@@ -127,6 +152,7 @@ async function bookedCount(propertyId: string, from: ISODate, to: ISODate) {
  */
 export async function execute(actor: Actor, actionId: string, declaration?: { scope: string; date: string; proof: string }) {
   const a = await getAction(actor.tenantId, actionId);
+  await requirePermission(actor, executePermission(a.simulation?.executionMode), "RevenueAction", a.id);
   const o = await getOpp(actor.tenantId, a.opportunityId);
   const [p] = await db.select().from(properties).where(eq(properties.id, a.propertyId));
   if (a.status !== "APPROVED") throw new DecisionError("Seule une action approuvée peut être exécutée.");
@@ -209,6 +235,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
 
 /** Vérification : relecture de l'état réel. Pour une procédure manuelle, c'est une seconde relecture déclarée. */
 export async function verify(actor: Actor, actionId: string) {
+  await requirePermission(actor, "action.verify", "RevenueAction", actionId);
   const a = await getAction(actor.tenantId, actionId);
   if (a.status !== "EXECUTED") throw new DecisionError("Seule une action exécutée peut être vérifiée.");
   let check: any = { mode: "DECLARED", note: "Relecture déclarée par le propriétaire dans l'extranet officiel." };
@@ -232,6 +259,7 @@ export async function verify(actor: Actor, actionId: string) {
 
 export async function rollback(actor: Actor, actionId: string, reasonRaw: string) {
   const reason = clip(reasonRaw);
+  await requirePermission(actor, "action.rollback", "RevenueAction", actionId);
   const a = await getAction(actor.tenantId, actionId);
   if (!["EXECUTED", "VERIFIED", "MEASURING", "FAILED"].includes(a.status)) throw new DecisionError("Cette action ne peut pas être annulée dans son état actuel.");
   await db.transaction(async (tx) => {
