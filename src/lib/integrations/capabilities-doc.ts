@@ -11,8 +11,10 @@ export function renderCapabilitiesMarkdown(): string {
   out.push("> Document généré par `npm run docs:capabilities` depuis `src/lib/integrations/capabilities.ts`. Ne pas le modifier à la main : un test échoue s'il diverge du code.", "");
   out.push("US-002 · blueprint §4.2. Le catalogue décrit ce que le **code** sait faire aujourd'hui, pas ce qu'une configuration affirme. Une écriture non développée est impossible : refusée côté serveur (`execute()` dans `services/decisions.ts`), rejetée par l'auditeur (règle `CAPABILITY`), et bouton désactivé dans la fiche du dossier.", "");
   out.push("## Règles", "");
-  out.push("- **Lecture seule par défaut** : aucun client du code n'écrit chez un fournisseur. Un test le vérifie (aucune méthode PUT, PATCH, DELETE ; le seul POST de PriceLabs lit la grille).");
-  out.push("- **Démonstration** : l'écriture PriceLabs est simulée sur les logements de démonstration. Sur un logement réel, l'option est proposée en procédure manuelle guidée.");
+  out.push("- **Fermé par défaut** : le client de lecture PriceLabs ne contient aucune méthode d'écriture (un test le vérifie) ; l'écriture vit dans un module distinct (`pricelabs-write.ts`) que les agents n'importent pas (contrôle statique).");
+  out.push("- **Verrou d'environnement** : l'écriture PriceLabs sur un logement réel n'est ouverte que si `PRICELABS_WRITE_ENABLED=true` est posée sur l'environnement. Absente, l'option reste proposée en procédure manuelle guidée.");
+  out.push("- **Types écrits par API** : prix minimum, prix de base, prix datés. Le séjour minimum daté reste en procédure manuelle guidée (sémantique de l'API non confirmée).");
+  out.push("- **Démonstration** : l'écriture PriceLabs est simulée sur les logements de démonstration, tous types d'action confondus.");
   out.push("- **Coupe-circuit** : uniquement pour les fournisseurs ayant une écriture automatique (PriceLabs). Il bloque l'écriture par API, immédiatement ; les lectures et les procédures manuelles guidées continuent.");
   out.push("- **Déduit des logements** : le statut d'un fournisseur et le nombre de logements branchés viennent des rattachements réels (`listingId` PriceLabs, `rentalId` SuperHote), jamais d'une ligne de configuration.", "");
   out.push("## États affichés", "");
@@ -24,6 +26,7 @@ export function renderCapabilitiesMarkdown(): string {
     NOT_BUILT: "non développée dans cette version",
     NEEDS_ACCESS: "non développée, et dépend d'un accès partenaire non obtenu",
     FORBIDDEN: "exclue : les conditions du canal l'interdisent",
+    DISABLED: "développée et branchée, mais fermée sur cet environnement tant que sa variable d'environnement n'est pas posée à « true » (écriture PriceLabs : PRICELABS_WRITE_ENABLED)",
   };
   for (const a of Object.keys(AVAILABILITY) as Availability[]) out.push(`| ${AVAILABILITY[a].label} | ${sens[a]} |`);
   out.push("");

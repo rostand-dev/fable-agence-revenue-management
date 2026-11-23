@@ -1,3 +1,4 @@
+import { apiWriteSupports } from "../integrations/pricelabs-write-types";
 import type { AuditRule, AuditVerdict, Candidate, Channel, EconomicModel, Promo, Strategy } from "./types";
 import { hardFloorCents } from "./economics";
 import { strategyFloorWindow } from "./seasons";
@@ -130,6 +131,7 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     if (c.executionMode === "API_PRICELABS") {
       // un write non supporté est impossible (US-002) : l'option est rejetée, jamais proposée comme exécutable
       if (!ctx.capabilities["pricelabs.write"]) add("CAPABILITY", "Capacité d'exécution", "FAIL", "Écriture PriceLabs impossible : capacité absente ou coupe-circuit actif. Procédure manuelle guidée seulement.");
+      else if (!apiWriteSupports(c.type, !!ctx.demo)) add("CAPABILITY", "Capacité d'exécution", "FAIL", "Ce type d'action ne s'écrit pas par l'API PriceLabs : procédure manuelle guidée seulement.");
       else add("CAPABILITY", "Capacité d'exécution", "PASS", ctx.demo ? "Écriture PriceLabs simulée — mode démonstration." : "Écriture PriceLabs par API après approbation.");
     } else {
       add("CAPABILITY", "Capacité d'exécution", "PASS", c.executionMode === "MANUAL_RUNBOOK" ? "Procédure manuelle guidée dans l'extranet officiel, avec preuve." : "Tâche interne, sans écriture externe.");

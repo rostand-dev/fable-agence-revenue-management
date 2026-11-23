@@ -571,3 +571,34 @@ export const activationValidations = pgTable("activation_validations", {
   note: text("note"),
   createdAt: created(),
 }, (t) => [index("activation_validations_property_kind").on(t.propertyId, t.kind, t.createdAt), index("activation_validations_tenant").on(t.tenantId)]);
+
+/**
+ * Journal des écritures vers un fournisseur externe (US-090, blueprint §11.4 idempotence, §12.3 `ExecutionAttempt`). Une ligne par tentative d'écriture
+ * (application ou retour arrière d'une action), créée AVANT l'appel et mise à jour après : une panne au milieu laisse une trace lisible, et la clé
+ * d'idempotence (unique) empêche d'envoyer deux fois la même écriture. Jamais de clé API ni de donnée personnelle dans `plan` ni `receipt`.
+ */
+export const externalWrites = pgTable("external_writes", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  actionId: text("action_id").notNull().references(() => revenueActions.id, { onDelete: "cascade" }),
+  /** `<actionId>:APPLY` ou `<actionId>:ROLLBACK` : une seule écriture de chaque sorte par action */
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  /** APPLY | ROLLBACK */
+  phase: text("phase").notNull(),
+  provider: text("provider").notNull().default("pricelabs"),
+  /** LISTING_LIMITS | OVERRIDES_SET | OVERRIDES_DELETE | OVERRIDES_RESTORE */
+  kind: text("kind").notNull(),
+  /** PENDING (créée, rien d'envoyé de sûr) | SENT (acceptée par le fournisseur, pas encore relue) | CONFIRMED (relue et conforme) | FAILED */
+  status: text("status").notNull(),
+  /** Ce qu'on a voulu écrire : valeurs cibles, dates (sans clé ni secret) */
+  plan: jsonb("plan").$type<Record<string, any>>().notNull(),
+  /** Reçu du fournisseur : méthode, chemin, statut HTTP, empreinte du corps, date d'envoi */
+  receipt: jsonb("receipt").$type<Record<string, any>>(),
+  /** Message lisible de l'échec, jamais le texte brut d'une réponse */
+  error: text("error"),
+  /** HTTP | FAKE : jamais d'ambiguïté sur l'origine réelle ou simulée */
+  adapter: text("adapter").notNull(),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [index("external_writes_action").on(t.actionId), index("external_writes_tenant").on(t.tenantId, t.createdAt)]);

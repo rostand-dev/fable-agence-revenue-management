@@ -1,3 +1,4 @@
+import { apiWriteSupports } from "../integrations/pricelabs-write-types";
 import { addDays, diffDays, fmtDay, type ISODate } from "../dates";
 import { euro, pct } from "../format";
 import { auditCandidate } from "./audit";
@@ -24,7 +25,8 @@ function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: 
   return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && draft.type !== "MIN_PRICE_CHANGE" && overlaps(ctx, from, to) }) };
 }
 /** Écriture PriceLabs par API seulement si la capacité existe pour ce logement (US-002) ; sinon procédure manuelle guidée. */
-const plExec = (ctx: Ctx): Candidate["executionMode"] => (ctx.capabilities["pricelabs.write"] ? "API_PRICELABS" : "MANUAL_RUNBOOK");
+/** Écriture par API seulement si la capacité est ouverte ET si ce type d'action s'écrit par API (sur un logement réel, voir API_WRITE_TYPES) ; sinon procédure manuelle. */
+const plExec = (ctx: Ctx, type: string): Candidate["executionMode"] => (ctx.capabilities["pricelabs.write"] && apiWriteSupports(type, ctx.property.isDemo) ? "API_PRICELABS" : "MANUAL_RUNBOOK");
 
 function noAction(ctx: Ctx, from: ISODate, to: ISODate, current: StackResult | null, why: string, reviewInDays = 7): Candidate {
   return finalize(ctx, {
@@ -79,7 +81,7 @@ function floorBreach(ctx: Ctx, signals: Signal<FloorBreachPayload>[]): DetectedO
         target: { system: "PRICELABS" }, parameters: { rule, restoresFloor: true, nightlyCents: Math.round(price * f), dates: run }, nightsTouched: run.length,
         priceChangePct: (f - 1) * 100, current: cur, proposed: stack(ctx, channel, los, price * f, promos),
         expectedDeltaCents: base !== null && e !== null ? e - base : null,
-        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Réactiver la règle sur les dates concernées.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 7,
+        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Réactiver la règle sur les dates concernées.", executionMode: plExec(ctx, "RULE_EXCLUSION"), risk: "MEDIUM", measurementWindowDays: 7,
       }, from, to));
     }
     // prix du calendrier (avant majoration, entier en euros) dont le prix vendu atteint un plancher donné : plancher ÷ (1 − cumul remises) ÷ (1 + majoration)
@@ -93,7 +95,7 @@ function floorBreach(ctx: Ctx, signals: Signal<FloorBreachPayload>[]): DetectedO
         detail: `Plus petit prix du calendrier qui ramène le prix vendu ${CHANNEL_LABEL[channel]} au plancher ${kind} de ${euro(floor)}${ctx.markups ? `, majoration de ${fmtPctFr(markupPctOf(ctx, channel))} comprise` : ""}.`, agent: "pricing",
         target: { system: "PRICELABS" }, parameters: { nightlyCents: needed, restoresFloor: true, floorKind: kind, dates: run }, nightsTouched: run.length, priceChangePct: (f2 - 1) * 100,
         current: cur, proposed: stack(ctx, channel, los, needed, promos), expectedDeltaCents: base !== null ? (() => { const e2 = expected(ctx, run, channel, f2, promoFn, los); return e2 !== null ? e2 - base : null; })() : null,
-        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 7,
+        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 7,
       };
     };
     if (Number.isFinite(needHard)) cands.push(finalize(ctx, priceOpt(needHard, hard, "absolu"), from, to));
@@ -157,7 +159,7 @@ function minPriceBelowFloor(ctx: Ctx, signals: Signal<MinPricePayload>[]): Detec
       target: { system: "PRICELABS" }, parameters: { minPriceCents: newMin, previousMinPriceCents: min, restoresFloor: true, channel: w.ch }, nightsTouched: 0, priceChangePct: (newMin / min - 1) * 100,
       current: w.cur, proposed, expectedDeltaCents: null,
       hypothesis: "Constat de calcul : il ne dépend d'aucune hypothèse de demande. Relever le minimum peut réduire les ventes les jours où PriceLabs descendrait à cette limite.",
-      rollbackPlan: `Remettre le prix minimum à ${euro(min)} dans PriceLabs.`, executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 14,
+      rollbackPlan: `Remettre le prix minimum à ${euro(min)} dans PriceLabs.`, executionMode: plExec(ctx, "MIN_PRICE_CHANGE"), risk: "MEDIUM", measurementWindowDays: 14,
     }, from, to),
     noAction(ctx, from, to, w.cur, "Laisser le minimum actuel : PriceLabs pourra vendre sous le plancher absolu.", 7),
   ];
@@ -260,7 +262,7 @@ function orphanGaps(ctx: Ctx, signals: Signal<OrphanGapPayload>[]): DetectedOppo
         target: { system: "PRICELABS" }, parameters: { minStay: L, previousMinStay: minStay, dates: run }, nightsTouched: L, priceChangePct: null,
         current: null, proposed, expectedDeltaCents: p === null ? null : Math.round(p * proposed.contributionCents),
         hypothesis: p === null ? "Probabilité de vente inconnue : données de marché absentes." : `Contribution d'un séjour de ${plural(L, "nuit")} (${euro(proposed.contributionCents)}) × probabilité de vente approchée (${pct(p)}). ${DEMAND_MODEL_NOTE}`,
-        rollbackPlan: `Rétablir le séjour minimum à ${minStay} nuits sur ces dates.`, executionMode: plExec(ctx), risk: "LOW", measurementWindowDays: 7,
+        rollbackPlan: `Rétablir le séjour minimum à ${minStay} nuits sur ces dates.`, executionMode: plExec(ctx, "MIN_STAY_OVERRIDE"), risk: "LOW", measurementWindowDays: 7,
       }, from, to),
       noAction(ctx, from, to, null, "Laisser le trou invendable : les nuits restent bloquées par le séjour minimum."),
     ];
@@ -311,7 +313,7 @@ function eventUplift(ctx: Ctx, signals: Signal<EventUpliftPayload>[]): DetectedO
         detail: `Prix publié moyen porté de ${euro(a.price)} à ${euro(capped)} la nuit.`, agent: "pricing",
         target: { system: "PRICELABS" }, parameters: { changePct: up, nightlyCents: Math.round(capped), dates: run }, nightsTouched: run.length, priceChangePct: up,
         current: cur, proposed: stack(ctx, channel, los, capped, promos), expectedDeltaCents: base !== null && e !== null ? e - base : null,
-        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 14,
+        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 14,
       }, from, to);
     };
     const cands = [mk(12), mk(5), noAction(ctx, from, to, cur, "Laisser PriceLabs ajuster seul à l'approche de la date.")];
@@ -384,7 +386,7 @@ function paceLow(ctx: Ctx, signals: Signal<PaceLowPayload>[]): DetectedOpportuni
       detail: `Prix publié moyen ramené de ${euro(a.price)} à ${euro(a.price * 0.95)} du ${fmtDay(tFrom)} au ${fmtDay(tTo)}, sur tous les canaux.`, agent: "pricing",
       target: { system: "PRICELABS" }, parameters: { changePct: -5, nightlyCents: Math.round(a.price * 0.95), dates: target }, nightsTouched: target.length, priceChangePct: -5,
       current: cur, proposed: stack(ctx, channel, los, a.price * 0.95, promos), expectedDeltaCents: base !== null && eDown !== null ? eDown - base : null,
-      hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer les prix datés : PriceLabs reprend son calcul.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 7,
+      hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer les prix datés : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 7,
     }, tFrom, tTo));
     if (ctx.channels.includes("BOOKING")) {
       const bp = refPromos(ctx, "BOOKING", target);
@@ -464,7 +466,7 @@ function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportu
       detail: `S'applique aux ${horizonFree.length} nuits encore libres à partir du ${fmtDay(w.from)} ; les réservations acquises ne changent pas.`, agent: "pricing",
       target: { system: "PRICELABS" }, parameters: { changePct: 5, basePriceCents: ctx.strategy.basePriceCents ? Math.round(ctx.strategy.basePriceCents * 1.05) : null, dates: horizonFree }, nightsTouched: horizonFree.length, priceChangePct: 5,
       current: cur, proposed: stack(ctx, channel, los, a.price! * 1.05, promos), expectedDeltaCents: b0 !== null && b1 !== null ? b1 - b0 : null,
-      hypothesis: `${DEMAND_MODEL_NOTE} La demande propre au logement est estimée par son avance sur le marché.`, rollbackPlan: "Rétablir le prix de base précédent ; fenêtre d'observation minimale de 14 jours.", executionMode: plExec(ctx), risk: "HIGH", measurementWindowDays: 21,
+      hypothesis: `${DEMAND_MODEL_NOTE} La demande propre au logement est estimée par son avance sur le marché.`, rollbackPlan: "Rétablir le prix de base précédent ; fenêtre d'observation minimale de 14 jours.", executionMode: ctx.property.isDemo || ctx.strategy.basePriceCents ? plExec(ctx, "BASE_PRICE_CHANGE") : "MANUAL_RUNBOOK", risk: "HIGH", measurementWindowDays: 21,
     }, w.from, lastFree)];
     if (winFree.length >= 1) {
       const w0 = expected(ctx, winFree, channel, 1, promoFn, los, df), w1 = expected(ctx, winFree, channel, 1.05, promoFn, los, df);
@@ -474,7 +476,7 @@ function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportu
         detail: `Action limitée à ${w.label} : le prix de base reste inchangé.`, agent: "pricing",
         target: { system: "PRICELABS" }, parameters: { changePct: 5, nightlyCents: Math.round(aw.price! * 1.05), dates: winFree }, nightsTouched: winFree.length, priceChangePct: 5,
         current: stack(ctx, channel, los, aw.price!, promos), proposed: stack(ctx, channel, los, aw.price! * 1.05, promos), expectedDeltaCents: w0 !== null && w1 !== null ? w1 - w0 : null,
-        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer les prix datés : PriceLabs reprend son calcul.", executionMode: plExec(ctx), risk: "MEDIUM", measurementWindowDays: 14,
+        hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer les prix datés : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 14,
       }, w.from, w.to));
     }
     cands.push(noAction(ctx, w.from, w.to, cur, "Conserver le prix de base et vérifier le rythme à la prochaine revue hebdomadaire."));
