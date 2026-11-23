@@ -10,6 +10,8 @@ import { resolveTargets } from "../agents/llm-config";
 import { openBudget } from "../agents/runner";
 import { analyzeMarket } from "../agents/market-analyst";
 import { PROMPTS } from "../agents/prompts";
+import { opine, opinionPromptVersion } from "../agents/strategist";
+import { deterministicOpinion, deterministicOpinions, factsHashOf, ownedOptions, type AgentOpinion, type StrategistId } from "../agents/strategist-opinions";
 import { deterministicAnalysis, evidenceHashOf, type MarketAnalysis } from "../agents/market-analysis";
 import { capabilityFlags, capability } from "../integrations/capabilities";
 import { freshnessOf } from "../freshness";
@@ -77,7 +79,7 @@ export function oppRow(o: DetectedOpportunity, scoring: ScoringConfig = DEFAULT_
   const score = scoreOpportunity(o, scoring);
   return {
     playbook: o.playbook, reasonCode: o.reasonCode, title: o.title, stayFrom: o.stayFrom, stayTo: o.stayTo,
-    signals: { ...o.signals, marketAnalysis: deterministicAnalysis(o), signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
+    signals: { ...o.signals, marketAnalysis: deterministicAnalysis(o), agentOpinions: deterministicOpinions(o), signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
     diagnosis: o.diagnosis, candidates: o.candidates, selected: o.selected, priority: score.score, confidence: o.diagnosis.confidence,
     risk: c.risk, impactCents: c.type === "NO_ACTION" ? 0 : c.expectedDeltaCents, veto: o.veto, expiresAt: o.expiresAt,
   };
@@ -126,6 +128,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const llm = await resolveTargets(tenantId, "direction");
   budget.targets.set("direction", llm);
   const llmMarche = (await resolveTargets(tenantId, "marche")).length > 0;
+  const llmStrategist: Record<StrategistId, boolean> = { pricing: (await resolveTargets(tenantId, "pricing")).length > 0, distribution: (await resolveTargets(tenantId, "distribution")).length > 0 };
   let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
 
@@ -181,8 +184,23 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
         await db.insert(agentRuns).values(a.outcome.run);
         return a.analysis;
       };
+      // US-072 : avis des stratèges sur leurs options (mêmes règles de réutilisation que l'analyse : faits et prompt inchangés, ou échec récent).
+      const opinionsFor = async (oppId: string) => {
+        const out: Partial<Record<StrategistId, AgentOpinion>> = {};
+        for (const agent of ["pricing", "distribution"] as const) {
+          if (ownedOptions(o, agent).length === 0) continue;
+          const old = (prev?.signals?.agentOpinions as Partial<Record<StrategistId, AgentOpinion>> | undefined)?.[agent];
+          const same = !!old && old.factsHash === factsHashOf(o, agent, opinionPromptVersion(agent)) && old.items.every((i) => o.candidates[i.candidate]?.agent === agent);
+          if (same && (old!.mode === "LLM" || (!!old!.triedAt && +now - +new Date(old!.triedAt) < 6 * 3600_000))) { out[agent] = old!; continue; }
+          if (!llmStrategist[agent]) { out[agent] = deterministicOpinion(o, agent); continue; }
+          const r = await opine(budget, o, agent, oppId);
+          await db.insert(agentRuns).values(r.outcome.run);
+          out[agent] = r.opinion;
+        }
+        return out;
+      };
       if (decision.action === "REFRESH" && prev) {
-        row.signals = { ...row.signals, marketAnalysis: await analysisFor(prev.id) };
+        row.signals = { ...row.signals, marketAnalysis: await analysisFor(prev.id), agentOpinions: await opinionsFor(prev.id) };
         const sameChoice = prev.candidates?.[prev.selected]?.label === o.candidates[o.selected].label;
         await db.update(opportunities).set({ ...row, narrative: sameChoice && prev.narrative ? prev.narrative : deterministicNarrative(o) }).where(eq(opportunities.id, prev.id));
         refreshed++; continue;
@@ -195,7 +213,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
         await db.insert(agentRuns).values(w.outcome.run);
       }
       // la synthèse adressée au propriétaire passe avant l'analyse : quand le plafond est serré, c'est elle qui est servie
-      row.signals = { ...row.signals, marketAnalysis: await analysisFor(id) };
+      row.signals = { ...row.signals, marketAnalysis: await analysisFor(id), agentOpinions: await opinionsFor(id) };
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;
     }

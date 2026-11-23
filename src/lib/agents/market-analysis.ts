@@ -41,13 +41,13 @@ export function numbersOf(text: string): string[] {
   return (joined.match(NUM) ?? []).map((n) => String(parseFloat(n.replace(",", "."))));
 }
 /** Verbes d'action : l'analyste constate, il ne propose rien (la proposition est le rôle des stratèges). */
-const PRESCRIPTIVE = new RegExp(
+export const PRESCRIPTIVE = new RegExp(
   "(?<![\\p{L}])(?:baisser|baissez|abaisser|abaissez|diminuer|diminuez|réduire|réduisez|augmenter|augmentez|relever|relevez|appliquer|appliquez|recommand\\p{L}*|propos(?:er|ons|ez)|conseill\\p{L}*|envisag(?:er|ez)|privilégi(?:er|ez)|il\\s+faut|il\\s+faudrait|faudrait|il\\s+convient|mieux\\s+vaut|devez|devriez|devrait|devraient|activ(?:er|ez)|lancer|lancez|supprim(?:er|ez)|retir(?:er|ez)|ajust(?:er|ez)|modifi(?:er|ez)|s['’]impose|à\\s+envisager)(?![\\p{L}])",
   "iu",
 );
 const ID_IN_TEXT = /(?<![\p{L}\d])E(\d{1,2})(?![\p{L}\d])/gu;
 const RANK = { FAIBLE: 0, MOYENNE: 1, HAUTE: 2 } as const;
-const FREE_TEXT_FORBIDDEN = /https?:|www\.|@|[<>]/i;
+export const FREE_TEXT_FORBIDDEN = /https?:|www\.|@|[<>]/i;
 
 export type AnalysisContext = {
   ids: Set<string>;

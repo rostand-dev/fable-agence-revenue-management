@@ -19,6 +19,9 @@ export const FALLBACK_LABEL: Record<string, string> = {
 };
 
 /** Budget d'une revue : plafonds, appels et jetons déjà consommés, cibles de la passerelle mémorisées par agent. */
+/** Un repli dû au budget ou à l'absence de fournisseur n'est pas un échec du modèle : pas de délai avant le prochain essai. */
+export const retryable = (r: string | null | undefined): boolean => !!r && r !== "NO_PROVIDER" && !r.startsWith("BUDGET_");
+
 export type AgentBudget = BudgetState & { tenantId: string; targets: Map<string, GatewayTarget[]> };
 
 export async function tokensUsedToday(tenantId: string, now = new Date()): Promise<number> {
