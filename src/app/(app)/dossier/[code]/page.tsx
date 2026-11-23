@@ -11,6 +11,7 @@ import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { needsComment } from "@/components/SitCard";
 import { deterministicAnalysis, type MarketAnalysis } from "@/lib/agents/market-analysis";
+import { deterministicOpinions, STANCE_LABEL, type AgentOpinion, type StrategistId } from "@/lib/agents/strategist-opinions";
 import { Banner, Byline, Cascade, confidenceScale, Money, OppStatus, Recap, riskScale, State, VerdictState, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
 import { agentName } from "@/lib/agents/registry";
@@ -73,6 +74,8 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const restUntil = o.status === "DECIDED" ? endOfCooldown(o.decidedAt ?? o.createdAt, o.playbook) : null;
   const names = user.settings.agentNames ?? null;
   const cands = o.candidates as Candidate[];
+  // avis des stratèges (US-072) ; les dossiers ouverts avant cette version n'en ont pas : on affiche ceux par règles, calculés à la volée
+  const opinions = (o.signals.agentOpinions as Partial<Record<StrategistId, AgentOpinion>> | undefined) ?? deterministicOpinions({ candidates: cands, signalText: o.signals.signalText, stayFrom: o.stayFrom, stayTo: o.stayTo });
   const action = acts.find((a) => !["CANCELLED"].includes(a.status)) ?? null;
   const history = action ? await db.select().from(schema.actionTransitions).where(and(eq(schema.actionTransitions.tenantId, user.tenantId), eq(schema.actionTransitions.actionId, action.id))).orderBy(asc(schema.actionTransitions.createdAt), asc(schema.actionTransitions.id)) : [];
   const open = o.status === "OPEN";
@@ -250,6 +253,20 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 {open && i !== idx && <Link className="btn btn-ghost btn-sm" href={`/dossier/${o.code}?option=${i}#options-h`} scroll={false}><Icon name="search" />Examiner cette option</Link>}
                 {i === idx && <span className="metric-source">option examinée ci-dessous</span>}
               </div>
+              {(["pricing", "distribution"] as const).map((a) => {
+                const op = opinions[a], it = op?.items.find((y) => y.candidate === i);
+                if (!op || !it) return null;
+                return (
+                  <div className="opinion" data-testid="avis-strateg" data-agent={a} key={a}>
+                    <div className="opinion-head">
+                      <Byline agent={a} names={names} what={op.mode === "LLM" ? "a donné son avis sur cette option" : "avis composé par règles"} />
+                      <State role={it.stance === "FAVORABLE" ? "sain" : it.stance === "RESERVES" ? "attention" : "veto"}>{STANCE_LABEL[it.stance]}</State>
+                    </div>
+                    <p>{it.rationale}</p>
+                    {it.watchpoints.length > 0 && <ul className="opinion-watch" role="list">{it.watchpoints.map((w, k) => <li key={k}>{w}</li>)}</ul>}
+                  </div>
+                );
+              })}
               <details className="fold">
                 <summary><Icon name="shield" />Audit de {agentName("audit", names)} — {x.audit.rules.length} règle{x.audit.rules.length > 1 ? "s" : ""} contrôlée{x.audit.rules.length > 1 ? "s" : ""}</summary>
                 <div className="fold-body">

@@ -1817,3 +1817,9 @@ table.cascade .delta-neu { color: var(--quiet); }
 .findings-note { margin: 8px 0 0; }
 .preuve-link { display: inline-block; min-height: 24px; min-width: 24px; padding: 0 6px; line-height: 24px; text-align: center; }
 .evidence dl > div:target { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; }
+
+/* US-072 : avis des stratèges sous chaque option */
+.opinion { margin: 12px 0 0; padding: 10px 12px; border: 1px solid var(--line, rgba(127,127,127,.3)); border-radius: 10px; }
+.opinion-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.opinion p { margin: 8px 0 0; overflow-wrap: anywhere; }
+.opinion-watch { list-style: disc; margin: 6px 0 0; padding-left: 18px; overflow-wrap: anywhere; }

@@ -14,6 +14,15 @@ export function e2eFakeReply(req: FakeLlmRequest): FakeLlmReply {
       unknowns: [], hypotheses: [],
     });
   }
+  if (req.system.includes("stratège tarifaire") || req.system.includes("responsable distribution et promotions")) {
+    const ids = Array.from(req.user.matchAll(/^(O\d{1,2}) /gm)).map((m) => m[1]);
+    if (ids.length === 0) return "{}";
+    const verdictOf = (id: string) => /verdict de l'auditeur : (\w+)/.exec(req.user.split("\n").find((l) => l.startsWith(id + " ")) ?? "")?.[1];
+    return JSON.stringify({ opinions: ids.map((id) => ({
+      option: id, stance: verdictOf(id) === "APPROVE" ? "FAVORABLE" : verdictOf(id) === "REJECT" ? "DEFAVORABLE" : "RESERVES",
+      rationale: "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.", watchpoints: ["Mesurer l'effet sur la fenêtre d'observation prévue."],
+    })) });
+  }
   if (req.system.includes("directrice du revenue management")) {
     return JSON.stringify({ summary: "Le rythme de réservation observé sur la période étudiée justifie un examen de ce dossier.", recommendation: "Retenir l'option du moteur, déjà simulée et auditée.", caveats: ["Le montant affiché est une simulation."] });
   }

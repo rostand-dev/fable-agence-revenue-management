@@ -1,11 +1,11 @@
 /**
  * Budget des appels de modèle (US-074). Deux plafonds, lus dans l'environnement, qui protègent le coût sans jamais bloquer la revue :
  * quand l'un est atteint, l'agent passe en repli déterministe et la trace dit pourquoi.
- *  - AGENT_MAX_CALLS_PER_REVIEW : appels de modèle au plus par revue (défaut 40) ;
+ *  - AGENT_MAX_CALLS_PER_REVIEW : appels de modèle au plus par revue (défaut 80) ;
  *  - AGENT_DAILY_TOKEN_BUDGET   : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300 000).
  * 0 désactive les appels de modèle des agents ; une valeur invalide revient au défaut. Module pur.
  */
-export const DEFAULT_CALLS_PER_REVIEW = 40;
+export const DEFAULT_CALLS_PER_REVIEW = 80;
 export const DEFAULT_DAILY_TOKENS = 300_000;
 const MAX = 100_000_000;
 
