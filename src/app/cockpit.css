@@ -1823,3 +1823,48 @@ table.cascade .delta-neu { color: var(--quiet); }
 .opinion-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
 .opinion p { margin: 8px 0 0; overflow-wrap: anywhere; }
 .opinion-watch { list-style: disc; margin: 6px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
+
+/* cascade en barres, jauge de plancher, promotions empilées (US-083) */
+.wf-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; padding: 16px 18px; border-top: 1px solid var(--line); }
+.wf { margin: 0; min-width: 0; }
+.wf-title, .fg-title { margin: 0 0 10px; font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
+.wf-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 9px; }
+.wf-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13.5px; }
+.wf-label { min-width: 0; overflow-wrap: anywhere; }
+.wf-amount { font-family: var(--mono); white-space: nowrap; font-weight: 600; }
+.wf-track { position: relative; height: 10px; margin-top: 4px; border-radius: 6px; background: rgb(255 255 255 / 5%); }
+.wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--quiet); }
+.wf-zero { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--line-strong); }
+.wf-total .wf-bar { background: var(--blue); }
+.wf-down .wf-bar { background: var(--amber-ink); }
+.wf-up .wf-bar { background: var(--emerald); }
+.wf-final .wf-bar { background: var(--emerald); }
+.wf-final .wf-head { font-weight: 700; }
+.wf-warn { margin: 10px 0 0; font-size: 13px; color: var(--attention-ink); }
+.fg, .ps { padding: 16px 18px; border-top: 1px solid var(--line); }
+.fg-track { position: relative; height: 14px; border-radius: 7px; background: rgb(52 211 153 / 14%); margin: 8px 0 14px; }
+.fg-zone { position: absolute; top: 0; bottom: 0; }
+.fg-zone-red { background: rgb(251 113 133 / 28%); border-radius: 7px 0 0 7px; }
+.fg-zone-amber { background: rgb(245 158 11 / 25%); }
+.fg-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; }
+.fg-mark-hard { background: var(--attention-ink); }
+.fg-mark-strategy { background: var(--amber-ink); }
+.fg-dot { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; border: 2px solid var(--surface); }
+.fg-dot-current { background: var(--quiet); }
+.fg-dot-proposed { background: var(--blue); }
+.fg-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13.5px; }
+.fg-key { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; }
+.fg-key-hard { background: var(--attention-ink); border-radius: 2px; }
+.fg-key-strategy { background: var(--amber-ink); border-radius: 2px; }
+.fg-key-current { background: var(--quiet); }
+.fg-key-proposed { background: var(--blue); }
+.ps-list { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 8px; }
+.ps-list li { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; }
+.ps-n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: rgb(255 255 255 / 8%); display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+.ps-l { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ps-l .src { display: block; font-size: 11.5px; color: var(--faint); }
+.ps-a { font-family: var(--mono); white-space: nowrap; }
+.ps-sum { margin: 0; font-size: 13.5px; }
+.trace-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.trace-list li { overflow-wrap: anywhere; min-width: 0; display: grid; gap: 2px; padding-left: 14px; border-left: 2px solid var(--line-strong); font-size: 13.5px; }
+.trace-list time { font-size: 12px; color: var(--faint); }

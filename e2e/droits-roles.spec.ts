@@ -32,6 +32,9 @@ test("Analyste : lecture seule dans la boîte d'opportunités, le dossier et l'h
     await expect(page.getByRole("button", { name: /Approuver|Rejeter la proposition|Retenir l'inaction|Différer/ })).toHaveCount(0);
     await page.getByTestId("lecture-seule").scrollIntoViewIfNeeded();
     await expectNoHorizontalOverflow(page, "dossier en lecture seule");
+    // US-083 : sans droit de lecture du journal, la traçabilité est refusée et ne fuit aucun événement
+    await expect(page.getByTestId("trace-audit")).toContainText(/ne permet pas|réservé/i);
+    await expect(page.getByTestId("trace-audit").locator("ol.trace-list")).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("analyste-dossier.png") });
     await test.info().attach("analyste-dossier", { path: test.info().outputPath("analyste-dossier.png"), contentType: "image/png" });
 
