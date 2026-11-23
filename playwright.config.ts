@@ -18,7 +18,7 @@ const executablePath = process.env.E2E_CHROME_PATH?.trim() || undefined;
 const launchOptions = executablePath ? { executablePath } : {};
 const fakePriceLabs = (() => { try { const u = new URL(process.env.PRICELABS_API_BASE ?? ""); return u.hostname === "127.0.0.1" ? u : null; } catch { return null; } })();
 
-const fakeLlm = (() => { try { const u = new URL(process.env.ANTHROPIC_API_BASE ?? ""); return u.hostname === "127.0.0.1" ? u : null; } catch { return null; } })();
+const fakeLlm = (() => { try { const u = new URL(process.env.ANTHROPIC_API_BASE ?? ""); return u.hostname === "127.0.0.1" || u.hostname === "localhost" ? u : null; } catch { return null; } })();
 
 // Les largeurs mobiles couvrent les petits téléphones (360 px) et les courants (390 px).
 const chromium = (name: string, viewport: { width: number; height: number }, mobile: boolean) => ({

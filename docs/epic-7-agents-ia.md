@@ -68,14 +68,18 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Ce qui change.** Noor (agent `marche`) rédige les constats de marché d'un dossier à partir de pièces numérotées E1…En (faits du moteur déterministe). Prompt `marche.market_analysis` (version 2026-11-v1, hash verrouillé dans `prompts.test.ts`).
 
 **Garde-fous (validés après la réponse du modèle).**
-- Chaque constat cite au moins une pièce existante ; une pièce inconnue invalide la sortie.
+- Chaque constat cite au moins une pièce existante, sans doublon ; une pièce nommée dans le texte doit être citée ;
+- Les chiffres d'un constat viennent des pièces qu'il cite (ou de la période et du signal), pas d'une autre pièce ; verbes d'action et liens refusés ;
+- Les hypothèses sont celles du moteur ; la confiance du modèle est plafonnée à celle du moteur ;
+- Après un échec du modèle, pas de nouvel essai pour les mêmes faits avant 6 h ; la synthèse du propriétaire passe avant l'analyse quand le plafond est serré ;
+- Chaque constat cite au moins une pièce existante : une pièce inconnue invalide la sortie.
 - Tout chiffre cité doit figurer dans les faits fournis ; aucun verbe prescriptif (« baissez », « augmentez »…).
-- Échec, sortie invalide après une réparation, ou budget épuisé : repli sur l'analyse déterministe (`mode: "DETERMINISTE"`).
+- Échec, sortie invalide après une réparation, ou budget épuisé : repli sur l'analyse déterministe (`mode: "DETERMINISTIC"`).
 - L'analyse est réutilisée tant que le `evidenceHash` est inchangé : pas de nouvel appel inutile.
 - L'analyse ne modifie jamais l'option retenue, les montants ou les vetos (test golden inchangé).
 
 **Interface.** Le dossier affiche « Noor a rédigé ces constats à partir des pièces numérotées » avec les pièces citées ; l'onglet Activité de l'agent montre le prompt et le repli éventuel de chaque appel.
 
-**Déploiement.** Aucune migration, aucune nouvelle variable d'environnement. Le budget par défaut passe à 40 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`), car chaque dossier peut désormais consommer une analyse et une narration.
+**Déploiement.** Aucune migration. Seule nouvelle variable : `FAKE_LLM_PORT` (tests et CI uniquement, documentée dans `.env.example`). Le budget par défaut passe à 40 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`), car chaque dossier peut désormais consommer une analyse et une narration.
 
 **Tests.** Unitaires (validation des pièces/chiffres/verbes), base de données (analyste avec faux serveur de modèle, réutilisation, repli), E2E sur les 3 formats d'écran (bureau, mobile 390 et 360). La CI lance désormais un faux serveur de modèle (`scripts/fake-llm-server.ts`, variables `ANTHROPIC_API_BASE`/`ANTHROPIC_API_KEY` factices, CI uniquement).

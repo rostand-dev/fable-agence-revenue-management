@@ -31,7 +31,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Facultatif : identifiant exact du modèle OpenAI du repli. Le repli n'est actif que si OPENAI_API_KEY et OPENAI_MODEL sont tous deux renseignés.
       - OPENAI_MODEL=${OPENAI_MODEL:-}
-      # Facultatif : appels HTTP aux fournisseurs de modèle au plus par revue (défaut 40 ; corrections et replis comptés) Au-delà, les agents passent en repli déterministe pour le reste de la revue. 0 désactive les appels de modèle.
+      # Facultatif : appels HTTP aux fournisseurs de modèle au plus par revue (défaut 40 ; corrections et replis comptés). Au-delà, les agents passent en repli déterministe pour le reste de la revue. 0 désactive les appels de modèle.
       - AGENT_MAX_CALLS_PER_REVIEW=${AGENT_MAX_CALLS_PER_REVIEW:-40}
       # Facultatif : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300000). Atteint : repli déterministe jusqu'au lendemain. 0 désactive les appels de modèle.
       - AGENT_DAILY_TOKEN_BUDGET=${AGENT_DAILY_TOKEN_BUDGET:-300000}

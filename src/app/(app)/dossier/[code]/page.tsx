@@ -158,14 +158,14 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               return (
                 <article data-testid="analyse-marche"><span className="reg-key"><Icon name="signal" />Analyse du marché</span>
                   <Byline agent="marche" names={names} what={ma.mode === "LLM" ? "a rédigé ces constats à partir des pièces numérotées" : "constats composés par règles à partir des pièces"} />
-                  <ul className="findings" style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "grid", gap: 10 }}>
+                  <ul className="findings" role="list">
                     {ma.findings.map((f, i) => (
                       <li key={i} data-testid="constat"><span>{f.statement}</span>{" "}
-                        <span className="metric-source">Confiance {f.confidence.toLowerCase()} · preuves {f.evidence.map((id, k) => <span key={id}>{k > 0 ? ", " : ""}<a href={`#preuve-${id}`} data-testid="renvoi-preuve">{id}</a></span>)}</span></li>
+                        <span className="metric-source">Confiance {f.confidence.toLowerCase()} · preuves {f.evidence.map((id, k) => <span key={id}>{k > 0 ? ", " : ""}<a className="preuve-link" href={`#preuve-${id}`} data-testid="renvoi-preuve" aria-label={`Voir la pièce ${id} : ${ma.evidence.find((e) => e.id === id)?.label ?? ""}`}>{id}</a></span>)}</span></li>
                     ))}
                   </ul>
-                  {ma.unknowns.length > 0 && <p className="muted" style={{ margin: "10px 0 0" }} data-testid="analyse-inconnus">Inconnu : {ma.unknowns.join(" ")}</p>}
-                  {ma.hypotheses.length > 0 && <p className="muted" style={{ margin: "6px 0 0" }}>Hypothèses concurrentes : {ma.hypotheses.map((h) => h.label).join(" ; ")}.</p>}
+                  {ma.unknowns.length > 0 && <p className="muted findings-note" data-testid="analyse-inconnus">Inconnu : {ma.unknowns.join(" ")}</p>}
+                  {ma.hypotheses.length > 0 && <p className="muted findings-note">Hypothèses concurrentes : {ma.hypotheses.map((h) => h.label).join(" ; ")}.</p>}
                 </article>
               );
             })()}

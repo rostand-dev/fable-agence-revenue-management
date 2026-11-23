@@ -9,6 +9,7 @@ import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Str
 import { resolveTargets } from "../agents/llm-config";
 import { openBudget } from "../agents/runner";
 import { analyzeMarket } from "../agents/market-analyst";
+import { PROMPTS } from "../agents/prompts";
 import { deterministicAnalysis, evidenceHashOf, type MarketAnalysis } from "../agents/market-analysis";
 import { capabilityFlags, capability } from "../integrations/capabilities";
 import { freshnessOf } from "../freshness";
@@ -170,7 +171,9 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       const row = { ...oppRow(o, scoring), groupKey: groups[idx] };
       // US-071 : constats de l'analyste marché. Une analyse par modèle n'est refaite que si les faits ont changé (la revue est fréquente, le budget est borné).
       const prevAnalysis = prev?.signals?.marketAnalysis as MarketAnalysis | undefined;
-      const reuse = !!prevAnalysis && prevAnalysis.mode === "LLM" && prevAnalysis.evidenceHash === evidenceHashOf(o);
+      // Même logique après un échec du modèle (sortie invalide, panne) : pas de nouvel essai pour les mêmes faits avant 6 h.
+      const sameFacts = !!prevAnalysis && prevAnalysis.evidenceHash === evidenceHashOf(o, PROMPTS["marche.market_analysis"].version);
+      const reuse = sameFacts && (prevAnalysis!.mode === "LLM" || (!!prevAnalysis!.triedAt && +now - +new Date(prevAnalysis!.triedAt) < 6 * 3600_000));
       const analysisFor = async (oppId: string) => {
         if (reuse) return prevAnalysis!;
         if (!llmMarche) return deterministicAnalysis(o);
@@ -186,12 +189,13 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       }
       let narrative = deterministicNarrative(o);
       const id = newId("opp");
-      row.signals = { ...row.signals, marketAnalysis: await analysisFor(id) };
       if (llm.length) {
         const w = await writeNarrative(budget, o, p.name, id); narrative = w.narrative;
         // trace enregistrée tout de suite : le budget du jour la voit, même si la revue échoue plus loin ou si une autre revue tourne en parallèle
         await db.insert(agentRuns).values(w.outcome.run);
       }
+      // la synthèse adressée au propriétaire passe avant l'analyse : quand le plafond est serré, c'est elle qui est servie
+      row.signals = { ...row.signals, marketAnalysis: await analysisFor(id) };
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;
     }

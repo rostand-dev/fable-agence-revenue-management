@@ -24,7 +24,7 @@ const issuesOf = (v: unknown) => { const r = schema.safeParse(v); return r.succe
 describe("preuves numérotées", () => {
   it("E1… dans l'ordre du volet de preuves", () => expect(numberEvidence(base).map((e) => [e.id, e.label])).toEqual([["E1", "Occupation du logement"], ["E2", "Occupation du marché"], ["E3", "Position de prix"], ["E4", "Prix du marché"]]));
   it("numbersOf normalise virgule et espaces, ignore les identifiants de preuves", () => {
-    expect(numbersOf("E1 et E12 : 43 %, 1 234,50 € puis 0,5")).toEqual(["43", "1234.5", "0.5"]);
+    expect(numbersOf("E1 et E12 : 43 %, 1\u00A0234,50 € puis 0,5")).toEqual(["43", "1234.5", "0.5"]);
     expect(numbersOf("aucun chiffre ici E3")).toEqual([]);
   });
   it("l'empreinte change si une preuve change, pas sinon", () => {
@@ -80,7 +80,7 @@ describe("avec la passerelle", () => {
     const p = scriptedProvider((_r, i) => JSON.stringify(i === 0 ? bad : ok));
     const r = await generateJson([target(p)], call);
     expect(r.ok).toBe(true);
-    expect(p.calls[1].user).toContain("Un chiffre ne figure dans aucune preuve");
+    expect(p.calls[1].user).toContain("Un chiffre ne figure dans aucune des preuves citées");
     expect(p.calls[1].user).not.toContain("99");
     if (r.ok) expect(fromModel(base, r.data, { model: "m" }).mode).toBe("LLM");
   });
@@ -91,5 +91,38 @@ describe("avec la passerelle", () => {
     const p = scriptedProvider(() => JSON.stringify(obey));
     const r = await generateJson([target(p)], { task: "t", system: "s", user: analysisPrompt(hostile), schema: hs });
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("durcissement après relecture (US-071)", () => {
+  const f = (statement: string, evidence = ["E1", "E2"]) => ({ ...ok, findings: [{ statement, evidence, confidence: "FAIBLE" }] });
+  it("un chiffre doit venir d'une pièce citée, pas d'une autre", () => {
+    expect(issuesOf(f("L'occupation du logement est de 43 %.", ["E1"]))).toEqual([]);
+    expect(issuesOf(f("Le prix se situe au 38e percentile.", ["E1"])).join()).toContain("chiffre");
+  });
+  it.each(["Baissez le prix pour cette période.", "Il faudrait réduire le tarif.", "Mieux vaut attendre selon E1.", "Il\u00A0faut agir vite.", "Une hausse est à envisager pour E1.", "Nous recommandons un ajustement."])("refuse la prescription : %s", (t) => {
+    expect(issuesOf(f(t)).join()).toContain("aucune action");
+  });
+  it("refuse une pièce nommée dans le texte mais non citée, et les doublons", () => {
+    expect(issuesOf(f("L'occupation est de 43 % selon E3 et E1.", ["E1"])).join()).toContain("E3");
+    expect(issuesOf(f("L'occupation du logement est de 43 %.", ["E1", "E1"])).join()).toContain("deux fois");
+  });
+  it("refuse une hypothèse inventée ou un lien", () => {
+    expect(issuesOf({ ...ok, hypotheses: [{ label: "Concurrent agressif", evidence: ["E3"] }] }).join()).toContain("moteur");
+    expect(issuesOf(f("Voir https://exemple.fr pour 43 % d'occupation.", ["E1"])).join()).toContain("lien");
+  });
+  it("la confiance du modèle est plafonnée à celle du moteur", () => {
+    const weak = { ...base, diagnosis: { ...base.diagnosis, confidence: 0.3 } } as DetectedOpportunity;
+    expect(fromModel(weak, ok as never, {}).findings[0].confidence).toBe("FAIBLE");
+    expect(fromModel(base, ok as never, {}).findings[0].confidence).toBe("HAUTE");
+  });
+  it("« 43 120 » en espace simple reste deux nombres ; l'espace insécable fait un millier", () => {
+    expect(numbersOf("43 120")).toEqual(["43", "120"]);
+    expect(numbersOf("12\u202F300 €")).toEqual(["12300"]);
+  });
+  it("l'empreinte dépend de la version du prompt ; l'analyse par règles a toujours un constat", () => {
+    expect(evidenceHashOf(base, "v1")).not.toBe(evidenceHashOf(base, "v2"));
+    const empty = { ...base, diagnosis: { ...base.diagnosis, evidence: [] } } as unknown as DetectedOpportunity;
+    expect(deterministicAnalysis(empty).findings).toHaveLength(1);
   });
 });
