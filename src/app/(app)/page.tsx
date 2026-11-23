@@ -15,22 +15,28 @@ import { diffDays, fmtDate, fmtDateTime, todayISO } from "@/lib/dates";
 import type { Candidate } from "@/lib/engine/types";
 import { signedEuro } from "@/lib/format";
 import { lastReview, listOpportunities, listProperties } from "@/lib/queries";
+import {
+  activeFilters, applyInbox, guarded, inboxHref, parseInboxQuery, priorityRanks, SORTS, STATUS_FILTERS, URGENCY_FILTERS,
+} from "@/lib/inbox";
 
-const FILTERS = [["a-traiter", "À traiter"], ["garde-fous", "Garde-fous & vetos"], ["traitees", "Traitées"], ["toutes", "Toutes"]] as const;
 
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
+export default async function Inbox({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
-  const f = (await searchParams).f ?? "a-traiter";
+  const raw = await searchParams;
   const canDecide = can(user.role, "decision.decide");
   const [props, all, review] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN", "DEFERRED", "DECIDED"]), lastReview(user.tenantId)]);
   const llmOn = (await getLlmStatus(user.tenantId)).source !== "aucune";
+  const playbooks = [...new Set(all.map((o) => o.playbook))].sort();
+  const q = parseInboxQuery(raw, { propertyIds: props.map((p) => p.id), playbooks });
   const names = user.settings.agentNames ?? null;
   const pname = new Map(props.map((p) => [p.id, p.name]));
   const prov = new Set(props.filter((p) => ((p.economics as any)?.provisional?.length ?? 0) > 0).map((p) => p.id));
   const open = all.filter((o) => o.status === "OPEN");
   const sel = (o: (typeof all)[number]) => (o.candidates as Candidate[])[o.selected];
-  const guard = open.filter((o) => o.veto || (o.candidates as Candidate[]).some((c) => c.audit.verdict === "REJECT"));
-  const shown = f === "garde-fous" ? guard : f === "traitees" ? all.filter((o) => o.status !== "OPEN") : f === "toutes" ? all : open;
+  const guard = open.filter(guarded);
+  const ranks = priorityRanks(all);
+  const shown = applyInbox(all, q, todayISO());
+  const nbFilters = activeFilters(q);
   const chiffrables = open.filter((o) => sel(o).type !== "NO_ACTION" && sel(o).expectedDeltaCents !== null);
   const impact = chiffrables.reduce((a, o) => a + (sel(o).expectedDeltaCents ?? 0), 0);
   const today = todayISO();
@@ -95,16 +101,36 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
 
       <section className="section" aria-labelledby="file-h">
         <h2 id="file-h">Opportunités classées par priorité</h2>
-        <p className="section-note">Un veto passe toujours en tête. Le rang suit ensuite la valeur simulée, pondérée par la confiance, l'urgence et le risque.</p>
-        <div className="filters" role="group" aria-label="Filtrer le registre">
-          {FILTERS.map(([k, label]) => <Link key={k} className="chip" href={k === "a-traiter" ? "/" : `/?f=${k}`} aria-current={f === k ? "true" : undefined} scroll={false}>{label}</Link>)}
+        <p className="section-note">La synthèse ci-dessus porte sur tout le portefeuille, hors filtres. Un veto passe toujours en tête. Le rang suit ensuite la valeur simulée, pondérée par la confiance, l'urgence et le risque.</p>
+        <div className="filters" role="group" aria-label="Filtrer par statut">
+          {STATUS_FILTERS.map(([k, label]) => <Link key={k} className="chip" href={inboxHref(q, { f: k })} aria-current={q.f === k ? "true" : undefined} scroll={false}>{label}</Link>)}
         </div>
+        <form method="get" action="/" className="inbox-filters" data-testid="inbox-filtres" aria-label="Affiner la liste">
+          {q.f !== "a-traiter" && <input type="hidden" name="f" value={q.f} />}
+          <label>Logement
+            <select name="p" defaultValue={q.p}><option value="">Tous les logements</option>{props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+          </label>
+          <label>Playbook
+            <select name="pb" defaultValue={q.pb}><option value="">Tous les playbooks</option>{playbooks.map((pb) => <option key={pb} value={pb}>{pb}</option>)}</select>
+          </label>
+          <label>Urgence
+            <select name="u" defaultValue={q.u}>{URGENCY_FILTERS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select>
+          </label>
+          <label>Tri
+            <select name="s" defaultValue={q.s}>{SORTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select>
+          </label>
+          <div className="inbox-filters-actions">
+            <button type="submit" className="btn btn-primary btn-sm">Appliquer</button>
+            {nbFilters > 0 && <Link className="btn btn-ghost btn-sm" href="/" data-testid="reinitialiser">Réinitialiser</Link>}
+          </div>
+        </form>
+        <p role="status" data-testid="inbox-compteur" className="inbox-count">{shown.length} résultat{shown.length > 1 ? "s" : ""}{nbFilters > 0 ? ` · ${nbFilters} filtre${nbFilters > 1 ? "s" : ""} actif${nbFilters > 1 ? "s" : ""}` : ""}{q.s !== "priorite" ? " · rang de priorité conservé" : ""}</p>
         {shown.length > 0 ? (
-          <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={o.status === "OPEN" ? open.indexOf(o) + 1 : null} propertyName={pname.get(o.propertyId) ?? ""} names={names} provisional={prov.has(o.propertyId)} canDecide={canDecide} />)}</div>
+          <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={ranks.get(o.id) ?? null} propertyName={pname.get(o.propertyId) ?? ""} names={names} provisional={prov.has(o.propertyId)} canDecide={canDecide} />)}</div>
         ) : (
           <div className="empty">
-            <h3>{f === "a-traiter" ? "Rien à arbitrer" : "Aucune entrée"}</h3>
-            <p>{f === "a-traiter" ? "L'équipe n'a relevé aucune exception qui mérite une décision. Ne rien faire est ici la bonne décision." : "Un registre vide ne vaut pas confirmation : il signifie qu'aucune situation de ce type n'a été relevée."}</p>
+            <h3>{nbFilters > 0 ? "Aucun résultat avec ces filtres" : q.f === "a-traiter" ? "Rien à arbitrer" : "Aucune entrée"}</h3>
+            <p>{nbFilters > 0 ? "Aucune situation ne correspond à cette combinaison. Élargissez ou réinitialisez les filtres : ce n'est pas une confirmation qu'il n'y a rien à traiter." : q.f === "a-traiter" ? "L'équipe n'a relevé aucune exception qui mérite une décision. Ne rien faire est ici la bonne décision." : "Un registre vide ne vaut pas confirmation : il signifie qu'aucune situation de ce type n'a été relevée."}</p>
           </div>
         )}
       </section>
