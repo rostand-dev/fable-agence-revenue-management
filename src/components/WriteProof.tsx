@@ -38,14 +38,15 @@ export function WriteProof({ writes }: { writes: Row[] }) {
           const sent = rc?.sentAt && !Number.isNaN(Date.parse(rc.sentAt)) ? fmtDateTime(new Date(rc.sentAt)) : null;
           const rows: [string, React.ReactNode, React.ReactNode][] = [];
           const noB = <Vq>avant non consigné</Vq>, noA = <Vq>non relu</Vq>;
-          if (plan.kind === "LISTING_LIMITS" && isObj(plan.limits)) {
+          if (w.phase === "ROLLBACK") { /* pas de tableau : l'état relu est dans les empreintes ; les valeurs remises figurent dans l'exécution */ }
+          else if (plan.kind === "LISTING_LIMITS" && isObj(plan.limits)) {
             for (const [k, t] of [["minCents", "Prix minimum"], ["baseCents", "Prix de base"], ["maxCents", "Prix maximum"]] as const)
               if (plan.limits[k] !== undefined) rows.push([t, b ? val(b.limits?.[k]) : noB, a ? val(a.limits?.[k]) : noA]);
           } else if (Array.isArray(plan.items)) for (const it of plan.items) if (isDate(it?.date)) rows.push([`Prix daté du ${fmtDay(it.date)}`, b ? ovText(ovOf(b, it.date)) : noB, a ? ovText(ovOf(a, it.date)) : noA]);
           return (
             <section key={w.id} className="stack" data-testid="write-proof-item" aria-label={`Écriture du ${fmtDateTime(w.createdAt)}`}>
               <Recap rows={[
-                ["Écriture", <State key="s" role={role}>{label}</State>],
+                ["Écriture", <span key="s"><State role={role}>{label}</State>{w.phase === "ROLLBACK" && <span className="metric-source" style={{ display: "block", marginTop: 6 }}>Retour arrière ({w.kind === "OVERRIDES_DELETE" ? "prix daté supprimé" : w.kind === "OVERRIDES_RESTORE" ? "prix daté remis" : "valeurs d'avant remises"})</span>}</span>],
                 ["Reçu de l'appel", rc?.method ? `${rc.method} ${rc.endpoint ?? "—"} → ${rc.status ?? "—"}` : <Vq>aucun (rien n'est parti ou réponse perdue)</Vq>],
                 ["Envoyé le", sent ?? <Vq>—</Vq>, true],
                 ["Empreinte de la requête", <Hash key="h" h={rc?.requestHash ?? null} />],

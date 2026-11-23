@@ -499,7 +499,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <details className="fold" style={{ marginTop: 14 }}>
               <summary><Icon name="undo" />Retour arrière</summary>
               <div className="fold-body">
-                <p className="muted" style={{ marginTop: 0 }}>Plan : {action.rollbackPlan} {exec?.mode === "MANUAL_DECLARED" && "Pour une procédure manuelle, effectuez d'abord l'opération inverse dans l'extranet."}</p>
+                <p className="muted" style={{ marginTop: 0 }}>Plan : {action.rollbackPlan} {exec?.mode === "MANUAL_DECLARED" && "Pour une procédure manuelle, effectuez d'abord l'opération inverse dans l'extranet."}{(exec?.mode === "PRICELABS_API" || exec?.writeId) && "Sur un logement réel, le retour arrière remet chez PriceLabs les valeurs d'avant (relues ensuite). Il est refusé si quelqu'un a modifié ces valeurs depuis, ou si le coupe-circuit est actif : les valeurs d'avant sont alors données pour les remettre à la main."}</p>
                 <ActionForm action={rollbackAction} hidden={{ actionId: action.id }}>
                   <div className="field" style={{ marginBottom: 12 }}><label htmlFor="reason">Motif</label><input id="reason" name="reason" type="text" /></div>
                   <Submit className="btn btn-danger" icon="undo">Annuler l'action</Submit>

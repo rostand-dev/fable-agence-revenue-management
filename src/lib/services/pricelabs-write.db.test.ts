@@ -10,7 +10,7 @@ import { requestHash, usePriceLabsWriter } from "../integrations/pricelabs-write
 import { FakePriceLabsWriter } from "../integrations/pricelabs-write-fake";
 import * as D from "./decisions";
 import { connectPriceLabs, selectListing } from "./pricelabs-sync";
-import { preparePriceLabsWrite, readBackPriceLabsWrite, sendPriceLabsWrite, targetOf, WriteError, writesOfAction } from "./pricelabs-write";
+import { preparePriceLabsWrite, readBackPriceLabsWrite, rollbackPriceLabsWrite, sendPriceLabsWrite, snapshotOf, targetOf, WriteError, writesOfAction } from "./pricelabs-write";
 
 // US-090 : écriture PriceLabs d'une action, de bout en bout sur une base réelle, avec les faux adaptateurs (aucun réseau).
 const TODAY = "2026-11-21", KEY = "fake-nominal-0000000000000000", D1 = addDays(TODAY, 30), D2 = addDays(TODAY, 31);
@@ -158,6 +158,15 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
     expect(JSON.stringify(await writesOfAction(t.tenantId, a.id))).not.toContain("voyageur@example.test");
   });
 
+  it("instantané complet pour la restauration : champs simples conservés, date normalisée à la lecture, donnée personnelle et secret écartés", () => {
+    const ov = [{ date: D1 + "T00:00:00Z", price: 120, price_type: "fixed", min_stay: 2, check_in_check_out_enabled: true, check_in_days: ["MON", "TUE"], reason: "x".repeat(300), guest_email: "a@b.test", api_key: "zzz", created_at: "2026-01-01" }];
+    const snap = snapshotOf({ readAt: "now", currency: "EUR", pushEnabled: true, limits: { minCents: 1, baseCents: 2, maxCents: 3 }, prices: {}, overrides: ov.map((raw) => ({ date: D1, priceCents: 12000, priceType: "fixed", minStay: 2, raw })) } as any, [D1]);
+    const o = snap.overrides[0] as any;
+    expect(o).toMatchObject({ check_in_check_out_enabled: true, check_in_days: ["MON", "TUE"], min_stay: 2 });
+    expect(o.reason).toHaveLength(300);
+    expect(JSON.stringify(snap)).not.toMatch(/a@b\.test|zzz|created_at/);
+  });
+
   it("refus 4xx : instantané d'avant présent, pas d'après ; empreinte d'avant stable entre deux lectures identiques", async () => {
     const { t, prop, writer } = await setup("avant-seul");
     const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
@@ -278,8 +287,14 @@ describe("execute / verify / rollback d'une action sur un logement réel", () =>
     expect(row.execution).toMatchObject({ beforeHash: w0.stateBeforeHash, afterHash: w0.stateAfterHash });
     await D.verify(t.actor, a.id);
     expect((await status(a.id)).status).toBe("MEASURING");
-    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/pas encore disponible/);
-    expect((await status(a.id)).status).toBe("MEASURING");
+    await D.rollback(t.actor, a.id, "test de retour arrière");
+    expect((await status(a.id)).status).toBe("ROLLED_BACK");
+    expect((await read.listListings())[0].minCents).toBe(8300); // remis chez PriceLabs, pas seulement en local
+    const rb = (await writesOfAction(t.tenantId, a.id)).filter((w) => w.phase === "ROLLBACK");
+    expect(rb).toHaveLength(1); expect(rb[0]).toMatchObject({ status: "CONFIRMED", kind: "LISTING_LIMITS" });
+    expect(JSON.stringify(rb)).not.toContain(KEY);
+    const ev = await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.tenantId, t.tenantId));
+    expect(ev.find((e) => e.type === "action.rolled_back" && e.entityId === a.id)?.payload).toMatchObject({ writeIds: [rb[0].id] });
   });
 
   it("coupe-circuit actif : rien n'est écrit", async () => {
@@ -303,8 +318,135 @@ describe("execute / verify / rollback d'une action sur un logement réel", () =>
     const row = await status(a.id);
     expect(row.status).toBe("FAILED");
     expect(row.execution).toMatchObject({ writeId: expect.any(String) });
-    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/pas encore disponible/);
+    // la relecture reste cassée : le retour arrière ne peut pas lire l'état, il refuse et donne les valeurs d'avant, l'action reste FAILED
+    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/Lecture de l'état PriceLabs impossible/);
     expect((await status(a.id)).status).toBe("FAILED");
+  });
+
+  it("retour arrière d'un prix daté : le prix posé par NuitSignal est supprimé, PriceLabs reprend son calcul", async () => {
+    withGate("true");
+    const { t, prop, writer } = await setup("rb-daté");
+    const a = await approved(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1, D2] });
+    await D.execute(t.actor, a.id, undefined);
+    expect((await writer.getOverrides(FAKE_LISTING_ID, "superhote", D1, D2))).toHaveLength(2);
+    await D.rollback(t.actor, a.id, "test");
+    expect(await writer.getOverrides(FAKE_LISTING_ID, "superhote", D1, D2)).toEqual([]);
+    expect((await status(a.id)).status).toBe("ROLLED_BACK");
+    expect((await writesOfAction(t.tenantId, a.id)).filter((w) => w.phase === "ROLLBACK")[0]).toMatchObject({ kind: "OVERRIDES_DELETE", status: "CONFIRMED" });
+  });
+
+  it("quelqu'un a modifié le prix chez PriceLabs depuis : retour arrière refusé, rien n'est écrasé, valeurs d'avant données, refus tracé", async () => {
+    withGate("true");
+    const { t, prop, read, writer } = await setup("rb-derive");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    (read.scenario.listings[0] as any).min = 105; // modifié à la main dans PriceLabs
+    const calls = writer.calls.filter((c) => c.method === "setListingLimits").length;
+    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/quelqu'un l'a modifié depuis[\s\S]*Valeurs d'avant : prix minimum : 83,00 €/);
+    expect((await status(a.id)).status).toBe("EXECUTED");
+    expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(calls);
+    expect((await read.listListings())[0].minCents).toBe(10500);
+    const ev = await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.tenantId, t.tenantId));
+    expect(ev.some((e) => e.type === "action.rollback_failed" && e.entityId === a.id)).toBe(true);
+  });
+
+  it("coupe-circuit actif au moment du retour arrière : rien n'est envoyé, valeurs d'avant affichées pour une remise à la main", async () => {
+    withGate("true");
+    const { t, prop, writer } = await setup("rb-kill");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    await db.insert(schema.integrations).values({ id: newId("int"), tenantId: t.tenantId, provider: "pricelabs", status: "CONNECTED", capabilities: {}, killSwitch: true } as any);
+    const calls = writer.calls.filter((c) => c.method === "setListingLimits").length;
+    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/coupe-circuit[\s\S]*prix minimum : 83,00 €/i);
+    expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(calls);
+    expect((await status(a.id)).status).toBe("EXECUTED");
+  });
+
+  it("verrou d'environnement refermé après l'écriture : le retour arrière automatique est refusé aussi", async () => {
+    withGate("true");
+    const { t, prop } = await setup("rb-verrou");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    withGate(undefined);
+    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/Retour arrière automatique impossible/);
+    expect((await status(a.id)).status).toBe("EXECUTED");
+  });
+
+  it("refus 403 de PriceLabs au retour arrière : journal FAILED, état inchangé ; une seconde tentative aboutit", async () => {
+    withGate("true");
+    const { t, prop, read, writer } = await setup("rb-403");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    writer.failWrites = { status: 403, times: 1 };
+    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/refusé le retour arrière/);
+    expect((await status(a.id)).status).toBe("EXECUTED");
+    expect((await read.listListings())[0].minCents).toBe(9500);
+    expect((await writesOfAction(t.tenantId, a.id)).filter((w) => w.phase === "ROLLBACK")[0].status).toBe("FAILED");
+    await D.rollback(t.actor, a.id, "deuxième essai");
+    expect((await status(a.id)).status).toBe("ROLLED_BACK");
+    expect((await read.listListings())[0].minCents).toBe(8300);
+    expect((await writesOfAction(t.tenantId, a.id)).filter((w) => w.phase === "ROLLBACK").map((w) => w.status)).toEqual(["FAILED", "CONFIRMED"]);
+  });
+
+  it("action échouée dont rien n'est parti (aucun reçu) : retour arrière simple, aucun appel à PriceLabs", async () => {
+    const { t, prop, writer } = await setup("rb-rien");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await db.update(revenueActions).set({ status: "EXECUTING" }).where(eq(revenueActions.id, a.id));
+    await db.update(revenueActions).set({ status: "FAILED", execution: { error: "refus" } }).where(eq(revenueActions.id, a.id));
+    await D.rollback(t.actor, a.id, "rien à défaire");
+    expect((await status(a.id)).status).toBe("ROLLED_BACK");
+    expect(writer.calls.filter((c) => c.method !== "getOverrides")).toHaveLength(0);
+  });
+
+  it("reprise : une ligne de retour arrière restée « en préparation » ou « envoyée » ne bloque plus, le calcul part de l'état lu chez PriceLabs", async () => {
+    withGate("true");
+    const { t, prop, read } = await setup("rb-reprise");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    for (const [i, st] of (["PENDING", "SENT"] as const).entries())
+      await db.insert(externalWrites).values({ id: newId("xw"), tenantId: t.tenantId, propertyId: prop.id, actionId: a.id, idempotencyKey: `${a.id}:ROLLBACK:${i + 1}:0`, phase: "ROLLBACK", kind: "LISTING_LIMITS", status: st, plan: {}, adapter: "FAKE" });
+    await D.rollback(t.actor, a.id, "reprise");
+    expect((await status(a.id)).status).toBe("ROLLED_BACK");
+    expect((await read.listListings())[0].minCents).toBe(8300);
+  });
+
+  it("retour arrière déjà confirmé chez PriceLabs mais état local resté EXECUTED : finalisé sans nouvel envoi, stratégie alignée", async () => {
+    withGate("true");
+    const { t, prop, writer } = await setup("rb-confirmé");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    await rollbackPriceLabsWrite(prop, t.tenantId, a.id); // le retour arrière part et est confirmé, puis l'étape locale « n'a pas suivi »
+    const sent = writer.calls.filter((c) => c.method === "setListingLimits").length;
+    await D.rollback(t.actor, a.id, "finalisation");
+    expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(sent);
+    const row = await status(a.id);
+    expect(row.status).toBe("ROLLED_BACK");
+    expect((row.execution as any).rollback.noop).toBe(true);
+    expect(((await db.select().from(properties).where(eq(properties.id, prop.id)))[0].strategy as any).minPriceCents).toBe(8300);
+  });
+
+  it("stratégie locale : remise à la valeur remise chez PriceLabs, mais une valeur changée localement depuis l'action n'est pas écrasée", async () => {
+    withGate("true");
+    const { t, prop } = await setup("rb-strat");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await D.execute(t.actor, a.id, undefined);
+    const strat = async () => ((await db.select().from(properties).where(eq(properties.id, prop.id)))[0].strategy as any).minPriceCents;
+    expect(await strat()).toBe(9500);
+    const [cur] = await db.select().from(properties).where(eq(properties.id, prop.id));
+    await db.update(properties).set({ strategy: { ...(cur.strategy as any), minPriceCents: 9900 } }).where(eq(properties.id, prop.id));
+    await D.rollback(t.actor, a.id, "test");
+    expect(await strat()).toBe(9900);
+  });
+
+  it("prix daté retouché par un tiers (autre prix) : retour arrière refusé, rien n'est supprimé", async () => {
+    withGate("true");
+    const { t, prop, writer } = await setup("rb-tiers");
+    const a = await approved(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1, D2] });
+    await D.execute(t.actor, a.id, undefined);
+    await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 12500 }], { currency: "EUR", reason: "tiers" });
+    await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/quelqu'un l'a modifié depuis/);
+    expect(await writer.getOverrides(FAKE_LISTING_ID, "superhote", D1, D2)).toHaveLength(2);
+    expect((await status(a.id)).status).toBe("EXECUTED");
   });
 
   it("un type non écrit par l'API (séjour minimum daté) est refusé sur un logement réel", async () => {

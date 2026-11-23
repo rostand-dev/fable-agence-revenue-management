@@ -4,7 +4,7 @@ import type { ISODate } from "../dates";
 import { PriceLabsError, priceLabsFor } from "../integrations/pricelabs";
 import { mapPrices } from "../integrations/pricelabs-map";
 import { checkPreconditions } from "../integrations/pricelabs-preconditions";
-import { planWrite, requestHash, priceLabsWriterFor, type WritePlan } from "../integrations/pricelabs-write";
+import { mapOverride, planWrite, requestHash, priceLabsWriterFor, type WritePlan } from "../integrations/pricelabs-write";
 import type { ListingLimits, PriceLabsWritePort, RemoteOverride, WriteReceipt } from "../integrations/pricelabs-write-port";
 import { decryptSecret } from "../secret";
 
@@ -120,15 +120,21 @@ export async function preparePriceLabsWrite(p: Prop, a: { id: string; tenantId: 
  * Instantané d'état (US-092) inscrit au journal : limites, devise, synchronisation, grille et prix datés bruts sur les dates visées. Aucun secret ni donnée de voyageur.
  * L'empreinte SHA-256 est recopiée dans l'exécution et dans l'événement d'audit (append-only) : une retouche de la ligne du journal serait visible en comparant les empreintes.
  */
+const SENSITIVE_KEY = /mail|phone|guest|voyageur|name|nom|token|secret|key|password/i;
 export function snapshotOf(s: RemoteState, dates: string[]) {
   const on = (d: string) => !dates.length || dates.includes(d);
   const prices: Record<string, number | null> = {};
   for (const d of dates) prices[d] = s.prices[d] ?? null;
-  // liste blanche : seuls les champs d'un prix daté dont on connaît le sens sont conservés (jamais un champ inattendu renvoyé par PriceLabs)
+  // Le retour arrière (US-093) remet le prix daté d'avant TEL QUEL : on conserve donc tous ses champs simples (texte, nombre, booléen, liste de valeurs simples),
+  // sauf ceux dont le nom évoque une donnée personnelle ou un secret (jamais consignés), avec des longueurs bornées.
   const keep = (raw: Record<string, unknown>) => {
     const o: Record<string, unknown> = {};
-    for (const k of ["date", "price", "price_type", "currency", "min_stay"]) if (raw[k] !== undefined && (typeof raw[k] === "string" || typeof raw[k] === "number")) o[k] = raw[k];
-    if (typeof raw.reason === "string") o.reason = raw.reason.slice(0, 120);
+    for (const [k, v] of Object.entries(raw)) {
+      if (k === "created_at" || k === "updated_at" || SENSITIVE_KEY.test(k)) continue;
+      if (typeof v === "string") o[k] = v.slice(0, k === "reason" ? 500 : 200);
+      else if (typeof v === "number" || typeof v === "boolean") o[k] = v;
+      else if (Array.isArray(v) && v.every((x) => typeof x === "string" || typeof x === "number")) o[k] = v.slice(0, 50);
+    }
     return o;
   };
   return { readAt: s.readAt, currency: s.currency, pushEnabled: s.pushEnabled, limits: s.limits, prices, overrides: s.overrides.filter((o) => on(o.date)).map((o) => keep(o.raw)) };
@@ -226,4 +232,117 @@ export async function readBackPriceLabsWrite(p: Prop, plan: SafePlan): Promise<{
 /** Journal des écritures d'une action, plus récent d'abord. */
 export async function writesOfAction(tenantId: string, actionId: string) {
   return db.select().from(externalWrites).where(and(eq(externalWrites.tenantId, tenantId), eq(externalWrites.actionId, actionId))).orderBy(externalWrites.createdAt);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+// US-093 : retour arrière réel. Il rejoue l'écriture à l'envers à partir de l'instantané d'avant inscrit au journal : mêmes garde-fous que l'écriture
+// (verrou, coupe-circuit rappelé juste avant chaque envoi, journal d'abord, relecture), et refus si l'état chez PriceLabs n'est plus celui que NuitSignal a écrit.
+// ---------------------------------------------------------------------------------------------------------------------------------------------------
+export type RollbackOutcome = { writeIds: string[]; receipts: WriteReceipt[]; noop: boolean; before: StateSummary; after: StateSummary; adapter: string; /** Valeurs de limites effectivement (re)posées chez PriceLabs, pour aligner la stratégie locale */ restoredLimits: ListingLimits };
+
+/** Date d'un prix daté d'instantané, normalisée comme à la lecture (PriceLabs peut renvoyer une date horodatée). */
+const dateOf = (o: unknown) => mapOverride(o)?.date;
+const sameOverride = (a: RemoteOverride, b: RemoteOverride) => a.priceCents === b.priceCents && (a.priceType ?? "fixed") === (b.priceType ?? "fixed") && (a.minStay ?? null) === (b.minStay ?? null);
+const limitLabel = (k: string) => (k === "minCents" ? "prix minimum" : k === "baseCents" ? "prix de base" : "prix maximum");
+const eurs = (c: number | null | undefined) => (typeof c === "number" ? (c / 100).toFixed(2).replace(".", ",") + " €" : "inconnu");
+
+/** Valeurs d'avant lisibles, pour remettre à la main quand le retour arrière automatique est impossible. */
+export function manualRestoreText(w: { plan: unknown; stateBefore: unknown }): string {
+  const plan = (w.plan ?? {}) as { kind?: string; limits?: Record<string, number>; items?: { date: string }[] };
+  const b = (w.stateBefore ?? {}) as { limits?: Record<string, number | null>; overrides?: Record<string, any>[] };
+  if (plan.kind === "LISTING_LIMITS") return Object.keys(plan.limits ?? {}).map((k) => `${limitLabel(k)} : ${eurs(b.limits?.[k])}`).join(" ; ") || "aucune valeur";
+  return (plan.items ?? []).map((i) => { const o = (b.overrides ?? []).find((x) => dateOf(x) === i.date); return `${i.date} : ${o ? (o.price_type === "percent" ? o.price + " %" : eurs(Math.round(Number(o.price) * 100))) : "aucun prix daté (supprimer celui de NuitSignal)"}`; }).join(" ; ") || "aucune valeur";
+}
+
+/** L'écriture d'origine de l'action (phase APPLY) et les éventuels retours arrière déjà tentés. */
+export async function rollbackContext(tenantId: string, actionId: string) {
+  const rows = await writesOfAction(tenantId, actionId);
+  return { apply: rows.find((r) => r.phase === "APPLY") ?? null, rollbacks: rows.filter((r) => r.phase === "ROLLBACK") };
+}
+
+/**
+ * Retour arrière d'une écriture PriceLabs. `recheck` est rappelée juste avant chaque envoi (coupe-circuit, drapeau, verrou).
+ * Lève `WriteError` avec un message lisible ; ne change jamais l'état de l'action (c'est `rollback()` qui le fait, après succès).
+ */
+export async function rollbackPriceLabsWrite(p: Prop, tenantId: string, actionId: string, opts: { recheck?: () => Promise<void> } = {}): Promise<RollbackOutcome> {
+  const target = targetOf(p);
+  const { apply, rollbacks } = await rollbackContext(tenantId, actionId);
+  if (!apply || !apply.stateBefore) throw new WriteError("Aucun instantané d'avant n'est consigné pour cette action : retour arrière automatique impossible, remettez les valeurs à la main dans PriceLabs.");
+  // Aucune ligne antérieure (confirmée, envoyée sans confirmation, restée « en préparation ») ne bloque : le calcul part TOUJOURS de l'état lu chez PriceLabs,
+  // ce qui est déjà conforme est sauté. Une reprise après plantage, échec partiel ou clic en double est donc sûre ; deux envois simultanés sont écartés par la clé d'idempotence.
+  const plan = apply.plan as { kind: string; limits?: Record<string, number>; items?: { date: string; priceCents: number }[] };
+  const sb = apply.stateBefore as { limits: { minCents: number | null; baseCents: number | null; maxCents: number | null }; overrides?: Record<string, any>[] };
+  const writer = priceLabsWriterFor(target.apiKey);
+  const dates = plan.kind === "OVERRIDES" ? (plan.items ?? []).map((i) => i.date) : [];
+  const now = await readRemoteState(target, dates, writer);
+
+  // 1) ce qu'il faut remettre, et ce qui est déjà conforme
+  type Step = { kind: "LISTING_LIMITS" | "OVERRIDES_RESTORE" | "OVERRIDES_DELETE"; run: () => Promise<WriteReceipt>; payload: unknown };
+  const steps: Step[] = [], problems: string[] = [];
+  if (plan.kind === "LISTING_LIMITS") {
+    const back: ListingLimits = {};
+    for (const [k, f] of [["minCents", "minCents"], ["baseCents", "baseCents"], ["maxCents", "maxCents"]] as const) {
+      if (plan.limits?.[k] === undefined) continue;
+      const was = sb.limits?.[f] ?? null, wrote_ = plan.limits[k], cur = now.limits[f];
+      if (was === null) { problems.push(`la valeur d'avant du ${limitLabel(k)} est inconnue`); continue; }
+      if (cur === was) continue; // déjà conforme
+      if (cur !== wrote_) problems.push(`le ${limitLabel(k)} chez PriceLabs est ${eurs(cur)}, ni ${eurs(wrote_)} (écrit par NuitSignal) ni ${eurs(was)} (d'avant) : quelqu'un l'a modifié depuis`);
+      else back[k] = was;
+    }
+    if (Object.keys(back).length) steps.push({ kind: "LISTING_LIMITS", payload: back, run: () => writer.setListingLimits(target.listingId, target.pms, back) });
+  } else {
+    const restore: RemoteOverride[] = [], remove: string[] = [];
+    for (const it of plan.items ?? []) {
+      const was = (sb.overrides ?? []).find((o) => dateOf(o) === it.date), cur = now.overrides.find((o) => o.date === it.date);
+      const wasMapped = was ? mapOverride(was) : null;
+      if (was && (!wasMapped || wasMapped.priceCents === null)) { problems.push(`le prix daté d'avant du ${it.date} est illisible`); continue; }
+      if (!was && !cur) continue; // rien avant, rien maintenant
+      if (wasMapped && cur && sameOverride(cur, wasMapped)) continue; // déjà conforme (prix, type et séjour minimum)
+      if (!cur || cur.priceCents !== it.priceCents || (cur.priceType ?? "fixed") !== "fixed") { problems.push(`le prix daté du ${it.date} chez PriceLabs n'est plus celui écrit par NuitSignal (${eurs(it.priceCents)}) : quelqu'un l'a modifié depuis`); continue; }
+      if (wasMapped) restore.push(wasMapped); else remove.push(it.date);
+    }
+    if (restore.length) steps.push({ kind: "OVERRIDES_RESTORE", payload: restore.map((o) => o.raw), run: () => writer.restoreOverrides(target.listingId, target.pms, restore) });
+    if (remove.length) steps.push({ kind: "OVERRIDES_DELETE", payload: remove, run: () => writer.deleteOverrides(target.listingId, target.pms, remove as ISODate[]) });
+  }
+  if (problems.length) throw new WriteError(`Retour arrière automatique refusé, rien n'est écrit : ${problems.join(" ; ")}. Valeurs d'avant : ${manualRestoreText(apply)}.`, "PRECONDITION");
+  const restoredLimits: ListingLimits = {};
+  if (plan.kind === "LISTING_LIMITS") for (const k of ["minCents", "baseCents", "maxCents"] as const) if (plan.limits?.[k] !== undefined && typeof sb.limits?.[k] === "number") restoredLimits[k] = sb.limits[k] as number;
+  if (!steps.length) return { writeIds: rollbacks.filter((r) => r.status === "CONFIRMED").map((r) => r.id), receipts: [], noop: true, before: summaryOf(now, dates), after: summaryOf(now, dates), adapter: writer.adapter, restoredLimits };
+
+  // 2) journal d'abord, envoi ensuite, un pas à la fois ; le coupe-circuit est relu avant CHAQUE envoi
+  const attempt = rollbacks.length + 1, writeIds: string[] = [], receipts: WriteReceipt[] = [];
+  for (const [i, st] of steps.entries()) {
+    const id = newId("xw"), key = `${actionId}:ROLLBACK:${attempt}:${i}`;
+    const ins = await db.insert(externalWrites).values({ id, tenantId, propertyId: p.id, actionId, idempotencyKey: key, phase: "ROLLBACK", kind: st.kind, status: "PENDING", plan: { kind: st.kind, restores: st.payload } as any, stateBefore: snapshotOf(now, dates), stateBeforeHash: snapshotWithHash(now, dates).hash, adapter: writer.adapter }).onConflictDoNothing({ target: externalWrites.idempotencyKey }).returning({ id: externalWrites.id });
+    if (!ins.length) throw new WriteError("Un retour arrière est déjà engagé pour cette action : aucun second envoi.", "IDEMPOTENT");
+    const upd = async (set: Partial<typeof externalWrites.$inferInsert>) => { try { await db.update(externalWrites).set({ ...set, updatedAt: new Date() }).where(eq(externalWrites.id, id)); } catch { /* ne masque pas l'erreur d'origine */ } };
+    writeIds.push(id);
+    let rc: WriteReceipt;
+    try {
+      await opts.recheck?.();
+      rc = await st.run();
+    } catch (e) {
+      const ambiguousErr = !(e instanceof WriteError) && !certainFailure(e);
+      const m = e instanceof WriteError ? e.message : ambiguousErr ? `Réponse de PriceLabs incertaine (${msg(e)}) : le retour arrière a peut-être été appliqué. Vérifiez dans PriceLabs.` : `PriceLabs a refusé le retour arrière : ${msg(e)} Rien n'a été modifié par cette étape.`;
+      await upd({ status: ambiguousErr ? "SENT" : "FAILED", error: m.slice(0, 500) });
+      throw new WriteError(`${m}${receipts.length ? " Une étape précédente a déjà été envoyée : relancez le retour arrière, il reprend là où PriceLabs en est." : ""} Valeurs d'avant : ${manualRestoreText(apply)}.`, "SEND", ambiguousErr || receipts.length > 0, id);
+    }
+    await upd({ status: "SENT", receipt: rc });
+    receipts.push(rc);
+  }
+
+  // 3) relecture : l'état doit être revenu à celui d'avant
+  let after: RemoteState;
+  try { after = await readRemoteState(target, dates, writer); }
+  catch (e) { throw new WriteError(`Retour arrière envoyé mais non confirmé : ${msg(e)} Vérifiez dans PriceLabs. Valeurs d'avant : ${manualRestoreText(apply)}.`, "CONFIRM", true, writeIds[0] ?? null); }
+  const bad: string[] = [];
+  if (plan.kind === "LISTING_LIMITS") { for (const k of ["minCents", "baseCents", "maxCents"] as const) if (plan.limits?.[k] !== undefined && sb.limits?.[k] !== null && after.limits[k] !== sb.limits?.[k]) bad.push(`${limitLabel(k)} relu ${eurs(after.limits[k])} au lieu de ${eurs(sb.limits?.[k])}`); }
+  else for (const it of plan.items ?? []) {
+    const was = (sb.overrides ?? []).find((o) => dateOf(o) === it.date), wasMapped = was ? mapOverride(was) : null, cur = after.overrides.find((o) => o.date === it.date);
+    if (wasMapped ? !cur || !sameOverride(cur, wasMapped) : !!cur) bad.push(`prix daté du ${it.date} non remis comme avant`);
+  }
+  const final = snapshotWithHash(after, dates);
+  for (const id of writeIds) await db.update(externalWrites).set({ stateAfter: final.snap, stateAfterHash: final.hash, ...(bad.length ? {} : { status: "CONFIRMED" as const }), updatedAt: new Date() }).where(eq(externalWrites.id, id)).catch(() => {});
+  if (bad.length) throw new WriteError(`Retour arrière envoyé mais la relecture ne le retrouve pas (${bad.join(" ; ")}). Vérifiez dans PriceLabs. Valeurs d'avant : ${manualRestoreText(apply)}.`, "CONFIRM", true, writeIds[0] ?? null);
+  return { writeIds, receipts, noop: !steps.length, before: summaryOf(now, dates), after: summaryOf(after, dates), adapter: writer.adapter, restoredLimits };
 }

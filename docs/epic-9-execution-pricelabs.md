@@ -64,7 +64,7 @@ Blueprint E9 (P1, « sous réserve d'accès ») : US-090 (adaptateur d'applicati
 - **Reçu** : méthode, adresse, statut, date, empreinte de la requête (SHA-256 du contenu trié). Jamais la clé API, jamais de donnée de voyageur.
 - **Vérification** (`verify()`) : relit chez PriceLabs et compare à ce qui a été écrit ; un écart ouvre l'événement d'audit `action.verification_failed`.
 - **Verrou d'environnement `PRICELABS_WRITE_ENABLED`** : voir « Décisions ». Absent, la capacité s'affiche « Désactivée sur cet environnement » et rien ne part.
-- **Retour arrière** : refusé pour une action écrite par API tant que l'US-093 n'est pas livrée (message explicite), pour ne jamais proposer un retour arrière simulé sur un prix réellement modifié.
+- **Retour arrière** : voir l'US-093 (il était refusé jusque-là pour ne jamais proposer un retour arrière simulé sur un prix réellement modifié).
 
 **Tests ajoutés** : planification et conversions, contrat identique des adaptateurs mémoire et HTTP (contre le faux serveur, y compris 403, 500, 429 puis succès), absence de la clé dans les reçus, service sur base réelle (journal, idempotence, refus, relecture impossible, coupe-circuit, écart à la vérification, isolation), e2e « écriture désactivée » sur bureau, 390 et 360 px.
 
@@ -100,5 +100,22 @@ Chaque écriture porte, dans sa ligne du journal `external_writes` (migration `0
 - **le reçu de l'appel** : méthode, adresse, statut HTTP, date d'envoi, empreinte de la requête.
 
 La fiche dossier affiche ces éléments dans le panneau « Preuve d'écriture chez PriceLabs » (état de l'écriture, reçu, empreintes, tableau avant/après), lisible sans défilement horizontal sur bureau, 390 et 360 px. Aucune clé API ni donnée de voyageur n'y figure. Le rôle applicatif ne peut pas supprimer une ligne du journal ; il peut la mettre à jour (statut, reçu, état d'après). La protection contre une retouche est l'empreinte recopiée dans l'événement d'audit, append-only : comparer les empreintes de l'écran à celles de l'audit montre toute modification. L'empreinte porte sur le contenu de l'instantané, date de lecture exclue ; seuls les champs connus d'un prix daté sont conservés (liste blanche). Aucune nouvelle variable d'environnement.
+
+## US-093 — Retour arrière réel et coupe-circuit
+
+`rollback()` défait chez PriceLabs ce que `execute()` y a écrit, à partir de l'instantané d'avant du journal (US-092). Sans cela, annuler une action réelle aurait seulement changé un statut local.
+
+- **Ce qui est remis** : prix minimum / de base → valeurs d'avant (`POST /listings`) ; prix daté posé là où il n'y en avait pas → supprimé (`DELETE …/overrides`, PriceLabs reprend son calcul) ; prix daté qui en remplaçait un → remis tel quel (`POST …/overrides`).
+- **Refus si l'état a bougé** : si la valeur chez PriceLabs n'est ni celle écrite par NuitSignal ni celle d'avant, rien n'est écrasé ; le message dit qui a changé quoi et donne les **valeurs d'avant à remettre à la main**. Déjà conforme = rien à faire.
+- **Coupe-circuit, drapeau « écriture automatique » et verrou d'environnement** sont contrôlés avant le retour arrière ET rappelés juste avant chaque envoi. Actifs : retour arrière automatique refusé, valeurs d'avant affichées, action inchangée.
+- **Journal** : une ligne par appel (phase `ROLLBACK`, clé `<action>:ROLLBACK:<tentative>:<étape>`), écrite avant l'envoi, relue après. Un échec certain (4xx) autorise une nouvelle tentative ; un envoi ambigu ou non confirmé bloque tout nouveau retour arrière tant qu'on n'a pas vérifié dans PriceLabs.
+- **Reprise sûre** (relecture) : aucune ligne antérieure ne bloque un nouvel essai ; le calcul repart toujours de l'état lu chez PriceLabs (ce qui est déjà conforme est sauté). Un plantage, un échec partiel ou un clic en double se rattrape donc en relançant. Deux envois simultanés restent écartés par la clé d'idempotence. Retour arrière déjà confirmé mais état local non mis à jour : finalisé sans nouvel envoi (`noop`).
+- **Prix datés** : l'instantané d'avant garde tous les champs simples (texte, nombre, booléen, listes) hors noms évoquant une donnée personnelle ou un secret ; comparaison sur prix, type et séjour minimum, dates normalisées.
+- **Limites connues** : un champ imbriqué d'un prix daté (objet) n'est pas conservé ; un seul champ d'avant inconnu refuse tout le retour arrière (valeurs à remettre à la main).
+- **Action échouée dont l'écriture est partie** (reçu présent ou réponse incertaine) : même chemin. Sans rien de parti : retour arrière local simple.
+- **Audit** : `action.rolled_back` (avec les identifiants d'écriture) ou `action.rollback_failed` (avec le motif).
+- **Stratégie** : le prix minimum / de base de la stratégie revient à la valeur réellement remise chez PriceLabs (version `ACTION_ROLLBACK`) ; sur un logement réel, une valeur modifiée localement depuis l'action n'est pas écrasée.
+
+Aucune migration, aucune variable d'environnement.
 
 *(Les sections des autres US sont ajoutées au fil de l'épic.)*
