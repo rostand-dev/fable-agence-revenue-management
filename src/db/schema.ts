@@ -595,6 +595,11 @@ export const externalWrites = pgTable("external_writes", {
   plan: jsonb("plan").$type<Record<string, any>>().notNull(),
   /** Reçu du fournisseur : méthode, chemin, statut HTTP, empreinte du corps, date d'envoi */
   receipt: jsonb("receipt").$type<Record<string, any>>(),
+  /** US-092 : instantané de l'état chez PriceLabs juste avant l'envoi, et relu juste après (limites, grille et prix datés sur les dates visées), avec leur empreinte SHA-256. Jamais de clé ni de donnée de voyageur. */
+  stateBefore: jsonb("state_before").$type<Record<string, unknown>>(),
+  stateAfter: jsonb("state_after").$type<Record<string, unknown>>(),
+  stateBeforeHash: text("state_before_hash"),
+  stateAfterHash: text("state_after_hash"),
   /** Message lisible de l'échec, jamais le texte brut d'une réponse */
   error: text("error"),
   /** HTTP | FAKE : jamais d'ambiguïté sur l'origine réelle ou simulée */

@@ -4,7 +4,7 @@ import type { ISODate } from "../dates";
 import { PriceLabsError, priceLabsFor } from "../integrations/pricelabs";
 import { mapPrices } from "../integrations/pricelabs-map";
 import { checkPreconditions } from "../integrations/pricelabs-preconditions";
-import { planWrite, priceLabsWriterFor, type WritePlan } from "../integrations/pricelabs-write";
+import { planWrite, requestHash, priceLabsWriterFor, type WritePlan } from "../integrations/pricelabs-write";
 import type { ListingLimits, PriceLabsWritePort, RemoteOverride, WriteReceipt } from "../integrations/pricelabs-write-port";
 import { decryptSecret } from "../secret";
 
@@ -116,6 +116,26 @@ export async function preparePriceLabsWrite(p: Prop, a: { id: string; tenantId: 
   return { actionId: a.id, tenantId: a.tenantId, propertyId: p.id, target, plan, before };
 }
 
+/**
+ * Instantané d'état (US-092) inscrit au journal : limites, devise, synchronisation, grille et prix datés bruts sur les dates visées. Aucun secret ni donnée de voyageur.
+ * L'empreinte SHA-256 est recopiée dans l'exécution et dans l'événement d'audit (append-only) : une retouche de la ligne du journal serait visible en comparant les empreintes.
+ */
+export function snapshotOf(s: RemoteState, dates: string[]) {
+  const on = (d: string) => !dates.length || dates.includes(d);
+  const prices: Record<string, number | null> = {};
+  for (const d of dates) prices[d] = s.prices[d] ?? null;
+  // liste blanche : seuls les champs d'un prix daté dont on connaît le sens sont conservés (jamais un champ inattendu renvoyé par PriceLabs)
+  const keep = (raw: Record<string, unknown>) => {
+    const o: Record<string, unknown> = {};
+    for (const k of ["date", "price", "price_type", "currency", "min_stay"]) if (raw[k] !== undefined && (typeof raw[k] === "string" || typeof raw[k] === "number")) o[k] = raw[k];
+    if (typeof raw.reason === "string") o.reason = raw.reason.slice(0, 120);
+    return o;
+  };
+  return { readAt: s.readAt, currency: s.currency, pushEnabled: s.pushEnabled, limits: s.limits, prices, overrides: s.overrides.filter((o) => on(o.date)).map((o) => keep(o.raw)) };
+}
+/** L'empreinte porte sur le CONTENU (date de lecture exclue) : deux lectures identiques donnent la même empreinte, une différence de contenu en change. */
+const snapshotWithHash = (s: RemoteState, dates: string[]) => { const snap = snapshotOf(s, dates); const { readAt: _r, ...content } = snap; return { snap, hash: requestHash(content) }; };
+
 const summaryOf = (s: RemoteState, dates: string[]) => ({
   readAt: s.readAt, limits: s.limits,
   overrides: s.overrides.filter((o) => !dates.length || dates.includes(o.date)).map((o) => ({ date: o.date, priceCents: o.priceCents, priceType: o.priceType, minStay: o.minStay })),
@@ -133,12 +153,14 @@ export type WriteOutcome = {
   /** Dérogations qui existaient avant sur les dates visées, dans leur forme brute : de quoi tout remettre tel quel (retour arrière, US-093) */
   previousOverrides: Record<string, unknown>[];
   adapter: string;
+  /** Empreintes SHA-256 des instantanés d'avant et d'après (US-092) */
+  beforeHash: string;
+  afterHash: string;
 };
 
-/** Ce qui est inscrit au journal AVANT l'envoi : le plan et l'état d'avant (de quoi tout remettre à la main si la suite échoue). Aucun secret. */
-const planOf = (plan: SafePlan, before: RemoteState) => ({
+/** Ce qui est inscrit au journal AVANT l'envoi : le plan (l'instantané d'avant l'est dans la même ligne). Aucun secret. */
+const planOf = (plan: SafePlan) => ({
   ...(plan.kind === "LISTING_LIMITS" ? { kind: plan.kind, limits: plan.limits } : { kind: plan.kind, items: plan.items }),
-  before: { readAt: before.readAt, currency: before.currency, limits: before.limits, overrides: before.overrides.filter((o) => planDates(plan).includes(o.date)).map((o) => o.raw) },
 });
 /** Erreur dont on est sûr qu'elle n'a rien modifié : refus clair de PriceLabs (4xx hors délai et limite de débit). Le reste (délai, coupure, 5xx) est ambigu. */
 const certainFailure = (e: unknown) => e instanceof PriceLabsError && e.status !== null && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429;
@@ -151,12 +173,13 @@ const certainFailure = (e: unknown) => e instanceof PriceLabsError && e.status !
  */
 export async function sendPriceLabsWrite(w: PreparedWrite, opts: { recheck?: () => Promise<void> } = {}): Promise<WriteOutcome> {
   const writer = priceLabsWriterFor(w.target.apiKey);
+  const beforeSnap = snapshotWithHash(w.before, planDates(w.plan));
   const writeId = newId("xw"), key = `${w.actionId}:APPLY`;
   const kind = w.plan.kind === "LISTING_LIMITS" ? "LISTING_LIMITS" : "OVERRIDES_SET";
-  const inserted = await db.insert(externalWrites).values({ id: writeId, tenantId: w.tenantId, propertyId: w.propertyId, actionId: w.actionId, idempotencyKey: key, phase: "APPLY", kind, status: "PENDING", plan: planOf(w.plan, w.before), adapter: writer.adapter })
+  const inserted = await db.insert(externalWrites).values({ id: writeId, tenantId: w.tenantId, propertyId: w.propertyId, actionId: w.actionId, idempotencyKey: key, phase: "APPLY", kind, status: "PENDING", plan: planOf(w.plan), stateBefore: beforeSnap.snap, stateBeforeHash: beforeSnap.hash, adapter: writer.adapter })
     .onConflictDoNothing({ target: externalWrites.idempotencyKey }).returning({ id: externalWrites.id });
   if (!inserted.length) throw new WriteError("Une écriture PriceLabs a déjà été engagée pour cette action : aucun second envoi. Consultez son reçu ou lancez un retour arrière.", "IDEMPOTENT");
-  const patch = async (set: Partial<typeof externalWrites.$inferInsert>) => { try { await db.update(externalWrites).set({ ...set, updatedAt: new Date() }).where(eq(externalWrites.id, writeId)); } catch { /* la consignation ne masque jamais l'erreur d'origine */ } };
+  const patch = async (set: Partial<typeof externalWrites.$inferInsert>): Promise<boolean> => { try { await db.update(externalWrites).set({ ...set, updatedAt: new Date() }).where(eq(externalWrites.id, writeId)); return true; } catch { return false; /* la consignation ne masque jamais l'erreur d'origine */ } };
   let sent = false;
   const fail = async (m: string, code: "SEND" | "CONFIRM", status: "FAILED" | "SENT" = "FAILED"): Promise<never> => { await patch({ status, error: m.slice(0, 500) }); throw new WriteError(m, code, sent, writeId); };
 
@@ -179,12 +202,15 @@ export async function sendPriceLabsWrite(w: PreparedWrite, opts: { recheck?: () 
   let after: RemoteState;
   try { after = await readRemoteState(w.target, dates, writer); }
   catch (e) { return fail(`Écriture envoyée mais non confirmée : ${msg(e)} Vérifiez dans PriceLabs.`, "CONFIRM", "SENT"); }
+  const afterSnap = snapshotWithHash(after, dates);
   const bad = mismatches(w.plan, after);
+  // conservé aussi quand la relecture ne retrouve pas l'écriture (preuve de ce qui s'est passé) ; l'état d'après, son empreinte et le statut final sont inscrits d'un seul coup
+  const logged = await patch({ stateAfter: afterSnap.snap, stateAfterHash: afterSnap.hash, ...(bad.length ? {} : { status: "CONFIRMED" as const }) });
   if (bad.length) return fail(`Écriture envoyée mais la relecture ne la retrouve pas (${bad.join(" ; ")}). Vérifiez dans PriceLabs.`, "CONFIRM", "SENT");
-  await patch({ status: "CONFIRMED" });
+  if (!logged) throw new WriteError("Écriture confirmée par relecture, mais son instantané d'après n'a pas pu être consigné au journal : vérifiez dans PriceLabs.", "CONFIRM", true, writeId);
 
   const previousOverrides = w.before.overrides.filter((o) => dates.includes(o.date)).map((o) => o.raw);
-  return { writeId, receipt, plan: w.plan, before: summaryOf(w.before, dates), after: summaryOf(after, dates), previousOverrides, adapter: writer.adapter };
+  return { writeId, receipt, plan: w.plan, before: summaryOf(w.before, dates), after: summaryOf(after, dates), previousOverrides, adapter: writer.adapter, beforeHash: beforeSnap.hash, afterHash: afterSnap.hash };
 }
 
 /**
