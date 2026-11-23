@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gaugePositions, waterfallGeometry } from "./waterfall";
+import { gaugePositions, sharedAxis, waterfallGeometry } from "./waterfall";
 import type { WaterfallStep } from "./types";
 
 const steps: WaterfallStep[] = [
@@ -34,9 +34,21 @@ describe("cascade du revenu net (US-083)", () => {
     expect(g.zeroPct).toBeGreaterThan(0);
     for (const r of g.rows) { expect(r.leftPct).toBeGreaterThanOrEqual(0); expect(r.leftPct + r.widthPct).toBeLessThanOrEqual(100.0001); }
   });
-  it("une cascade qui ne se referme pas est signalée", () => {
-    expect(waterfallGeometry([{ key: "published", label: "P", cents: 100, source: "" }, { key: "contribution", label: "C", cents: 50, kind: "final", source: "" }]).closes).toBe(true);
-    expect(waterfallGeometry([{ key: "published", label: "P", cents: 100, source: "" }, { key: "commission", label: "C", cents: -10, source: "" }]).closes).toBe(false);
+  it("une cascade incohérente est signalée : contribution, net ou vendu qui ne sont pas le cumul des mouvements", () => {
+    const P = { key: "published", label: "P", cents: 100, source: "" };
+    expect(waterfallGeometry([P, { key: "contribution", label: "C", cents: 50, kind: "final", source: "" }]).closes).toBe(false);
+    expect(waterfallGeometry([P, { key: "commission", label: "C", cents: -10, source: "" }]).closes).toBe(false);
+    expect(waterfallGeometry([P, { key: "commission", label: "C", cents: -10, source: "" }, { key: "contribution", label: "C", cents: 90, kind: "final", source: "" }]).closes).toBe(true);
+    expect(waterfallGeometry(steps.map((s) => (s.key === "net" ? { ...s, cents: 22000 } : s))).closes).toBe(false);
+  });
+  it("axe commun : deux cascades se lisent à la même échelle ; une barre nulle reste dans l'axe", () => {
+    const small: WaterfallStep[] = [{ key: "published", label: "P", cents: 10000, source: "" }, { key: "commission", label: "C", cents: 0, source: "" }, { key: "contribution", label: "C", cents: 10000, kind: "final", source: "" }];
+    const ax = sharedAxis([steps, small]);
+    const a = waterfallGeometry(small, ax), b = waterfallGeometry(small);
+    expect(a.rows[0].widthPct).toBeLessThan(b.rows[0].widthPct);
+    for (const r of a.rows) expect(r.leftPct + r.widthPct).toBeLessThanOrEqual(100.0001);
+    const z = waterfallGeometry([{ key: "published", label: "P", cents: 100, source: "" }, { key: "commission", label: "C", cents: 0, source: "" }]);
+    expect(z.rows[1].leftPct + z.rows[1].widthPct).toBeLessThanOrEqual(100.0001);
   });
   it("jauge de plancher : repères ordonnés et dans l'axe", () => {
     const g = gaugePositions({ hard: 9000, strategy: 10500, sold: 9800 });

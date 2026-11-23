@@ -26,6 +26,7 @@ import { euro, signedEuro } from "@/lib/format";
 import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilities";
 import { flagFor } from "@/lib/services/flags";
 import { FloorGauge, PromoStack, Waterfall } from "@/components/Waterfall";
+import { sharedAxis } from "@/lib/engine/waterfall";
 import { auditTrail } from "@/lib/audit/query";
 import { auditLabel } from "@/lib/audit/types";
 import { can, denyMessage, executePermission, ROLE_LABEL, rolesWith } from "@/lib/rbac";
@@ -91,6 +92,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const q = Number((await searchParams).option);
   const idx = open && Number.isInteger(q) && cands[q] ? q : o.selected;
   const c = cands[idx];
+  const axis = sharedAxis([c.current, c.proposed].filter((x): x is NonNullable<typeof x> => !!x).map((x) => x.steps));
   const model = p.economics as EconomicModel;
   const ref = c.proposed ?? c.current ?? cands.find((x) => x.current)?.current ?? null;
   const done = cycleProgress((action?.status as ActionState) ?? null);
@@ -323,11 +325,11 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             </header>
             <Cascade current={c.current} proposed={c.proposed} />
             <div className="wf-grid" data-testid="waterfalls">
-              {c.current && <Waterfall title="Cascade actuelle" result={c.current} />}
-              {c.proposed && <Waterfall title="Cascade de l'option" result={c.proposed} />}
+              {c.current && <Waterfall title="Cascade actuelle" result={c.current} axis={axis} />}
+              {c.proposed && <Waterfall title="Cascade de l'option" result={c.proposed} axis={axis} />}
             </div>
-            <FloorGauge hardCents={hardFloorCents(model, ref.channel, ref.nights)} strategyCents={strategyFloorCents(model, ref.channel, ref.nights)} currentCents={c.current?.soldNightlyCents ?? null} proposedCents={c.proposed?.soldNightlyCents ?? null} />
-            {(c.proposed || c.current) && <PromoStack result={c.proposed ?? c.current} capPct={p.strategy?.maxDiscountStackPct ?? 0} />}
+            <FloorGauge hardCents={hardFloorCents(model, ref.channel, ref.nights)} strategyCents={strategyFloorCents(model, ref.channel, ref.nights)} soldBefore={c.current?.soldNightlyCents ?? null} soldAfter={c.proposed?.soldNightlyCents ?? null} />
+            {(c.proposed || c.current) && <PromoStack result={c.proposed ?? c.current} capPct={typeof p.strategy?.maxDiscountStackPct === "number" ? p.strategy.maxDiscountStackPct : null} />}
             <div className="bounds">
               <div className="bound bound-cible"><span className="bound-k">Contribution visée par nuit</span><span className="bound-v"><Money cents={model.targetContributionPerNightCents} /></span></div>
               <div className="bound bound-plancher"><span className="bound-k"><Term id="plancher-strategique">Plancher stratégique</Term> · <Term id="prix-vendu">prix vendu</Term></span><span className="bound-v">{euro(strategyFloorCents(model, ref.channel, ref.nights))}</span></div>
@@ -525,8 +527,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           <>
             <p className="section-note">Ce que le journal d'audit a inscrit pour ce dossier et son action, du plus ancien au plus récent. Le journal est en ajout seul. <Link href="/historique#journal">Journal complet</Link></p>
             {trail.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucun événement : le dossier n'a pas encore été décidé.</p> : (
-              <ol className="trace-list">{trail.map((e) => <li key={e.id}><time dateTime={e.createdAt.toISOString()}>{fmtDateTime(e.createdAt)} · {auditLabel(e.type)}</time><span>{e.summary}</span></li>)}</ol>
+              <ol className="trace-list" role="list">{trail.slice(-20).map((e) => <li key={e.id}><time dateTime={e.createdAt.toISOString()}>{fmtDateTime(e.createdAt)} · {auditLabel(e.type)}</time><span>{e.summary}</span></li>)}</ol>
             )}
+            {trail.length > 20 && <p className="muted" style={{ margin: "8px 0 0" }}>Les 20 derniers événements sur {trail.length} : le reste est dans le journal complet.</p>}
           </>
         )}
       </section>

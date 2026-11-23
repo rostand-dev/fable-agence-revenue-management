@@ -45,6 +45,7 @@ test("Dossier tranché : la trace d'audit liste les événements du dossier", as
     await expect(t.getByRole("heading", { name: "Traçabilité" })).toBeVisible();
     if (await t.locator("ol.trace-list li").count()) {
       await expect(t.locator("ol.trace-list li").first()).toContainText(/approuvée|rejetée|Inaction|différé|rouvert|exécutée/i);
+      await expect(t.locator("ol.trace-list li time").first()).toHaveAttribute("datetime", /^\d{4}-\d{2}-\d{2}T/);
       await expectNoHorizontalOverflow(page, "traçabilité " + href);
       found = true; break;
     }
