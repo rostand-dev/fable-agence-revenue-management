@@ -8,6 +8,7 @@ import { logoutAction } from "@/app/actions/auth";
 type Item = { href: string; icon: string; label: string; primary?: boolean; count?: boolean };
 const GROUPS: { label: string; items: Item[] }[] = [
   { label: "Poste de travail", items: [
+    { href: "/portefeuille", icon: "chart", label: "Tableau de bord" },
     { href: "/", icon: "inbox", label: "Opportunités", primary: true, count: true },
     { href: "/logements", icon: "home", label: "Logements", primary: true },
     { href: "/historique", icon: "history", label: "Historique", primary: true },
