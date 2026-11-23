@@ -5,7 +5,7 @@ import { Page } from "@/components/Page";
 import { Banner, Metric, OppStatus, State, Vq } from "@/components/ui";
 import { agentName } from "@/lib/agents/registry";
 import { withTenant } from "@/db/tenant";
-import { listAuditEvents } from "@/lib/audit/query";
+import { ACTOR_KINDS, isActorKind, listAuditEvents, parseDay } from "@/lib/audit/query";
 import { AUDIT_CATEGORIES, AUDIT_CATEGORY_ORDER, auditLabel, isAuditCategory } from "@/lib/audit/types";
 import { requireUser } from "@/lib/auth";
 import { can, denyMessage, rolesWith, ROLE_LABEL } from "@/lib/rbac";
@@ -18,16 +18,20 @@ export const metadata = { title: "Historique" };
 const OUT: Record<string, [string, "sain" | "neutre" | "attention" | "tech"]> = { POSITIVE: ["Positif · corrélation", "sain"], NEUTRAL: ["Neutre", "neutre"], NEGATIVE: ["Négatif", "attention"], INCONCLUSIVE: ["Non concluant", "tech"] };
 
 const PAGE = 30;
-export default async function Historique({ searchParams }: { searchParams: Promise<{ cat?: string; apres?: string }> }) {
+export default async function Historique({ searchParams }: { searchParams: Promise<{ cat?: string; apres?: string; de?: string; au?: string; qui?: string }> }) {
   const user = await requireUser();
   const sp = await searchParams;
   const cat = isAuditCategory(sp.cat) ? sp.cat : undefined;
+  let de = parseDay(sp.de), au = parseDay(sp.au);
+  if (de && au && de > au) [de, au] = [au, de];
+  const qui = isActorKind(sp.qui) ? sp.qui : undefined;
+  const nbFiltres = [de, au, qui].filter(Boolean).length;
   const names = user.settings.agentNames ?? null;
   // US-084 : le journal d'audit est réservé à certains rôles ; la requête n'est même pas lancée pour les autres
   const canAudit = can(user.role, "audit.read");
-  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), canAudit ? withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, limit: PAGE, cursor: sp.apres ?? null }, tx)) : Promise.resolve({ events: [], nextCursor: null as string | null })]);
+  const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), canAudit ? withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, from: de, to: au, actorKind: qui, limit: PAGE, cursor: sp.apres ?? null }, tx)) : Promise.resolve({ events: [], nextCursor: null as string | null })]);
   const events = journal.events;
-  const href = (c?: string, apres?: string | null) => `/historique?${[c ? `cat=${c}` : "", apres ? `apres=${apres}` : ""].filter(Boolean).join("&")}#journal`;
+  const href = (c?: string, apres?: string | null) => `/historique?${[c ? `cat=${c}` : "", de ? `de=${de}` : "", au ? `au=${au}` : "", qui ? `qui=${qui}` : "", apres ? `apres=${apres}` : ""].filter(Boolean).join("&")}#journal`;
   const pname = new Map(props.map((p) => [p.id, p.name]));
   const acts = opps.filter((o) => o.action).sort((a, b) => +b.action!.createdAt - +a.action!.createdAt);
   const measured = acts.filter((o) => o.action!.measurement);
@@ -74,7 +78,19 @@ export default async function Historique({ searchParams }: { searchParams: Promi
           <Link className="chip" href={href()} aria-current={!cat ? "true" : undefined} scroll={false}>Tout</Link>
           {AUDIT_CATEGORY_ORDER.map((c) => <Link key={c} className="chip" href={href(c)} aria-current={cat === c ? "true" : undefined} scroll={false} title={AUDIT_CATEGORIES[c].hint}>{AUDIT_CATEGORIES[c].label}</Link>)}
         </div>
-        {events.length === 0 ? <div className="empty" style={{ marginTop: 14 }}><h3>Aucun événement</h3><p>{cat ? "Rien dans cette famille pour l'instant." : "Les événements apparaîtront ici dès la première action."}</p></div> : (
+        <form method="get" action="/historique#journal" className="inbox-filters" data-testid="journal-filtres" aria-label="Affiner le journal">
+          {cat && <input type="hidden" name="cat" value={cat} />}
+          <label>Du<input type="date" name="de" defaultValue={de ?? ""} max={au} /></label>
+          <label>Au<input type="date" name="au" defaultValue={au ?? ""} min={de} /></label>
+          <label>Auteur
+            <select name="qui" defaultValue={qui ?? ""}><option value="">Tous</option>{Object.entries(ACTOR_KINDS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+          </label>
+          <div className="inbox-filters-actions">
+            <button type="submit" className="btn btn-primary btn-sm">Appliquer</button>
+            {nbFiltres > 0 && <Link className="btn btn-ghost btn-sm" href={cat ? `/historique?cat=${cat}#journal` : "/historique#journal"} data-testid="journal-reinit">Réinitialiser</Link>}
+          </div>
+        </form>
+        {events.length === 0 ? <div className="empty" style={{ marginTop: 14 }}><h3>Aucun événement</h3><p>{nbFiltres > 0 || cat ? "Aucun événement ne correspond à ces filtres. Ce n'est pas une confirmation que rien ne s'est passé : élargissez la période, la famille ou l'auteur." : "Les événements apparaîtront ici dès la première action."}</p></div> : (
           <ul className="timeline" style={{ marginTop: 14 }}>{events.map((e) => (
             <li key={e.id}><span className={`tl-dot ${e.type.includes("fail") || e.type.includes("rolled") ? "is-attention" : e.type.startsWith("action") ? "is-sain" : "is-tech"}`}><Icon name={e.type.startsWith("action") ? "check" : "dot"} /></span>
               <div><span className="tl-when" title={e.type}>{fmtDateTime(e.createdAt)} · {auditLabel(e.type)}</span><p className="tl-what">{e.summary}</p><p className="tl-who">{who(e.actor)}</p></div></li>

@@ -4,7 +4,18 @@ import { typesOfCategory, type AuditCategory } from "./types";
 
 const { auditEvents: t } = schema;
 
-export type AuditFilter = { category?: AuditCategory; entity?: string; entityId?: string };
+/** Qui a agi : une personne (`user:…`), un agent IA (`agent:…`) ou le système (tout le reste : planification, démonstration, webhooks). */
+export type ActorKind = "human" | "agent" | "system";
+export const ACTOR_KINDS: Record<ActorKind, string> = { human: "Une personne", agent: "Un agent IA", system: "Le système" };
+export const isActorKind = (v: unknown): v is ActorKind => typeof v === "string" && Object.hasOwn(ACTOR_KINDS, v);
+/** Jour civil `YYYY-MM-DD` valide (rejette 2026-02-31) ; sinon undefined. */
+export function parseDay(v: unknown): string | undefined {
+  if (typeof v !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return undefined;
+  const d = new Date(v + "T00:00:00Z");
+  return Number.isNaN(+d) || d.toISOString().slice(0, 10) !== v ? undefined : v;
+}
+/** `from` et `to` : jours UTC inclusifs. */
+export type AuditFilter = { category?: AuditCategory; entity?: string; entityId?: string; from?: string; to?: string; actorKind?: ActorKind };
 export type AuditRow = typeof t.$inferSelect;
 export type AuditPage = { events: AuditRow[]; nextCursor: string | null };
 
@@ -28,6 +39,12 @@ export async function listAuditEvents(tenantId: string, opts: AuditFilter & { li
   if (opts.category) where.push(inArray(t.type, typesOfCategory(opts.category)));
   if (opts.entity) where.push(eq(t.entity, opts.entity));
   if (opts.entityId) where.push(eq(t.entityId, opts.entityId));
+  const from = parseDay(opts.from), to = parseDay(opts.to);
+  if (from) where.push(sql`${t.createdAt} >= ${from + "T00:00:00Z"}::timestamptz`);
+  if (to) where.push(sql`${t.createdAt} < (${to + "T00:00:00Z"}::timestamptz + interval '1 day')`);
+  if (opts.actorKind === "human") where.push(sql`${t.actor} like 'user:%'`);
+  else if (opts.actorKind === "agent") where.push(sql`${t.actor} like 'agent:%'`);
+  else if (opts.actorKind === "system") where.push(sql`${t.actor} not like 'user:%' and ${t.actor} not like 'agent:%'`);
   const cur = opts.cursor ? decode(opts.cursor) : null;
   if (cur) where.push(sql`(${t.createdAt}, ${t.id}) < (${cur[0]}::timestamptz, ${cur[1]})`);
   const rows = await ex.select({ e: t, ts: TS }).from(t).where(and(...where)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit + 1);

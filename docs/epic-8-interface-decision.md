@@ -80,3 +80,13 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - Écran : filtres en liste déroulante accessibles (mobile), compteur de résultats, bouton « Réinitialiser », état vide qui distingue « aucun résultat avec ces filtres » de « rien à arbitrer ».
 - Aucune migration, aucune variable d'environnement. Les paramètres d'URL inconnus sont ignorés (jamais d'erreur).
 - Tests : unitaires (filtres, tri, rang stable, paramètres invalides), E2E 3 viewports (filtrer, réinitialiser, pas de débordement horizontal).
+
+## US-085 — Chronologie et journal d'audit
+
+**Plan.** Le journal en ajout seul, ses familles, la pagination par curseur, la trace du dossier (US-083) et le droit `audit.read` (US-084) existent. Reste à rendre le journal exploitable quand il grossit.
+
+- `listAuditEvents` gagne la période (`from`/`to`, jours UTC inclusifs, jour invalide ignoré) et l'auteur (`actorKind` : personne `user:`, agent `agent:`, système = le reste), combinables avec la famille et l'objet.
+- API `GET /api/audit-events` : `from`, `to`, `actor` validés (400 explicite), toujours réservée à `audit.read`, toujours bornée au propriétaire de la session.
+- Page Historique : formulaire GET (dates + auteur) conservant la famille et la pagination ; dates inversées remises dans l'ordre ; état vide qui n'affirme pas qu'« il ne s'est rien passé ».
+- Aucune migration (le journal reste intact, index existants suffisants), aucune variable d'environnement.
+- Tests : unitaires (jours valides), base de données (bornes de période, auteurs, étanchéité entre propriétaires), E2E 3 viewports (filtres, vide, réinitialisation, API).
