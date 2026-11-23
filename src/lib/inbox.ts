@@ -32,8 +32,9 @@ const cand = (o: InboxItem) => (o.candidates as Candidate[])[o.selected];
 export const guarded = (o: InboxItem) => o.veto || (o.candidates as Candidate[]).some((c) => c.audit.verdict === "REJECT");
 /** Même critère que le badge « Validation renforcée » de la carte : verdict NEEDS_HUMAN de l'option retenue. */
 const reinforced = (o: InboxItem) => cand(o)?.audit.verdict === "NEEDS_HUMAN";
+export const reinforcedNeeded = reinforced;
 /** Urgent : séjour en cours ou à venir, dont le début tombe dans les 14 jours. Un séjour terminé n'est jamais urgent. */
-const urgent = (o: InboxItem, today: string) => diffDays(o.stayTo, today) >= 0 && diffDays(o.stayFrom, today) <= URGENT_DAYS;
+export const urgent = (o: InboxItem, today: string) => diffDays(o.stayTo, today) >= 0 && diffDays(o.stayFrom, today) <= URGENT_DAYS;
 
 /** Rang de priorité de chaque situation ouverte, calculé sur la liste complète : filtrer ne renumérote jamais. */
 export function priorityRanks(all: InboxItem[]): Map<string, number> {

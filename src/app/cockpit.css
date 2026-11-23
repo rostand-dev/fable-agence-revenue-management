@@ -1878,3 +1878,13 @@ table.cascade .delta-neu { color: var(--quiet); }
 .inbox-count { margin: 0 0 12px; font-size: 13px; color: var(--quiet); }
 .inbox-filters select:focus-visible, .inbox-filters input[type="date"]:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 .inbox-filters input[type="date"] { color-scheme: dark; }
+
+/* US-080 : les chiffres du tableau de bord sont des liens vers la liste qui les détaille */
+.metric-link { display: block; color: inherit; text-decoration: none; border-radius: 12px; min-width: 0; }
+.metric-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+@media (hover: hover) { .metric-link:hover { filter: brightness(1.08); } }
+/* US-080 : tuiles de synthèse enveloppées dans un lien, et groupes de moins de quatre tuiles sans cellule vide */
+.synth > .metric-link { background: rgb(10 12 22 / 72%); }
+.synth > .metric-link > .metric { --od-gap: 4px; padding: 16px 18px; height: 100%; }
+.synth.synth-fit { display: flex; flex-wrap: wrap; }
+.synth.synth-fit > * { flex: 1 1 200px; min-width: 0; }

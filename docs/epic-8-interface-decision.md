@@ -101,3 +101,18 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - Tests : unitaires (synthèse), base de données (chronologie : mélange logement/dossier/action, autre logement exclu, autre propriétaire exclu), E2E 3 viewports (synthèse visible, onglet Historique, rôle sans droit, aucun débordement).
 
 Après relecture (US-081) : « nuits libres au prix inconnu » se calcule sur le prix réellement affiché (canal choisi compris) ; la synthèse et les codes de dossiers ne sont calculés que pour l'onglet qui les affiche ; dette notée : le triple OR de `propertyAuditTrail` pourrait devenir trois sélections `UNION ALL` bornées si le journal devient très volumineux.
+
+## US-080 — Tableau de bord portefeuille
+
+**Plan.** Dernière brique : une page `/portefeuille` qui agrège et relie tout le reste, sans rien recalculer qui existe déjà ailleurs.
+
+- `src/lib/portfolio-summary.ts` (pur, testé) : totaux des dossiers ouverts (veto, séjours urgents, validation renforcée, garde-fous) en réutilisant les critères de la boîte d'opportunités (`src/lib/inbox.ts`), actions en attente (à exécuter, à vérifier, en échec), lignes par logement triées (veto, urgence, volume, nom). Un dossier d'un logement inconnu n'entre jamais dans les totaux.
+- Les chiffres « À décider » et ceux des lignes par logement sont des liens vers la liste qui les détaille : `/?u=veto`, `/?u=urgent`, `/?u=renforcee`, `/?p=<logement>`, fiche logement, dossier de l'action.
+- Occupation des 3 derniers mois complets, calculée logement par logement puis sommée (jamais sur les réservations mélangées) ; logements en saisie et sans historique exclus ; « inconnue » sans historique, jamais 0 %. Le revenu net reste dans la fiche logement et le bilan (net partiel ou inconnu non agrégé ici).
+- Santé des intégrations SuperHote et PriceLabs (état, coupe-circuit, dernière synchronisation, erreurs d'ingestion).
+- Navigation : entrée « Tableau de bord » dans « Poste de travail », hors barre basse mobile (accessible par « Plus ») pour ne pas surcharger l'écran de 360 px. La boîte d'opportunités reste la page d'accueil.
+- Lecture seule : aucune mutation, donc aucune entrée d'audit ; accessible à tous les rôles.
+- Aucune migration, aucune variable d'environnement.
+- Tests : unitaires (agrégation), E2E 3 viewports (sections, cohérence avec la boîte, liens, navigation, débordement).
+
+Après relecture (US-080) : occupation recalculée par logement (bug de dénominateur corrigé, test à deux logements), « inconnue » sans historique ; tuiles en lien stylées comme les autres ; listes plafonnées signalées (« et N autres », bandeau au-delà de 200 dossiers). Dette notée : les réservations du propriétaire sont chargées en mémoire (même motif que la page Logements) — à borner par fenêtre de dates si le portefeuille grossit.
