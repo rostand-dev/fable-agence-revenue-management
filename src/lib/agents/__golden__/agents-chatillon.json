@@ -1,0 +1,240 @@
+[
+ {
+  "playbook": "PB-05",
+  "title": "3 remises Booking.com se cumulent à 31 % sur 8 nuits",
+  "selected": 0,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "distribution": [
+    {
+     "candidate": 0,
+     "stance": "FAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "APPROVE",
+   "NEEDS_HUMAN"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "NEEDS_HUMAN"
+  ],
+  "appels": 1
+ },
+ {
+  "playbook": "PB-03",
+  "title": "2 nuits invendables entre deux réservations",
+  "selected": 0,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "pricing": [
+    {
+     "candidate": 0,
+     "stance": "FAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "APPROVE",
+   "APPROVE"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "APPROVE"
+  ],
+  "appels": 1
+ },
+ {
+  "playbook": "PB-01",
+  "title": "Remplissage 43 points sous le marché sur J+15 à J+30",
+  "selected": 0,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "pricing": [
+    {
+     "candidate": 0,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ],
+   "distribution": [
+    {
+     "candidate": 1,
+     "stance": "DEFAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "NEEDS_HUMAN",
+   "REJECT",
+   "APPROVE"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "REJECT",
+   "APPROVE"
+  ],
+  "appels": 1
+ },
+ {
+  "playbook": "PB-01",
+  "title": "Remplissage en retrait sur J+61 à J+90, sans cause tarifaire",
+  "selected": 2,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "pricing": [
+    {
+     "candidate": 0,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ],
+   "distribution": [
+    {
+     "candidate": 1,
+     "stance": "DEFAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": "non relue (option rejetée ou sans écriture)",
+  "verdictsAvant": [
+   "NEEDS_HUMAN",
+   "REJECT",
+   "APPROVE"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "REJECT",
+   "APPROVE"
+  ],
+  "appels": 1
+ },
+ {
+  "playbook": "PB-10",
+  "title": "Registre des promotions Airbnb non vérifié depuis 12 jours",
+  "selected": 0,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "distribution": [
+    {
+     "candidate": 0,
+     "stance": "FAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "APPROVE"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN"
+  ],
+  "appels": 1
+ }
+]

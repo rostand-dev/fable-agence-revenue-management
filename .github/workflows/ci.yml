@@ -38,6 +38,9 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # Golden cases du moteur et des agents IA (US-075) : fournisseur scripté, aucun réseau, aucune écriture externe (contrôle statique des imports).
+      # Déjà inclus dans « npm test » ; l'étape dédiée rend l'échec lisible dans la CI.
+      - run: npm run test:golden
 
   # Tests d'intégration sur une vraie base PostgreSQL 16 jetable, y compris le rejeu double des migrations
   # (src/lib/migrations.db.test.ts) : une migration non rejouable fait échouer la CI.
