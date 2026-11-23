@@ -56,3 +56,16 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 **Tests** : unitaires (`rbac.test.ts` : matrice, rôle inconnu, messages), base de données (`rbac.db.test.ts` : refus par rôle sans changement d'état, refus consigné sans fuite du commentaire, opérateur OTA manuel seulement, revenue manager et propriétaire du compte inchangés, API 401/400/403/404/409/200, origine étrangère, journal 403), E2E navigateur (`e2e/droits-roles.spec.ts`, bureau/390/360 : analyste en lecture seule sur la boîte, le dossier, l'historique et Réglages, refus 403 de l'API, auditeur lecteur du journal, revenue manager inchangé), non-régression (suites complètes, golden inchangé).
 
 **Après relecture** : la revue manuelle et la réinstallation de la démonstration exigent aussi le droit de décider (la seconde supprime des dossiers) ; le droit est contrôlé avant la validation du corps de requête (403 quel que soit le corps) ; l'identifiant écrit dans un refus est tronqué à 64 caractères. L'opérateur OTA peut vérifier toute action exécutée (relecture indépendante, RACI §2.2).
+
+## US-083 — Action Review : cascade, planchers, promotions empilées, audit
+
+**Point de départ** : la fiche dossier avait déjà la cascade chiffrée en tableau (actuel / proposé / écart), les bornes, les règles d'audit par option, les jauges de confiance et de risque, le plan de retour arrière, le commentaire obligatoire pour une option à risque élevé ou à valider, et les boutons Approuver / Rejeter. Manquaient la cascade en barres (« waterfall »), la position du prix face aux planchers, la lecture des promotions empilées et la trace d'audit du dossier.
+
+**Ce qui change**
+- **Cascade du revenu net en barres** (`components/Waterfall.tsx`, géométrie pure et testée dans `engine/waterfall.ts`) : une ligne par étape, du prix publié à la contribution, pour la situation actuelle et pour l'option. Le montant est toujours écrit en toutes lettres ; la barre est décorative (le sens ne dépend pas de la couleur). Une cascade qui ne se referme pas sur la contribution est signalée.
+- **Jauge des planchers** : prix vendu par nuit, actuel et proposé, sur un même axe avec le plancher absolu et le plancher stratégique, et une phrase (« sous le plancher absolu », « entre les deux », « au-dessus »).
+- **Promotions empilées** : ordre d'application, montant retiré à chaque étape, remise cumulée face au plafond de la stratégie.
+- **Traçabilité** : événements du journal d'audit du dossier et de son action, du plus ancien au plus récent, avec lien vers le journal complet ; réservée aux rôles qui lisent le journal (US-084).
+- **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
+
+**Tests** : unitaires (`waterfall.test.ts` : géométrie, fermeture, contribution négative, jauge), E2E navigateur (`e2e/revue-action.spec.ts`, bureau/390/360 : cascade, planchers, promotions, barres dans leur piste, traçabilité, sans débordement), non-régression (suites complètes, golden inchangé).

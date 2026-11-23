@@ -25,6 +25,9 @@ import { CHANNEL_LABEL, type Candidate, type EconomicModel } from "@/lib/engine/
 import { euro, signedEuro } from "@/lib/format";
 import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilities";
 import { flagFor } from "@/lib/services/flags";
+import { FloorGauge, PromoStack, Waterfall } from "@/components/Waterfall";
+import { auditTrail } from "@/lib/audit/query";
+import { auditLabel } from "@/lib/audit/types";
 import { can, denyMessage, executePermission, ROLE_LABEL, rolesWith } from "@/lib/rbac";
 
 const RUNBOOK: Record<string, (c: Candidate) => string[]> = {
@@ -80,6 +83,10 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const opinions = (o.signals.agentOpinions as Partial<Record<StrategistId, AgentOpinion>> | undefined) ?? deterministicOpinions({ candidates: cands, signalText: o.signals.signalText, stayFrom: o.stayFrom, stayTo: o.stayTo });
   const action = acts.find((a) => !["CANCELLED"].includes(a.status)) ?? null;
   const history = action ? await db.select().from(schema.actionTransitions).where(and(eq(schema.actionTransitions.tenantId, user.tenantId), eq(schema.actionTransitions.actionId, action.id))).orderBy(asc(schema.actionTransitions.createdAt), asc(schema.actionTransitions.id)) : [];
+  // US-083 : trace d'audit du dossier et de son action, réservée aux rôles qui lisent le journal (US-084)
+  const trail = can(user.role, "audit.read")
+    ? [...(await auditTrail(user.tenantId, "Opportunity", o.id)), ...(action ? await auditTrail(user.tenantId, "RevenueAction", action.id) : [])].sort((a, b) => +a.createdAt - +b.createdAt)
+    : null;
   const open = o.status === "OPEN";
   const q = Number((await searchParams).option);
   const idx = open && Number.isInteger(q) && cands[q] ? q : o.selected;
@@ -315,6 +322,12 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               <p>{c.type === "NO_ACTION" ? "Situation actuelle, maintenue en cas d'inaction." : `Option examinée : ${c.label}.`} Séjour type de {ref.nights} nuit{ref.nights > 1 ? "s" : ""} au prix moyen des dates concernées.</p>
             </header>
             <Cascade current={c.current} proposed={c.proposed} />
+            <div className="wf-grid" data-testid="waterfalls">
+              {c.current && <Waterfall title="Cascade actuelle" result={c.current} />}
+              {c.proposed && <Waterfall title="Cascade de l'option" result={c.proposed} />}
+            </div>
+            <FloorGauge hardCents={hardFloorCents(model, ref.channel, ref.nights)} strategyCents={strategyFloorCents(model, ref.channel, ref.nights)} currentCents={c.current?.soldNightlyCents ?? null} proposedCents={c.proposed?.soldNightlyCents ?? null} />
+            {(c.proposed || c.current) && <PromoStack result={c.proposed ?? c.current} capPct={p.strategy?.maxDiscountStackPct ?? 0} />}
             <div className="bounds">
               <div className="bound bound-cible"><span className="bound-k">Contribution visée par nuit</span><span className="bound-v"><Money cents={model.targetContributionPerNightCents} /></span></div>
               <div className="bound bound-plancher"><span className="bound-k"><Term id="plancher-strategique">Plancher stratégique</Term> · <Term id="prix-vendu">prix vendu</Term></span><span className="bound-v">{euro(strategyFloorCents(model, ref.channel, ref.nights))}</span></div>
@@ -505,6 +518,18 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           </ol>
         </section>
       )}
+
+      <section className="section" aria-labelledby="trace-h" data-testid="trace-audit">
+        <h2 id="trace-h">Traçabilité</h2>
+        {trail === null ? <p className="section-note">{denyMessage(user.role, "audit.read")}</p> : (
+          <>
+            <p className="section-note">Ce que le journal d'audit a inscrit pour ce dossier et son action, du plus ancien au plus récent. Le journal est en ajout seul. <Link href="/historique#journal">Journal complet</Link></p>
+            {trail.length === 0 ? <p className="muted" style={{ margin: 0 }}>Aucun événement : le dossier n'a pas encore été décidé.</p> : (
+              <ol className="trace-list">{trail.map((e) => <li key={e.id}><time dateTime={e.createdAt.toISOString()}>{fmtDateTime(e.createdAt)} · {auditLabel(e.type)}</time><span>{e.summary}</span></li>)}</ol>
+            )}
+          </>
+        )}
+      </section>
 
       <section className="section" aria-labelledby="talk-h">
         <div className="agent-talk">
