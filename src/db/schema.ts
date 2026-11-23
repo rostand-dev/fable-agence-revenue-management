@@ -364,6 +364,8 @@ export const revenueActions = pgTable("revenue_actions", {
   approvedById: text("approved_by_id"),
   approvedAt: ts("approved_at"),
   executedAt: ts("executed_at"),
+  /** US-094 : dernière relecture chez PriceLabs pour détecter une dérive (jamais plus d'une fois par période) */
+  driftCheckedAt: ts("drift_checked_at"),
   execution: jsonb("execution").$type<any>(),
   verifiedAt: ts("verified_at"),
   measureDueAt: date("measure_due_at", { mode: "string" }),
@@ -607,3 +609,33 @@ export const externalWrites = pgTable("external_writes", {
   createdAt: created(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("external_writes_action").on(t.actionId), index("external_writes_tenant").on(t.tenantId, t.createdAt)]);
+
+/** US-094 : alertes d'exécution PriceLabs (échec, écriture non confirmée, retour arrière en échec, dérive, exécution bloquée). */
+export const executionAlerts = pgTable("execution_alerts", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").references(() => properties.id, { onDelete: "cascade" }),
+  actionId: text("action_id").references(() => revenueActions.id, { onDelete: "cascade" }),
+  writeId: text("write_id"),
+  /** WRITE_FAILED | WRITE_UNCONFIRMED | ROLLBACK_FAILED | PRECONDITION_FAILED | DRIFT | STUCK */
+  kind: text("kind").notNull(),
+  /** CRITICAL | WARNING */
+  severity: text("severity").notNull(),
+  title: text("title").notNull(),
+  /** Texte lisible : jamais de clé API ni de donnée de voyageur */
+  detail: text("detail").notNull(),
+  /** Une seule alerte non résolue par clé (ex. `DRIFT:<action>:<empreinte des écarts>`) */
+  dedupeKey: text("dedupe_key").notNull(),
+  /** OPEN | ACKNOWLEDGED | RESOLVED */
+  status: text("status").notNull().default("OPEN"),
+  notifiedAt: ts("notified_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  acknowledgedAt: ts("acknowledged_at"),
+  resolvedAt: ts("resolved_at"),
+  resolution: text("resolution"),
+  createdAt: created(),
+}, (t) => [
+  index("execution_alerts_tenant").on(t.tenantId, t.status, t.createdAt),
+  index("execution_alerts_action").on(t.actionId),
+  uniqueIndex("execution_alerts_open_dedupe").on(t.tenantId, t.dedupeKey).where(sql`status <> 'RESOLVED'`),
+]);

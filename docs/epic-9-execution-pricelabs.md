@@ -118,4 +118,23 @@ La fiche dossier affiche ces éléments dans le panneau « Preuve d'écriture ch
 
 Aucune migration, aucune variable d'environnement.
 
+## US-094 — Alertes sur échec ou dérive
+
+Plan (écrit avant l'implémentation).
+
+**Besoin** (blueprint §2.3) : alerte dans les quinze minutes après un échec d'écriture, et détection d'un écart entre ce que NuitSignal a écrit et ce que PriceLabs contient. Aujourd'hui l'échec n'est visible que dans l'écran de l'action, et rien ne surveille une action restée « en exécution » ni un prix modifié ailleurs après coup.
+
+**Ce qui est livré**
+- **Table `execution_alerts`** (migration 0027, idempotente, isolation par propriétaire) : type, gravité, action / logement / écriture concernés, texte, clé de dédoublonnage (une seule alerte non résolue par clé), statut OUVERTE / PRISE EN COMPTE / RÉSOLUE, date d'envoi de l'e-mail.
+- **Alerte immédiate** (donc dans les 15 minutes) aux points d'échec : écriture refusée (WRITE_FAILED), écriture envoyée sans confirmation (WRITE_UNCONFIRMED), retour arrière en échec (ROLLBACK_FAILED), précondition non remplie (PRECONDITION_FAILED), vérification en écart (DRIFT).
+- **Surveillance planifiée** (planificateur existant, toutes les 15 min) : action restée en exécution > 15 min (STUCK), ligne de journal « en préparation » > 10 min, et **contrôle de dérive** : relecture chez PriceLabs des actions écrites (exécutées, vérifiées, en mesure) toutes les 6 h au plus, écart → alerte DRIFT, retour à la conformité → alerte résolue.
+- **Résolution automatique** : retour arrière réussi, vérification conforme, relecture conforme, action sortie de l'exécution.
+- **E-mail** aux rôles qui peuvent décider (propriétaire, administrateur, revenue manager) via Resend, seulement si `RESEND_API_KEY` et `EMAIL_FROM` sont renseignées ; sinon l'alerte reste visible dans l'application. Aucun secret ni donnée de voyageur dans le message.
+- **Écran « Alertes »** (responsive, menu + pastille du nombre d'alertes ouvertes) : à traiter / prises en compte / résolues, lien vers le dossier, bouton « Prendre en compte » et, pour une action bloquée, « Marquer comme interrompue » (l'action passe en échec, le retour arrière devient possible). Alertes de l'action rappelées sur sa fiche.
+- **Audit** : `alert.raised`, `alert.acknowledged` (+ `action.failed` pour la reprise).
+
+**Hors périmètre** : envoi vers Slack ou SMS ; reprise automatique d'une exécution bloquée (toujours décidée par une personne).
+
+**Variables d'environnement** : aucune nouvelle ; la description de `RESEND_API_KEY` / `EMAIL_FROM` mentionne désormais les alertes.
+
 *(Les sections des autres US sont ajoutées au fil de l'épic.)*

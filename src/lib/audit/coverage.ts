@@ -30,6 +30,8 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   executeAction: { events: ["action.executed", "action.failed", "action.precondition_failed", "access.denied"] },
   verifyAction: { events: ["action.verified", "action.verification_failed", "access.denied"] },
   rollbackAction: { events: ["action.rolled_back", "action.rollback_failed", "access.denied"] },
+  acknowledgeAlertAction: { events: ["alert.acknowledged", "access.denied"] },
+  interruptStuckAction: { events: ["action.failed", "access.denied"] },
   reviewAction: { events: ["review.completed", "access.denied"] },
   resetDemoAction: { events: ["demo.seeded", "access.denied"] },
   chatAction: { exempt: "Conversation avec un agent : aucune décision ni réglage n'est modifié, l'échange est conservé dans chat_messages." },

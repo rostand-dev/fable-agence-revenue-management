@@ -1892,3 +1892,15 @@ table.cascade .delta-neu { color: var(--quiet); }
 .synth > .metric-link > .metric { --od-gap: 4px; padding: 16px 18px; height: 100%; }
 .synth.synth-fit { display: flex; flex-wrap: wrap; }
 .synth.synth-fit > * { flex: 1 1 200px; min-width: 0; }
+
+/* US-094 : alertes d'exécution — cartes empilées, lisibles de 360 px au bureau */
+.alert-list { display: grid; gap: 12px; margin-top: 12px; }
+.alert-card { padding: 16px; }
+.alert-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.alert-title { margin: 10px 0 6px; font-size: 17px; overflow-wrap: anywhere; }
+.alert-detail { margin: 0 0 8px; overflow-wrap: anywhere; }
+.alert-meta { margin: 0 0 12px; font-size: 13px; overflow-wrap: anywhere; }
+.alert-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.alert-actions form { margin: 0; }
+.rail-count-alert { color: var(--attention-ink); font-weight: 700; }
+@media (max-width: 767px) { .bottombar-count-alert { background: #be123c; } }

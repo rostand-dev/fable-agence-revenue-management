@@ -232,6 +232,9 @@ Les données vivent dans le volume `nuitsignal-db` : pensez à activer une sauve
 
 Une action approuvée sur un logement réel peut modifier PriceLabs (prix minimum, prix de base, prix datés à prix fixe), avec relecture de confirmation, journal d'idempotence (`external_writes`) et reçu ; le détail, les limites et la procédure de première écriture sont dans `docs/epic-9-execution-pricelabs.md`. **Fermée par défaut** : la variable `PRICELABS_WRITE_ENABLED` (`true` pour ouvrir, tout autre état = fermée) est la seule porte d'entrée ; ne la créez pas, ou mettez `false`, tant que la procédure n'est pas validée sur le staging. La démonstration reste simulée. Migration `0025_us_090_external_writes` idempotente.
 
+**Alertes d'exécution (US-094)** : l'écran `/alertes` (pastille dans le menu) liste les échecs d'écriture, écritures non confirmées, retours arrière en échec, préconditions refusées, écarts chez PriceLabs (relecture des écritures déjà faites toutes les 6 h au plus) et actions bloquées en exécution (plus de 15 min). Une alerte naît au moment de l'échec ; elle se résout d'elle-même quand la situation redevient conforme. Si `RESEND_API_KEY` et `EMAIL_FROM` sont renseignées, un e-mail part au propriétaire, à l'administrateur et au revenue manager ; sinon l'alerte reste visible dans l'application. Aucune nouvelle variable d'environnement ; la migration `0027` est idempotente et s'applique au démarrage.
+
+
 ## Checklist de qualité et activation (US-024)
 
 Un logement passe d'**Observation** à **Actif** seulement si la checklist de qualité (`/logements/[id]/qualite`, `GET /api/v1/properties/{id}/quality`) n'a plus aucun point bloquant. Le lancement en Observation (parcours de création) est inchangé.

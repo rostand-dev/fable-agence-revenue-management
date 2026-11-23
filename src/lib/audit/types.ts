@@ -33,6 +33,8 @@ export const AUDIT_TYPES = {
   "action.verified": { category: "EXECUTION", label: "Action vérifiée" },
   "action.verification_failed": { category: "EXECUTION", label: "Vérification en échec" },
   "action.rollback_failed": { category: "EXECUTION", label: "Retour arrière en échec" },
+  "alert.raised": { category: "EXECUTION", label: "Alerte d'exécution levée" },
+  "alert.acknowledged": { category: "EXECUTION", label: "Alerte d'exécution prise en compte" },
   "action.rolled_back": { category: "EXECUTION", label: "Retour arrière" },
   "experiment.measured": { category: "EXECUTION", label: "Résultat mesuré" },
   // réglages

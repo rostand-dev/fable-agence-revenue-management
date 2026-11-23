@@ -7,6 +7,7 @@ import { syncPriceLabs } from "./pricelabs-sync";
 import { runDailyReview } from "./review";
 import { resolveFlag, type FlagRow } from "../flags/catalog";
 import { refreshSuperhoteReservations } from "./superhote-sync";
+import { runExecutionWatch } from "./execution-alerts";
 
 const { properties, reservations, agentRuns } = schema;
 type Prop = typeof properties.$inferSelect;
@@ -102,6 +103,8 @@ export async function runDue(now = new Date()): Promise<{ read: number; reviewed
       try { const r = await processProperty(p, now, byTenant.get(p.tenantId) ?? []); if (r.read) read++; if (r.reviewed) reviewed++; }
       catch (e) { console.error("[planificateur]", p.id, e instanceof Error ? e.message : e); }
     }
+    // US-094 : actions bloquées, écritures jamais parties et dérive chez PriceLabs ; une erreur ici n'arrête pas le passage
+    try { await runExecutionWatch(now); } catch (e) { console.error("[alertes]", e instanceof Error ? e.message : e); }
   } finally { g.__nsSchedulerBusy = false; }
   return { read, reviewed };
 }
