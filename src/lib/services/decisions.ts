@@ -225,7 +225,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
           if (r) prevMin = r.previous.minPriceCents ?? null;
         }
         execution = written
-          ? { mode: "PRICELABS_API", note: "Écriture PriceLabs confirmée par relecture.", writeId: written.writeId, adapter: written.adapter, receipt: { method: written.receipt.method, endpoint: written.receipt.endpoint, status: written.receipt.status, requestHash: written.receipt.requestHash, sentAt: written.receipt.sentAt }, plan: written.plan, remoteBefore: written.before, remoteAfter: written.after, previousOverrides: written.previousOverrides, before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline }
+          ? { mode: "PRICELABS_API", note: "Écriture PriceLabs confirmée par relecture.", writeId: written.writeId, adapter: written.adapter, beforeHash: written.beforeHash, afterHash: written.afterHash, receipt: { method: written.receipt.method, endpoint: written.receipt.endpoint, status: written.receipt.status, requestHash: written.receipt.requestHash, sentAt: written.receipt.sentAt }, plan: written.plan, remoteBefore: written.before, remoteAfter: written.after, previousOverrides: written.previousOverrides, before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline }
           : { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline };
       } else if (mode === "MANUAL_RUNBOOK") {
         if (!decl) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
@@ -246,7 +246,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
       await move(tx, a.id, actor.tenantId, "EXECUTING", "EXECUTED", { execution, executedAt: new Date() });
       await audit(tx, actor.tenantId, userActor(actor.id), "action.executed", "RevenueAction", a.id, `« ${a.label} » exécutée (${execution.mode === "PRICELABS_API" ? "écriture PriceLabs confirmée par relecture" : execution.mode === "DEMO_SIMULATED" ? "écriture simulée, démonstration" : execution.mode === "MANUAL_DECLARED" ? "procédure manuelle déclarée" : "tâche interne"}).`,
         { code: o.code, actionType: a.type, mode: execution.mode, declaredScope: execution.declaredScope ?? null, declaredDate: execution.declaredDate ?? null, proof: execution.proof ?? null,
-          ...(execution.mode === "PRICELABS_API" ? { writeId: execution.writeId, receipt: execution.receipt, adapter: execution.adapter } : {}) });
+          ...(execution.mode === "PRICELABS_API" ? { writeId: execution.writeId, receipt: execution.receipt, adapter: execution.adapter, beforeHash: execution.beforeHash, afterHash: execution.afterHash } : {}) });
     });
   } catch (e) {
     // message technique brut (SQL, URL…) jamais écrit dans le journal : seules nos erreurs métier le sont

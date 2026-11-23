@@ -183,6 +183,13 @@
       "when": 1795455876240,
       "tag": "0025_us_090_external_writes",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795459548002,
+      "tag": "0026_us_092_write_snapshots",
+      "breakpoints": true
     }
   ]
 }

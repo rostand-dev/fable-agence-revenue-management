@@ -91,4 +91,14 @@ Avant tout envoi, l'état réel chez PriceLabs est comparé à celui sur lequel 
 
 Aucune migration, aucune variable d'environnement. Les dossiers créés avant cette US ne portent pas `simulatedPrices` : pour une variation en %, ils sont refusés avec « relancez la revue » (comportement voulu, échec fermé). Les tolérances (2 % et 5 %) sont des constantes du module, à ajuster ici si l'usage le demande.
 
+## US-092 — Instantanés avant/après et reçu externe
+
+Chaque écriture porte, dans sa ligne du journal `external_writes` (migration `0026`, idempotente : quatre colonnes ajoutées avec `IF NOT EXISTS`) :
+
+- **l'état d'avant**, inscrit AVANT l'envoi, et **l'état d'après**, relu juste après (conservé aussi quand la relecture ne retrouve pas l'écriture : c'est la preuve de ce qui s'est passé) : limites, devise, synchronisation, prix de la grille et prix datés bruts sur les dates visées ;
+- **une empreinte SHA-256** de chacun, recopiée dans l'exécution et dans l'événement d'audit `action.executed` ;
+- **le reçu de l'appel** : méthode, adresse, statut HTTP, date d'envoi, empreinte de la requête.
+
+La fiche dossier affiche ces éléments dans le panneau « Preuve d'écriture chez PriceLabs » (état de l'écriture, reçu, empreintes, tableau avant/après), lisible sans défilement horizontal sur bureau, 390 et 360 px. Aucune clé API ni donnée de voyageur n'y figure. Le rôle applicatif ne peut pas supprimer une ligne du journal ; il peut la mettre à jour (statut, reçu, état d'après). La protection contre une retouche est l'empreinte recopiée dans l'événement d'audit, append-only : comparer les empreintes de l'écran à celles de l'audit montre toute modification. L'empreinte porte sur le contenu de l'instantané, date de lecture exclue ; seuls les champs connus d'un prix daté sont conservés (liste blanche). Aucune nouvelle variable d'environnement.
+
 *(Les sections des autres US sont ajoutées au fil de l'épic.)*

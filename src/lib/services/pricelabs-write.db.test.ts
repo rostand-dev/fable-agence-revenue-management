@@ -6,7 +6,7 @@ import { addDays } from "../dates";
 import { usePriceLabsAdapter } from "../integrations/pricelabs";
 import { FakePriceLabs } from "../integrations/pricelabs-fake";
 import { buildScenario, FAKE_LISTING_ID } from "../integrations/pricelabs-scenarios";
-import { usePriceLabsWriter } from "../integrations/pricelabs-write";
+import { requestHash, usePriceLabsWriter } from "../integrations/pricelabs-write";
 import { FakePriceLabsWriter } from "../integrations/pricelabs-write-fake";
 import * as D from "./decisions";
 import { connectPriceLabs, selectListing } from "./pricelabs-sync";
@@ -132,15 +132,54 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
     expect(r.mismatches[0]).toContain("prix minimum relu");
   });
 
-  it("l'état d'avant est inscrit au journal avant l'envoi, sans clé API", async () => {
+  it("instantanés avant/après inscrits au journal avec leurs empreintes (US-092), sans clé API", async () => {
     const { t, prop, writer } = await setup("avant");
     await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 11000 }], { currency: "EUR", reason: "manuel" });
+    const a = await action(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1, D2] });
+    const out = await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
+    const [row] = await writesOfAction(t.tenantId, a.id);
+    const before = row.stateBefore as any, after = row.stateAfter as any;
+    expect(before.limits.minCents).toBe(8300);
+    expect(before.overrides).toHaveLength(1); expect(before.overrides[0]).toMatchObject({ date: D1, price: "110" });
+    expect(after.overrides.map((o: any) => o.date)).toEqual([D1, D2]);
+    expect(row.stateBeforeHash).toMatch(/^[0-9a-f]{64}$/); expect(row.stateAfterHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(row.stateBeforeHash).not.toBe(row.stateAfterHash);
+    expect(out.beforeHash).toBe(row.stateBeforeHash); expect(out.afterHash).toBe(row.stateAfterHash);
+    { const { readAt: _r, ...content } = before; expect(requestHash(content)).toBe(row.stateBeforeHash); } // l'empreinte porte bien sur le contenu stocké (date de lecture exclue)
+    expect(JSON.stringify(row)).not.toContain(KEY);
+  });
+
+  it("liste blanche : un champ inattendu renvoyé par PriceLabs n'entre jamais dans l'instantané", async () => {
+    const { t, prop, writer } = await setup("liste-blanche");
+    await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 11000 }], { currency: "EUR", reason: "manuel" });
+    writer.overrides.get(FAKE_LISTING_ID)!.get(D1)!.guest_email = "voyageur@example.test";
     const a = await action(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1] });
     await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
+    expect(JSON.stringify(await writesOfAction(t.tenantId, a.id))).not.toContain("voyageur@example.test");
+  });
+
+  it("refus 4xx : instantané d'avant présent, pas d'après ; empreinte d'avant stable entre deux lectures identiques", async () => {
+    const { t, prop, writer } = await setup("avant-seul");
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    writer.failWrites = { status: 403 };
+    await expect(sendPriceLabsWrite(await preparePriceLabsWrite(prop, a))).rejects.toMatchObject({ code: "SEND" });
     const [row] = await writesOfAction(t.tenantId, a.id);
-    expect((row.plan as any).before.limits.minCents).toBe(8300);
-    expect((row.plan as any).before.overrides[0]).toMatchObject({ date: D1, price: "110" });
-    expect(JSON.stringify(row)).not.toContain(KEY);
+    expect(row.stateBefore).toBeTruthy(); expect(row.stateBeforeHash).toBeTruthy(); expect(row.stateAfter).toBeNull(); expect(row.stateAfterHash).toBeNull();
+    writer.failWrites = null;
+    const b = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
+    await sendPriceLabsWrite(await preparePriceLabsWrite(prop, b)); // même état d'avant (lecture ultérieure, contenu identique)
+    expect((await writesOfAction(t.tenantId, b.id))[0].stateBeforeHash).toBe(row.stateBeforeHash);
+  });
+
+  it("écriture envoyée mais non retrouvée à la relecture : l'état d'après est quand même conservé comme preuve", async () => {
+    const { t, prop, writer } = await setup("preuve-ko");
+    const a = await action(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1] });
+    const w = await preparePriceLabsWrite(prop, a);
+    const set = writer.setPriceOverrides.bind(writer);
+    writer.setPriceOverrides = async (...args) => { const r = await set(...args); writer.overrides.get(FAKE_LISTING_ID)?.clear(); return r; }; // PriceLabs « oublie » la valeur
+    await expect(sendPriceLabsWrite(w)).rejects.toMatchObject({ code: "CONFIRM" });
+    const [row] = await writesOfAction(t.tenantId, a.id);
+    expect(row.status).toBe("SENT"); expect(row.stateAfter).toBeTruthy(); expect(row.stateAfterHash).toBeTruthy();
   });
 
   it("réponse ambiguë (500 après reprises) : journal « envoyée », message honnête, jamais « rien n'a été modifié »", async () => {
@@ -233,6 +272,10 @@ describe("execute / verify / rollback d'une action sur un logement réel", () =>
     expect(row.execution).toMatchObject({ mode: "PRICELABS_API", adapter: "FAKE", receipt: { method: "POST", endpoint: "/listings" }, remoteBefore: { limits: { minCents: 8300 } }, remoteAfter: { limits: { minCents: 9500 } } });
     expect(JSON.stringify(row.execution)).not.toContain(KEY);
     expect((await read.listListings())[0].minCents).toBe(9500);
+    const [w0] = await writesOfAction(t.tenantId, a.id);
+    const exe = (await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.tenantId, t.tenantId))).find((e) => e.type === "action.executed" && e.entityId === a.id);
+    expect(exe?.payload).toMatchObject({ beforeHash: w0.stateBeforeHash, afterHash: w0.stateAfterHash }); // les empreintes de l'audit append-only égalent celles de la ligne
+    expect(row.execution).toMatchObject({ beforeHash: w0.stateBeforeHash, afterHash: w0.stateAfterHash });
     await D.verify(t.actor, a.id);
     expect((await status(a.id)).status).toBe("MEASURING");
     await expect(D.rollback(t.actor, a.id, "test")).rejects.toThrow(/pas encore disponible/);
