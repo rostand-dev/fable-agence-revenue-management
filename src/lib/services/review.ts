@@ -8,6 +8,9 @@ import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifec
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveTargets } from "../agents/llm-config";
 import { openBudget } from "../agents/runner";
+import { analyzeMarket } from "../agents/market-analyst";
+import { PROMPTS } from "../agents/prompts";
+import { deterministicAnalysis, evidenceHashOf, type MarketAnalysis } from "../agents/market-analysis";
 import { capabilityFlags, capability } from "../integrations/capabilities";
 import { freshnessOf } from "../freshness";
 import { loadFlags } from "./flags";
@@ -74,7 +77,7 @@ export function oppRow(o: DetectedOpportunity, scoring: ScoringConfig = DEFAULT_
   const score = scoreOpportunity(o, scoring);
   return {
     playbook: o.playbook, reasonCode: o.reasonCode, title: o.title, stayFrom: o.stayFrom, stayTo: o.stayTo,
-    signals: { ...o.signals, signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
+    signals: { ...o.signals, marketAnalysis: deterministicAnalysis(o), signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
     diagnosis: o.diagnosis, candidates: o.candidates, selected: o.selected, priority: score.score, confidence: o.diagnosis.confidence,
     risk: c.risk, impactCents: c.type === "NO_ACTION" ? 0 : c.expectedDeltaCents, veto: o.veto, expiresAt: o.expiresAt,
   };
@@ -122,6 +125,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const budget = await openBudget(tenantId, now);
   const llm = await resolveTargets(tenantId, "direction");
   budget.targets.set("direction", llm);
+  const llmMarche = (await resolveTargets(tenantId, "marche")).length > 0;
   let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
 
@@ -165,7 +169,20 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       const decision = openingDecision(prev, o.playbook, now);
       if (decision.action === "SKIP") { resting++; continue; } // période de repos du playbook, ou dossier différé
       const row = { ...oppRow(o, scoring), groupKey: groups[idx] };
+      // US-071 : constats de l'analyste marché. Une analyse par modèle n'est refaite que si les faits ont changé (la revue est fréquente, le budget est borné).
+      const prevAnalysis = prev?.signals?.marketAnalysis as MarketAnalysis | undefined;
+      // Même logique après un échec du modèle (sortie invalide, panne) : pas de nouvel essai pour les mêmes faits avant 6 h.
+      const sameFacts = !!prevAnalysis && prevAnalysis.evidenceHash === evidenceHashOf(o, PROMPTS["marche.market_analysis"].version);
+      const reuse = sameFacts && (prevAnalysis!.mode === "LLM" || (!!prevAnalysis!.triedAt && +now - +new Date(prevAnalysis!.triedAt) < 6 * 3600_000));
+      const analysisFor = async (oppId: string) => {
+        if (reuse) return prevAnalysis!;
+        if (!llmMarche) return deterministicAnalysis(o);
+        const a = await analyzeMarket(budget, o, oppId);
+        await db.insert(agentRuns).values(a.outcome.run);
+        return a.analysis;
+      };
       if (decision.action === "REFRESH" && prev) {
+        row.signals = { ...row.signals, marketAnalysis: await analysisFor(prev.id) };
         const sameChoice = prev.candidates?.[prev.selected]?.label === o.candidates[o.selected].label;
         await db.update(opportunities).set({ ...row, narrative: sameChoice && prev.narrative ? prev.narrative : deterministicNarrative(o) }).where(eq(opportunities.id, prev.id));
         refreshed++; continue;
@@ -177,6 +194,8 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
         // trace enregistrée tout de suite : le budget du jour la voit, même si la revue échoue plus loin ou si une autre revue tourne en parallèle
         await db.insert(agentRuns).values(w.outcome.run);
       }
+      // la synthèse adressée au propriétaire passe avant l'analyse : quand le plafond est serré, c'est elle qui est servie
+      row.signals = { ...row.signals, marketAnalysis: await analysisFor(id) };
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;
     }

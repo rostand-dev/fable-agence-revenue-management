@@ -7,6 +7,8 @@ import { httpCredentials } from "./e2e/helpers/env";
  * - E2E_EMAIL / E2E_PASSWORD : compte de démo utilisé pour se connecter.
  * - E2E_HTTP_USER / E2E_HTTP_PASSWORD : identifiants HTTP Basic si l'environnement testé est protégé (Preview Coolify). Absents : aucune authentification HTTP.
  * - E2E_CHROME_PATH : chemin d'un Chrome déjà installé (poste local sans téléchargement de navigateur). Absent : Chromium de Playwright.
+ * - ANTHROPIC_API_BASE : adresse du faux serveur de modèle (ex. http://127.0.0.1:4011). Si elle pointe vers cette machine, le faux serveur (scripts/fake-llm-server.ts)
+ *   est lancé avant l'application, qui le lit comme elle lirait Anthropic (avec ANTHROPIC_API_KEY factice). Absente : les agents restent en repli déterministe.
  * - PRICELABS_API_BASE : adresse du faux serveur PriceLabs (ex. http://127.0.0.1:4010/v1). Si elle pointe vers cette machine, le faux serveur
  *   (scripts/fake-pricelabs-server.ts) est lancé avant l'application, qui le lit comme elle lirait PriceLabs. Absente : les tests PriceLabs sont ignorés.
  */
@@ -15,6 +17,8 @@ const baseURL = external || "http://127.0.0.1:3000";
 const executablePath = process.env.E2E_CHROME_PATH?.trim() || undefined;
 const launchOptions = executablePath ? { executablePath } : {};
 const fakePriceLabs = (() => { try { const u = new URL(process.env.PRICELABS_API_BASE ?? ""); return u.hostname === "127.0.0.1" ? u : null; } catch { return null; } })();
+
+const fakeLlm = (() => { try { const u = new URL(process.env.ANTHROPIC_API_BASE ?? ""); return u.hostname === "127.0.0.1" || u.hostname === "localhost" ? u : null; } catch { return null; } })();
 
 // Les largeurs mobiles couvrent les petits téléphones (360 px) et les courants (390 px).
 const chromium = (name: string, viewport: { width: number; height: number }, mobile: boolean) => ({
@@ -54,6 +58,7 @@ export default defineConfig({
     : [
       // le faux serveur PriceLabs démarre avant l'application (qui le lit via PRICELABS_API_BASE)
       ...(fakePriceLabs ? [{ command: "npx tsx scripts/fake-pricelabs-server.ts", url: `${fakePriceLabs.origin}/__health`, env: { FAKE_PRICELABS_PORT: fakePriceLabs.port || "4010" }, reuseExistingServer: !process.env.CI, timeout: 60_000 }] : []),
+      ...(fakeLlm ? [{ command: "npx tsx scripts/fake-llm-server.ts", url: `${fakeLlm.origin}/__health`, env: { FAKE_LLM_PORT: fakeLlm.port || "4011" }, reuseExistingServer: !process.env.CI, timeout: 60_000 }] : []),
       { command: "npm run start", url: `${baseURL}/api/health`, reuseExistingServer: !process.env.CI, timeout: 120_000 },
     ],
 });

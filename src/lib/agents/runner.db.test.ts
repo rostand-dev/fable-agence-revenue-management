@@ -11,11 +11,12 @@ import { seedDemo } from "../services/seed";
 const Out = z.object({ answer: z.string().min(3) });
 const NARRATIVE = JSON.stringify({ summary: "Le rythme de réservation est en retard sur le marché sur la période étudiée.", recommendation: "Retenir l'option proposée par le moteur, simulée et auditée.", caveats: ["Le montant affiché est une simulation."] });
 let srv: FakeLlmServer, t: Awaited<ReturnType<typeof makeTenant>>;
-let reply: (system: string) => string | { status: number } = () => NARRATIVE;
+const ANALYSIS = (user: string) => JSON.stringify({ findings: [{ statement: "Les pièces citées décrivent la situation observée sur la période.", evidence: [user.match(/^(E\d+) \[/m)?.[1] ?? "E1"], confidence: "MOYENNE" }], unknowns: [], hypotheses: [] });
+let reply: (system: string, user: string) => string | { status: number } = (system, user) => (system.includes("analyste marché") ? ANALYSIS(user) : NARRATIVE);
 
-beforeAll(async () => { srv = await startFakeLlmServer((req) => reply(req.system)); t = await makeTenant("runner"); }, 60_000);
+beforeAll(async () => { srv = await startFakeLlmServer((req) => reply(req.system, req.user)); t = await makeTenant("runner"); }, 60_000);
 afterAll(async () => { await srv.close(); });
-beforeEach(() => { process.env.ANTHROPIC_API_BASE = srv.url; process.env.ANTHROPIC_API_KEY = "sk-ant-serveur-de-test-0123456789"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "12"; process.env.AGENT_DAILY_TOKEN_BUDGET = "300000"; reply = () => NARRATIVE; srv.requests.length = 0; });
+beforeEach(() => { process.env.ANTHROPIC_API_BASE = srv.url; process.env.ANTHROPIC_API_KEY = "sk-ant-serveur-de-test-0123456789"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "500"; process.env.AGENT_DAILY_TOKEN_BUDGET = "300000"; reply = (system, user) => (system.includes("analyste marché") ? ANALYSIS(user) : NARRATIVE); srv.requests.length = 0; });
 afterEach(() => { for (const k of ["ANTHROPIC_API_BASE", "ANTHROPIC_API_KEY", "AGENT_MAX_CALLS_PER_REVIEW", "AGENT_DAILY_TOKEN_BUDGET"]) delete process.env[k]; });
 
 const task = (budget: Awaited<ReturnType<typeof openBudget>>, over: Partial<Parameters<typeof runAgentTask<z.infer<typeof Out>>>[0]> = {}) => runAgentTask({
@@ -106,8 +107,8 @@ describe("US-074 : la revue passe par l'exécuteur (non-régression comprise)", 
     expect(opened.some((o) => o.narrative?.mode === "LLM" && o.narrative?.promptVersion === "2026-11-v1")).toBe(true);
   });
 
-  it("plafond d'appels à 1 : une seule synthèse par modèle, les autres en repli tracé", async () => {
-    process.env.AGENT_MAX_CALLS_PER_REVIEW = "1";
+  it("plafond de 2 appels pour la revue : le premier dossier (analyse + synthèse) les consomme, les autres synthèses sont en repli tracé", async () => {
+    process.env.AGENT_MAX_CALLS_PER_REVIEW = "2";
     await db.delete(schema.agentRuns).where(eq(schema.agentRuns.tenantId, rt.tenantId));
     await db.update(schema.opportunities).set({ status: "EXPIRED" }).where(eq(schema.opportunities.tenantId, rt.tenantId));
     const r = await runDailyReview(rt.tenantId, "MANUAL");

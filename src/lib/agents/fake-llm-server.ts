@@ -31,6 +31,15 @@ export async function startFakeLlmServer(respond: (req: FakeLlmRequest, index: n
       const out = await respond(call, requests.length - 1);
       if (typeof out === "object" && "status" in out) { res.writeHead(out.status, { "content-type": "application/json" }).end("{}"); return; }
       const text = typeof out === "string" ? out : out.text, stop = typeof out === "string" ? undefined : out.stopReason;
+      if (anthropic && body.stream) {
+        // flux SSE minimal, tel que l'API Anthropic l'envoie : début, morceaux de texte, fin avec la raison d'arrêt
+        const ev = (name: string, data: unknown) => `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(ev("message_start", { type: "message_start", message: { usage: { input_tokens: Math.ceil((system.length + user.length) / 4) } } }));
+        for (const chunk of text.match(/.{1,40}/gs) ?? [text]) res.write(ev("content_block_delta", { type: "content_block_delta", delta: { type: "text_delta", text: chunk } }));
+        res.end(ev("message_delta", { type: "message_delta", delta: { stop_reason: stop ?? "end_turn" }, usage: { output_tokens: Math.ceil(text.length / 4) } }));
+        return;
+      }
       const payload = anthropic
         ? { content: [{ type: "text", text }], usage: { input_tokens: Math.ceil((system.length + user.length) / 4), output_tokens: Math.ceil(text.length / 4) }, stop_reason: stop ?? "end_turn" }
         : { choices: [{ message: { content: text }, finish_reason: stop === "max_tokens" ? "length" : "stop" }], usage: { prompt_tokens: Math.ceil((system.length + user.length) / 4), completion_tokens: Math.ceil(text.length / 4) } };

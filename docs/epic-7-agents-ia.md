@@ -52,13 +52,34 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Ce qui change**
 - **Registre de prompts versionnés `src/lib/agents/prompts.ts`** : chaque tâche de modèle a un identifiant (`direction.explain_action`), une version et une empreinte SHA-256 du texte. Un test **verrouille** les empreintes : modifier un prompt sans changer sa version fait échouer la CI.
 - **Exécuteur d'agent `src/lib/agents/runner.ts`** : prompt versionné → budget → passerelle (US-070) → trace → repli déterministe. Toute tâche d'agent qui interroge un modèle passe par lui. La synthèse de dossier de la direction (`narrative.ts`) est la première à l'utiliser ; la conversation en flux (`chat.ts`) garde son appel direct.
-- **Budget** (`budget.ts`) : plafond d'appels de modèle par revue (`AGENT_MAX_CALLS_PER_REVIEW`, défaut 12 ; avant : 10 fixé dans le code) et budget de jetons par propriétaire et par jour UTC (`AGENT_DAILY_TOKEN_BUDGET`, défaut 300 000, calculé sur les traces du jour). Atteint, l'agent passe en repli déterministe pour le reste de la revue ; `0` désactive les appels. La revue n'est jamais bloquée.
+- **Budget** (`budget.ts`) : plafond d'appels de modèle par revue (`AGENT_MAX_CALLS_PER_REVIEW`, défaut 40 depuis l'US-071 (chaque dossier demande plusieurs appels) ; avant : 10 fixé dans le code) et budget de jetons par propriétaire et par jour UTC (`AGENT_DAILY_TOKEN_BUDGET`, défaut 300 000, calculé sur les traces du jour). Atteint, l'agent passe en repli déterministe pour le reste de la revue ; `0` désactive les appels. La revue n'est jamais bloquée.
 - **Traces enrichies** (table `agent_runs`) : fournisseur, identifiant, version et empreinte du prompt, nombre d'appels, correction éventuelle, **cause du repli** (`NO_PROVIDER`, `BUDGET_CALLS`, `BUDGET_TOKENS`, `PROVIDER_ERROR`, `INVALID_OUTPUT`, `BUDGET`) et cibles essayées. Sans clé de modèle, aucune ligne n'est ajoutée (comportement inchangé).
 - **Fiche agent, onglet Activité** : budget de jetons du jour (utilisés sur plafond), fournisseur, prompt et version, nombre d'appels, cause du repli en français.
-- **Staging (Coolify)** : migration **0024** (7 colonnes de trace sur `agent_runs`, toutes `ADD COLUMN IF NOT EXISTS`, rejouable, appliquée au démarrage). Deux variables facultatives, documentées dans `docker-compose.yml` et `.env.example` : `AGENT_MAX_CALLS_PER_REVIEW` (12) et `AGENT_DAILY_TOKEN_BUDGET` (300000). **Sans rien définir, les valeurs par défaut s'appliquent.**
+- **Staging (Coolify)** : migration **0024** (7 colonnes de trace sur `agent_runs`, toutes `ADD COLUMN IF NOT EXISTS`, rejouable, appliquée au démarrage). Deux variables facultatives, documentées dans `docker-compose.yml` et `.env.example` : `AGENT_MAX_CALLS_PER_REVIEW` (40) et `AGENT_DAILY_TOKEN_BUDGET` (300000). **Sans rien définir, les valeurs par défaut s'appliquent.**
 
 **Précisions** : le plafond compte les appels HTTP réels (correction et repli compris) ; chaque trace est enregistrée dès son retour et le budget du jour est relu avant chaque appel (deux revues parallèles d'un même propriétaire ne le dépassent donc pas de beaucoup). La revue utilise aussi le repli OpenAI du serveur s'il est configuré (voir US-070, confidentialité).
 
 **Limites connues** : le budget de jetons est vérifié avant chaque appel (le dernier appel peut le dépasser) ; la conversation n'est pas encore comptée dans les plafonds d'appels (ses jetons comptent dans le budget du jour si elle est tracée comme `LLM`).
 
 **Tests** : unitaires (`prompts.test.ts` verrou, `budget.test.ts` valeurs et plafonds), base avec faux serveur de modèle (`runner.db.test.ts` : trace complète, sans clé, plafond d'appels, budget de jetons y compris la veille, panne 529, sortie inexploitable sans fuite, **revue complète** avec modèle puis sans clé), migrations rejouées deux fois (test existant), non-régression (golden inchangé, suites complètes), E2E (`e2e/budget-agents.spec.ts` : onglet Activité des 8 agents, bureau, mobile 390 et 360 px).
+
+## US-071 — Analyste de marché avec preuves référencées
+
+**Ce qui change.** Noor (agent `marche`) rédige les constats de marché d'un dossier à partir de pièces numérotées E1…En (faits du moteur déterministe). Prompt `marche.market_analysis` (version 2026-11-v1, hash verrouillé dans `prompts.test.ts`).
+
+**Garde-fous (validés après la réponse du modèle).**
+- Chaque constat cite au moins une pièce existante, sans doublon ; une pièce nommée dans le texte doit être citée ;
+- Les chiffres d'un constat viennent des pièces qu'il cite (ou de la période et du signal), pas d'une autre pièce ; verbes d'action et liens refusés ;
+- Les hypothèses sont celles du moteur ; la confiance du modèle est plafonnée à celle du moteur ;
+- Après un échec du modèle, pas de nouvel essai pour les mêmes faits avant 6 h ; la synthèse du propriétaire passe avant l'analyse quand le plafond est serré ;
+- Chaque constat cite au moins une pièce existante : une pièce inconnue invalide la sortie.
+- Tout chiffre cité doit figurer dans les faits fournis ; aucun verbe prescriptif (« baissez », « augmentez »…).
+- Échec, sortie invalide après une réparation, ou budget épuisé : repli sur l'analyse déterministe (`mode: "DETERMINISTIC"`).
+- L'analyse est réutilisée tant que le `evidenceHash` est inchangé : pas de nouvel appel inutile.
+- L'analyse ne modifie jamais l'option retenue, les montants ou les vetos (test golden inchangé).
+
+**Interface.** Le dossier affiche « Noor a rédigé ces constats à partir des pièces numérotées » avec les pièces citées ; l'onglet Activité de l'agent montre le prompt et le repli éventuel de chaque appel.
+
+**Déploiement.** Aucune migration. Seule nouvelle variable : `FAKE_LLM_PORT` (tests et CI uniquement, documentée dans `.env.example`). Le budget par défaut passe à 40 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`), car chaque dossier peut désormais consommer une analyse et une narration.
+
+**Tests.** Unitaires (validation des pièces/chiffres/verbes), base de données (analyste avec faux serveur de modèle, réutilisation, repli), E2E sur les 3 formats d'écran (bureau, mobile 390 et 360). La CI lance désormais un faux serveur de modèle (`scripts/fake-llm-server.ts`, variables `ANTHROPIC_API_BASE`/`ANTHROPIC_API_KEY` factices, CI uniquement).

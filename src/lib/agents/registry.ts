@@ -63,8 +63,8 @@ export const AGENTS: AgentDef[] = [
     inputs: ["Calendrier et réservations", "Occupation, prix et événements du marché (PriceLabs)", "Historique de douze mois"],
     deliverables: ["Signaux par fenêtre", "Écarts au marché", "Hypothèses concurrentes à départager"],
     rights: "Lecture seule.", cadence: "Quotidienne · 06:15",
-    limits: ["Ne propose pas d'action", "Ne présente jamais une corrélation comme une cause"],
-    reasoning: "Règles déterministes",
+    limits: ["Ne propose pas d'action", "Ne présente jamais une corrélation comme une cause", "Ne cite que des preuves numérotées du dossier : un constat sans preuve ou avec un chiffre inventé est refusé"],
+    reasoning: "Règles + raisonnement LLM",
     avatar: { skin: "#a8734f", hair: "#0c0a09", hairStyle: "long", top: "#0891b2", bg: ["#164e63", "#1e40af"] },
   },
   {

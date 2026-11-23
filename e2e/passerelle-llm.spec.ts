@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 
 // US-070 : la carte « Modèle de langage » de la page Intégrations indique le fournisseur, la clé et le repli en cas de panne.
-// Bureau, mobile 390 et 360 px, sur le compte de démo (aucune clé : mode déterministe, aucun repli configuré en CI).
+// Bureau, mobile 390 et 360 px, sur le compte de démo (en CI, le faux serveur de modèle répond ; aucun repli OpenAI n'est configuré).
 test("Intégrations : la carte du modèle de langage affiche le fournisseur principal et le repli, sans débordement", async ({ page }) => {
   await page.goto("/integrations");
   const carte = page.locator("article.stratum", { has: page.getByRole("heading", { name: "Modèle de langage" }) });
