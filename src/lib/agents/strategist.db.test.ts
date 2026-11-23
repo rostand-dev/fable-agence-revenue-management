@@ -56,7 +56,8 @@ describe("US-072 : stratèges dans la revue (base réelle, faux modèle)", () =>
     for (const op of llm) expect(op.promptVersion).toBe("2026-11-v1");
     expect(await decisions()).toEqual(baseline);
     const pr = await runsOf("pricing");
-    if (pr.length) expect(pr[0]).toMatchObject({ promptId: "pricing.option_opinion", provider: "anthropic", mode: "LLM" });
+    expect(pr.length).toBeGreaterThan(0);
+    expect(pr[0]).toMatchObject({ promptId: "pricing.option_opinion", provider: "anthropic", mode: "LLM" });
     // une position ne dépasse jamais le verdict de l'auditeur
     for (const o of all) for (const op of Object.values(opinionsOf(o))) for (const it of op.items) {
       const v = (o.candidates as any[])[it.candidate].audit.verdict;
@@ -66,9 +67,11 @@ describe("US-072 : stratèges dans la revue (base réelle, faux modèle)", () =>
   });
 
   it("faits inchangés : les avis du modèle sont conservés sans nouvel appel", async () => {
+    const avant = JSON.stringify((await open()).map((o) => [o.dedupeKey, opinionsOf(o)]).sort());
     srv.requests.length = 0;
     await runDailyReview(t.tenantId, "MANUAL");
     expect(srv.requests.filter(strategist)).toHaveLength(0);
+    expect(JSON.stringify((await open()).map((o) => [o.dedupeKey, opinionsOf(o)]).sort())).toBe(avant);
   });
 
   it.each(["invent", "rehabilitate", "action"] as const)("sortie refusée (%s) : avis par règles, trace INVALID_OUTPUT, rien d'inventé enregistré", async (m) => {

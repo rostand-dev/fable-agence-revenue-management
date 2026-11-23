@@ -48,7 +48,7 @@ function optionLine(x: OwnedOption): string {
 }
 
 export const factsHashOf = (o: Facts, agent: StrategistId, promptVersion = ""): string =>
-  createHash("sha256").update(JSON.stringify([ownedOptions(o, agent).map(optionLine), o.signalText, o.stayFrom, o.stayTo, promptVersion])).digest("hex").slice(0, 16);
+  createHash("sha256").update(JSON.stringify([ownedOptions(o, agent).map(optionLine), ownedOptions(o, agent).map((x) => x.index), o.signalText, o.stayFrom, o.stayTo, promptVersion])).digest("hex").slice(0, 16);
 
 /** Message envoyé au modèle : uniquement les faits des options de ce stratège, présentés comme des données. */
 export function opinionPrompt(o: Facts, agent: StrategistId): string {
@@ -63,12 +63,22 @@ export function opinionPrompt(o: Facts, agent: StrategistId): string {
 // ───────────────────────── Contrôles ─────────────────────────
 
 export type OpinionContext = { byOption: Map<string, { numbers: Set<string>; verdict: Candidate["audit"]["verdict"] }>; common: Set<string> };
+/** Nombres autorisés pour une option : ceux de ses faits, sans les dates ISO ni l'identifiant « O1 », plus la forme en euros des paramètres en centimes. */
+function allowedNumbers(x: OwnedOption): Set<string> {
+  const text = optionLine(x).replace(/\d{4}-\d{2}-\d{2}/g, " ").replace(/(?<![\p{L}\d])O\d{1,2}(?![\p{L}\d])/gu, " ");
+  const set = new Set(numbersOf(text));
+  for (const [k, v] of Object.entries(x.c.parameters ?? {})) if (/cents$/i.test(k) && typeof v === "number") for (const n of numbersOf(String(v / 100))) set.add(n);
+  return set;
+}
 export function opinionContext(o: Facts, agent: StrategistId): OpinionContext {
-  const byOption = new Map(ownedOptions(o, agent).map((x) => [x.id, { numbers: new Set(numbersOf(optionLine(x))), verdict: x.c.audit.verdict }]));
+  const byOption = new Map(ownedOptions(o, agent).map((x) => [x.id, { numbers: allowedNumbers(x), verdict: x.c.audit.verdict }]));
   return { byOption, common: new Set(numbersOf(`${o.signalText} ${fmtPeriod(o.stayFrom, o.stayTo)} ${o.stayFrom} ${o.stayTo}`)) };
 }
 
 const Id = z.string().regex(/^O\d{1,2}$/);
+/** Verbes de proposition propres aux stratèges (« option recommandée par le moteur » reste permis) et nombres écrits en lettres (non vérifiables). */
+const PRESCRIPTIVE_OPINION = new RegExp(PRESCRIPTIVE.source.replace("recommand\\p{L}*", "recommand(?:ons|ez|er)").replace("(?:baisser", "(?:ajouter|ajoutez|prolonger|prolongez|fixer|fixez|décaler|décalez|ouvrir|ouvrez|fermer|fermez|passer\\s+à|baisser"), "iu");
+const NUMBER_WORDS = /(?<![\p{L}])(?:deux|trois|quatre|cinq|six|sept|huit|neuf|dix|onze|douze|quinze|vingt|trente|quarante|cinquante|soixante|cent|mille)(?![\p{L}])/iu;
 const BaseSchema = z.object({
   opinions: z.array(z.object({
     option: Id, stance: z.enum(["FAVORABLE", "RESERVES", "DEFAVORABLE"]),
@@ -90,12 +100,14 @@ export function opinionSchema(ctx: OpinionContext) {
       if (STANCE_RANK[op.stance] > STANCE_RANK[CEILING[facts.verdict]]) bad(["opinions", i, "stance"], "Une position ne peut pas être plus favorable que le verdict de l'auditeur.");
       const texts = [{ t: op.rationale, p: ["opinions", i, "rationale"] }, ...op.watchpoints.map((t, k) => ({ t, p: ["opinions", i, "watchpoints", k] }))];
       for (const { t, p } of texts) {
-        if (PRESCRIPTIVE.test(t)) bad(p, "L'avis commente l'option, il ne propose aucune autre action.");
+        if (PRESCRIPTIVE_OPINION.test(t)) bad(p, "L'avis commente l'option, il ne propose aucune autre action.");
+        if (NUMBER_WORDS.test(t)) bad(p, "Les nombres s'écrivent en chiffres, tels qu'ils figurent dans les faits.");
         if (FREE_TEXT_FORBIDDEN.test(t)) bad(p, "Pas de lien, d'adresse ni de balisage dans le texte.");
         for (const m of t.matchAll(/(?<![\p{L}\d])O(\d{1,2})(?![\p{L}\d])/gu)) if (`O${m[1]}` !== op.option) bad(p, `Le texte nomme O${m[1]}, qui n'est pas l'option commentée.`);
         if (numbersOf(t.replace(/(?<![\p{L}\d])O\d{1,2}(?![\p{L}\d])/gu, " ")).some((n) => !facts.numbers.has(n) && !ctx.common.has(n))) bad(p, "Un chiffre ne figure dans aucun fait de l'option commentée.");
       }
     });
+    for (const id of ctx.byOption.keys()) if (!seen.has(id)) bad(["opinions"], `L'option ${id} n'a reçu aucun avis : chaque option doit être commentée.`);
   });
 }
 export type OpinionOutput = z.infer<typeof BaseSchema>;
@@ -110,7 +122,7 @@ export function deterministicOpinion(o: Facts, agent: StrategistId): AgentOpinio
       candidate: x.index,
       stance: CEILING[x.c.audit.verdict],
       rationale: `${x.c.hypothesis}`.slice(0, 400),
-      watchpoints: [...nonPass(x.c), `Retour arrière : ${x.c.rollbackPlan}`].slice(0, 3),
+      watchpoints: [`Retour arrière : ${x.c.rollbackPlan}`, ...nonPass(x.c)].slice(0, 3),
     })),
   };
 }

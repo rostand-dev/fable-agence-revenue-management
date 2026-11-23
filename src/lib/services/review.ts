@@ -190,7 +190,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
         for (const agent of ["pricing", "distribution"] as const) {
           if (ownedOptions(o, agent).length === 0) continue;
           const old = (prev?.signals?.agentOpinions as Partial<Record<StrategistId, AgentOpinion>> | undefined)?.[agent];
-          const same = !!old && old.factsHash === factsHashOf(o, agent, opinionPromptVersion(agent));
+          const same = !!old && old.factsHash === factsHashOf(o, agent, opinionPromptVersion(agent)) && old.items.every((i) => o.candidates[i.candidate]?.agent === agent);
           if (same && (old!.mode === "LLM" || (!!old!.triedAt && +now - +new Date(old!.triedAt) < 6 * 3600_000))) { out[agent] = old!; continue; }
           if (!llmStrategist[agent]) { out[agent] = deterministicOpinion(o, agent); continue; }
           const r = await opine(budget, o, agent, oppId);

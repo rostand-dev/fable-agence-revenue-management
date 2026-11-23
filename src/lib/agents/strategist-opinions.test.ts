@@ -39,7 +39,7 @@ describe("contrôles des avis (US-072)", () => {
   });
   it("jamais plus favorable que l'auditeur : une validation humaine reste au mieux avec réserves", () => {
     expect(issues({ opinions: [op("O2", "FAVORABLE")] }).join()).toContain("verdict de l'auditeur");
-    expect(issues({ opinions: [op("O2", "DEFAVORABLE")] })).toEqual([]);
+    expect(issues({ opinions: [op("O1", "FAVORABLE"), op("O2", "DEFAVORABLE")] })).toEqual([]);
     const d = opinionSchema(opinionContext(o, "distribution"));
     expect(d.safeParse({ opinions: [op("O1", "RESERVES")] }).success).toBe(false);
     expect(d.safeParse({ opinions: [op("O1", "DEFAVORABLE")] }).success).toBe(true);
@@ -57,5 +57,21 @@ describe("contrôles des avis (US-072)", () => {
     expect(m.items[0].candidate).toBe(2);
     expect(factsHashOf(o, "pricing", "a")).not.toBe(factsHashOf(o, "pricing", "b"));
     expect(factsHashOf(o, "pricing", "a")).not.toBe(factsHashOf(o, "distribution", "a"));
+  });
+  it("chaque option du stratège doit être commentée", () => expect(issues({ opinions: [op("O1", "FAVORABLE")] }).join()).toContain("O2"));
+  it("refuse les nombres en lettres et « ajouter » ; accepte « option recommandée »", () => {
+    expect(issues({ opinions: [op("O1", "RESERVES", "Cent nuits simulées sur cette option, selon le moteur."), op("O2", "RESERVES")] }).join()).toContain("chiffres");
+    expect(issues({ opinions: [op("O1", "RESERVES", "Il faudrait ajouter une promotion sur cette option simulée."), op("O2", "RESERVES")] }).join()).toContain("aucune autre action");
+    expect(issues({ opinions: [op("O1", "FAVORABLE", "C'est l'option recommandée par le moteur, simulée sur 3 nuits."), op("O2", "RESERVES")] })).toEqual([]);
+  });
+  it("un montant en centimes dans les paramètres s'écrit en euros ; une date ISO ne cautionne aucun chiffre", () => {
+    const oc = { ...o, candidates: [cand("pricing", "Prix daté", "APPROVE", { parameters: { nightlyCents: 12000, date: "2026-10-05" } })] } as unknown as DetectedOpportunity;
+    const s2 = opinionSchema(opinionContext(oc, "pricing"));
+    expect(s2.safeParse({ opinions: [op("O1", "FAVORABLE", "Le prix daté de 120 € est simulé sur cette option.")] }).success).toBe(true);
+    expect(s2.safeParse({ opinions: [op("O1", "FAVORABLE", "Option simulée pour le 12 de ce mois, selon le moteur.")] }).success).toBe(false);
+  });
+  it("l'empreinte dépend de la position des options dans le dossier", () => {
+    const moved = { ...o, candidates: [o.candidates[3], ...o.candidates.slice(0, 3)] } as unknown as DetectedOpportunity;
+    expect(factsHashOf(moved, "pricing")).not.toBe(factsHashOf(o, "pricing"));
   });
 });

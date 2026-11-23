@@ -1,7 +1,7 @@
 /** Stratèges (US-072) : Elias (tarif) et Hugo (distribution) donnent un avis sur leurs options via l'exécuteur d'agent (prompt versionné, budget, trace, repli). Contrôles et version par règles : `strategist-opinions.ts`. */
 import type { DetectedOpportunity } from "../engine/types";
 import { PROMPTS } from "./prompts";
-import { FALLBACK_LABEL, runAgentTask, type AgentBudget, type AgentOutcome } from "./runner";
+import { FALLBACK_LABEL, retryable, runAgentTask, type AgentBudget, type AgentOutcome } from "./runner";
 import { deterministicOpinion, factsHashOf, fromOpinionModel, opinionContext, opinionPrompt, opinionSchema, ownedOptions, type AgentOpinion, type OpinionOutput, type StrategistId } from "./strategist-opinions";
 
 const PROMPT = { pricing: "pricing.option_opinion", distribution: "distribution.option_opinion" } as const;
@@ -16,6 +16,6 @@ export async function opine(budget: AgentBudget, o: DetectedOpportunity, agent: 
   });
   const opinion = outcome.mode === "LLM" && outcome.data
     ? fromOpinionModel(o, agent, outcome.data, { model: outcome.run.model ?? undefined, promptVersion: outcome.run.promptVersion ?? undefined })
-    : { ...deterministicOpinion(o, agent), factsHash: factsHashOf(o, agent, opinionPromptVersion(agent)), triedAt: new Date().toISOString() };
+    : { ...deterministicOpinion(o, agent), factsHash: factsHashOf(o, agent, opinionPromptVersion(agent)), ...(retryable(outcome.run.fallbackReason) ? { triedAt: new Date().toISOString() } : {}) };
   return { opinion, outcome };
 }

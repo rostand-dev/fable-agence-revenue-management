@@ -52,7 +52,7 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Ce qui change**
 - **Registre de prompts versionnés `src/lib/agents/prompts.ts`** : chaque tâche de modèle a un identifiant (`direction.explain_action`), une version et une empreinte SHA-256 du texte. Un test **verrouille** les empreintes : modifier un prompt sans changer sa version fait échouer la CI.
 - **Exécuteur d'agent `src/lib/agents/runner.ts`** : prompt versionné → budget → passerelle (US-070) → trace → repli déterministe. Toute tâche d'agent qui interroge un modèle passe par lui. La synthèse de dossier de la direction (`narrative.ts`) est la première à l'utiliser ; la conversation en flux (`chat.ts`) garde son appel direct.
-- **Budget** (`budget.ts`) : plafond d'appels de modèle par revue (`AGENT_MAX_CALLS_PER_REVIEW`, défaut 40 depuis l'US-071 (chaque dossier demande plusieurs appels) ; avant : 10 fixé dans le code) et budget de jetons par propriétaire et par jour UTC (`AGENT_DAILY_TOKEN_BUDGET`, défaut 300 000, calculé sur les traces du jour). Atteint, l'agent passe en repli déterministe pour le reste de la revue ; `0` désactive les appels. La revue n'est jamais bloquée.
+- **Budget** (`budget.ts`) : plafond d'appels de modèle par revue (`AGENT_MAX_CALLS_PER_REVIEW`, défaut 80 depuis l'US-072 (40 depuis l'US-071 (chaque dossier demande plusieurs appels) ; avant : 10 fixé dans le code) et budget de jetons par propriétaire et par jour UTC (`AGENT_DAILY_TOKEN_BUDGET`, défaut 300 000, calculé sur les traces du jour). Atteint, l'agent passe en repli déterministe pour le reste de la revue ; `0` désactive les appels. La revue n'est jamais bloquée.
 - **Traces enrichies** (table `agent_runs`) : fournisseur, identifiant, version et empreinte du prompt, nombre d'appels, correction éventuelle, **cause du repli** (`NO_PROVIDER`, `BUDGET_CALLS`, `BUDGET_TOKENS`, `PROVIDER_ERROR`, `INVALID_OUTPUT`, `BUDGET`) et cibles essayées. Sans clé de modèle, aucune ligne n'est ajoutée (comportement inchangé).
 - **Fiche agent, onglet Activité** : budget de jetons du jour (utilisés sur plafond), fournisseur, prompt et version, nombre d'appels, cause du repli en français.
 - **Staging (Coolify)** : migration **0024** (7 colonnes de trace sur `agent_runs`, toutes `ADD COLUMN IF NOT EXISTS`, rejouable, appliquée au démarrage). Deux variables facultatives, documentées dans `docker-compose.yml` et `.env.example` : `AGENT_MAX_CALLS_PER_REVIEW` (80) et `AGENT_DAILY_TOKEN_BUDGET` (300000). **Sans rien définir, les valeurs par défaut s'appliquent.**
@@ -80,7 +80,7 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 
 **Interface.** Le dossier affiche « Noor a rédigé ces constats à partir des pièces numérotées » avec les pièces citées ; l'onglet Activité de l'agent montre le prompt et le repli éventuel de chaque appel.
 
-**Déploiement.** Aucune migration. Seule nouvelle variable : `FAKE_LLM_PORT` (tests et CI uniquement, documentée dans `.env.example`). Le budget par défaut passe à 40 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`), car chaque dossier peut désormais consommer une analyse et une narration.
+**Déploiement.** Aucune migration. Seule nouvelle variable : `FAKE_LLM_PORT` (tests et CI uniquement, documentée dans `.env.example`). Le budget par défaut passait à 40 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`, porté à 80 par l'US-072), car chaque dossier peut désormais consommer une analyse et une narration.
 
 **Tests.** Unitaires (validation des pièces/chiffres/verbes), base de données (analyste avec faux serveur de modèle, réutilisation, repli), E2E sur les 3 formats d'écran (bureau, mobile 390 et 360). La CI lance désormais un faux serveur de modèle (`scripts/fake-llm-server.ts`, variables `ANTHROPIC_API_BASE`/`ANTHROPIC_API_KEY` factices, CI uniquement).
 
@@ -92,7 +92,7 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 3. *Repli par règles* : position tirée du verdict de l'auditeur (APPROUVÉ → favorable, à valider → avec réserves, rejeté → défavorable), justification = hypothèse de simulation du moteur, surveillance = plan de retour arrière.
 4. *Stockage* dans `signals.agentOpinions` du dossier (aucune migration). Réutilisation si les faits des options et la version du prompt n'ont pas changé ; après un échec du modèle, pas de nouvel essai pendant 6 h.
 5. *Interface* : sous chaque option concernée, un bloc « Avis d'Elias / de Hugo » responsive ; la fiche équipe affiche le prompt et le repli dans l'onglet Activité (existant).
-6. *Budget* : chaque dossier peut maintenant consommer jusqu'à 4 appels (synthèse, analyse, deux avis) ; le plafond par défaut passe de 40 à 80 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`).
+6. *Budget* : chaque dossier peut maintenant consommer au moins 4 appels (corrections et replis en plus) (synthèse, analyse, deux avis) ; le plafond par défaut passe de 40 à 80 appels par revue (`AGENT_MAX_CALLS_PER_REVIEW`).
 7. *Tests* : unitaires (contrôles), base de données (faux modèle : avis valides, réutilisation, sortie refusée, sans clé), E2E sur 3 largeurs.
 
 **Livré.** Prompts `pricing.option_opinion` et `distribution.option_opinion` (version 2026-11-v1, hash verrouillés). Une position ne dépasse jamais le verdict de l'auditeur (rejet → défavorable ; validation humaine → au mieux avec réserves). Les dossiers ouverts avant cette version affichent l'avis par règles, calculé à la volée.
@@ -100,3 +100,5 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Déploiement.** Aucune migration, aucune nouvelle variable. Un seul changement de valeur par défaut : `AGENT_MAX_CALLS_PER_REVIEW` passe de 40 à 80 (chaque dossier peut consommer synthèse + analyse + deux avis). Sans clé de modèle, rien ne change : avis par règles et aucun appel.
 
 **Tests.** Unitaires (`strategist-opinions.test.ts`), base de données avec faux modèle (`strategist.db.test.ts` : avis valides, options/montants/audits strictement inchangés, sorties refusées, réutilisation, pas de nouvel essai après échec), E2E bureau/390/360 (`e2e/avis-strateges.spec.ts`).
+
+**Après relecture.** Chaque option du stratège doit être commentée (sinon sortie refusée) ; l'empreinte couvre la position des options dans le dossier ; les chiffres écrits en lettres et les dates ISO ne servent pas de caution ; les montants en centimes des paramètres sont acceptés en euros ; un repli dû au budget ne bloque pas le prochain essai.

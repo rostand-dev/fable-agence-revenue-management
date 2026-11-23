@@ -20,7 +20,7 @@ test("Dossier : chaque option d'un stratège porte son avis (position, justifica
   for (let i = 0; i < n; i++) {
     const a = avis.nth(i);
     await expect(a).toBeVisible();
-    await expect(a).toContainText(/favorable|avec réserves|défavorable/);
+    await expect(a.locator(".state")).toHaveText(/^(favorable|avec réserves|défavorable)$/);
     expect(["pricing", "distribution"]).toContain(await a.getAttribute("data-agent"));
   }
   await expectNoHorizontalOverflow(page, "dossier : avis des stratèges");
@@ -34,7 +34,7 @@ test("Dossier : l'avis ne change ni l'option recommandée ni le verdict de l'aud
   // une option rejetée par l'auditeur n'est jamais présentée comme favorable
   const rejetees = page.locator("article.option.is-rejected");
   for (const r of await rejetees.all()) {
-    for (const a of await r.getByTestId("avis-strateg").all()) await expect(a).toContainText("défavorable");
+    for (const a of await r.getByTestId("avis-strateg").all()) await expect(a.locator(".state")).toHaveText("défavorable");
   }
   await expect(page.locator("article.option .tag", { hasText: "recommandée" })).toHaveCount(1);
 });

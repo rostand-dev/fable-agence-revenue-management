@@ -257,7 +257,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 const op = opinions[a], it = op?.items.find((y) => y.candidate === i);
                 if (!op || !it) return null;
                 return (
-                  <div className="opinion" data-testid="avis-strateg" data-agent={a} key={a}>
+                  <div className="opinion" role="group" aria-label={`Avis de ${agentName(a, names)} sur cette option`} data-testid="avis-strateg" data-agent={a} key={a}>
                     <div className="opinion-head">
                       <Byline agent={a} names={names} what={op.mode === "LLM" ? "a donné son avis sur cette option" : "avis composé par règles"} />
                       <State role={it.stance === "FAVORABLE" ? "sain" : it.stance === "RESERVES" ? "attention" : "veto"}>{STANCE_LABEL[it.stance]}</State>
