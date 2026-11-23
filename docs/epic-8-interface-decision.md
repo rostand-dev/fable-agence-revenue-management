@@ -69,3 +69,14 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - **Staging (Coolify)** : aucune migration, aucune variable d'environnement.
 
 **Tests** : unitaires (`waterfall.test.ts` : géométrie, fermeture, contribution négative, jauge), E2E navigateur (`e2e/revue-action.spec.ts`, bureau/390/360 : cascade, planchers, promotions, barres dans leur piste, traçabilité, sans débordement), non-régression (suites complètes, golden inchangé).
+
+## US-082 — Boîte d'opportunités classée par priorité
+
+**Plan.** La boîte classe déjà par veto puis priorité. Il manque la capacité de s'y retrouver quand le portefeuille grossit, et les cibles de filtres que le tableau de bord (US-080) reliera.
+
+- Logique pure `src/lib/inbox.ts` (testée) : filtres combinables par URL (`f` statut, `p` logement, `pb` playbook, `u` urgence), tri (`s` : priorité, impact, séjour le plus proche).
+- Le **rang de priorité** reste celui du classement complet des situations ouvertes : filtrer ne renumérote jamais (« #3 » reste « #3 »).
+- Urgence : séjour en cours ou commençant dans les 14 jours, jamais un séjour terminé (`urgent`) ; veto (`veto`) ; validation renforcée = verdict NEEDS_HUMAN, comme le badge de la carte (`renforcee`). Tri par impact : les non chiffrables en dernier ; tri par séjour : les séjours terminés en dernier. La synthèse en tête de page reste globale, hors filtres.
+- Écran : filtres en liste déroulante accessibles (mobile), compteur de résultats, bouton « Réinitialiser », état vide qui distingue « aucun résultat avec ces filtres » de « rien à arbitrer ».
+- Aucune migration, aucune variable d'environnement. Les paramètres d'URL inconnus sont ignorés (jamais d'erreur).
+- Tests : unitaires (filtres, tri, rang stable, paramètres invalides), E2E 3 viewports (filtrer, réinitialiser, pas de débordement horizontal).
