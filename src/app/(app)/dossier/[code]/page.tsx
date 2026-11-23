@@ -11,6 +11,7 @@ import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { needsComment } from "@/components/SitCard";
 import { deterministicAnalysis, type MarketAnalysis } from "@/lib/agents/market-analysis";
+import type { IndependentReview } from "@/lib/agents/independent-review";
 import { deterministicOpinions, STANCE_LABEL, type AgentOpinion, type StrategistId } from "@/lib/agents/strategist-opinions";
 import { Banner, Byline, Cascade, confidenceScale, Money, OppStatus, Recap, riskScale, State, VerdictState, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
@@ -267,6 +268,20 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   </div>
                 );
               })}
+              {i === o.selected && x.type !== "NO_ACTION" && (() => {
+                const sr = o.signals.independentReview as IndependentReview | undefined;
+                if (!sr || sr.mode !== "LLM" || sr.reviewed !== x.label) return null;
+                return (
+                  <div className="opinion" role="group" aria-label={`Seconde lecture de ${agentName("audit", names)} sur l'option retenue`} data-testid="seconde-lecture">
+                    <div className="opinion-head">
+                      <Byline agent="audit" names={names} what="seconde lecture, sans connaître les avis des autres postes" />
+                      <State role={sr.concern ? "attention" : "sain"}>{sr.concern ? "réserve" : "aucune réserve"}</State>
+                    </div>
+                    {sr.concern ? <p>{sr.reason} <span className="metric-source">Preuves : {sr.evidence.join(", ")}. La validation humaine est requise.</span></p>
+                      : <p className="muted">Les faits du dossier soutiennent l'option retenue. Cette lecture ne remplace pas les règles : elle ne peut qu'ajouter une alerte.</p>}
+                  </div>
+                );
+              })()}
               <details className="fold">
                 <summary><Icon name="shield" />Audit de {agentName("audit", names)} — {x.audit.rules.length} règle{x.audit.rules.length > 1 ? "s" : ""} contrôlée{x.audit.rules.length > 1 ? "s" : ""}</summary>
                 <div className="fold-body">

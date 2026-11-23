@@ -80,7 +80,7 @@ export const AGENTS: AgentDef[] = [
     deliverables: ["Options tarifaires simulées", "Instruction d'exécution", "Plan de retour arrière"],
     rights: "Écriture PriceLabs uniquement après votre approbation.", cadence: "À chaque opportunité · revue hebdomadaire",
     limits: ["Ne descend jamais sous le plancher économique", "Ne modifie pas plusieurs paramètres corrélés en même temps"],
-    reasoning: "Règles déterministes",
+    reasoning: "Règles + raisonnement LLM",
     avatar: { skin: "#e3b08c", hair: "#44403c", hairStyle: "short", top: "#4f46e5", bg: ["#312e81", "#1d4ed8"], beard: true },
   },
   {
@@ -96,7 +96,7 @@ export const AGENTS: AgentDef[] = [
     deliverables: ["Options de promotion simulées", "Procédure guidée d'extranet", "Alerte de cumul"],
     rights: "Aucune écriture automatique : procédure manuelle guidée, avec preuve.", cadence: "À chaque opportunité · contrôle hebdomadaire",
     limits: ["Aucune automatisation de navigateur sur Airbnb ou Booking.com", "Deux remises visant le même signal ne sont jamais activées ensemble"],
-    reasoning: "Règles déterministes",
+    reasoning: "Règles + raisonnement LLM",
     avatar: { skin: "#f0c8a8", hair: "#78350f", hairStyle: "wave", top: "#0d9488", bg: ["#134e4a", "#1e3a8a"] },
   },
   {
@@ -124,12 +124,13 @@ export const AGENTS: AgentDef[] = [
       "Refuser toute action en conflit avec une action encore en observation",
       "Exiger un plan de retour arrière et une capacité d'exécution réelle",
       "Répondre strictement APPROUVE, REJETTE ou DEMANDE UNE VALIDATION HUMAINE, avec les codes de règles",
+      "Relire l'option retenue en seconde lecture, sans connaître les avis des autres postes, et signaler toute réserve",
     ],
     inputs: ["Option simulée", "Modèle économique", "Stratégie et limites", "Fraîcheur des sources"],
     deliverables: ["Verdict codé règle par règle", "Veto motivé"],
     rights: "Veto. Aucune écriture.", cadence: "À chaque option",
-    limits: ["Aucun jugement vague : chaque refus cite sa règle", "Aucun LLM n'intervient dans son contrôle"],
-    reasoning: "Règles déterministes",
+    limits: ["Aucun jugement vague : chaque refus cite sa règle", "Son contrôle par règles est sans modèle ; la seconde lecture par modèle peut seulement ajouter une alerte, jamais lever un veto"],
+    reasoning: "Règles + raisonnement LLM",
     avatar: { skin: "#d9a57e", hair: "#a8a29e", hairStyle: "crop", top: "#334155", bg: ["#1e293b", "#3730a3"], glasses: true },
   },
   {

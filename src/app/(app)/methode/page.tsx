@@ -17,6 +17,7 @@ const SPLIT: [string, string, string][] = [
   ["Calcul des planchers, cascade du revenu net, cumul des remises", "Règles déterministes", "Aucun modèle de langage ne décide si un prix est rentable."],
   ["Détection des signaux, dédoublonnage, classement de la file", "Règles déterministes", "Reproductible d'un jour à l'autre, testable."],
   ["Audit et veto, machine à états, droits", "Règles déterministes", "Un garde-fou ne se négocie pas."],
+  ["Avis des stratèges sur leurs options, seconde lecture de l'auditeur", "Modèle de langage, sur faits certifiés", "Ils commentent ou alertent ; ils ne changent ni montant, ni option retenue, ni veto."],
   ["Synthèse des dossiers, réponses à vos questions, bilan mensuel", "Modèle de langage, sur faits certifiés", "Il explique ; il n'ajoute aucun chiffre et n'exécute rien."],
 ];
 const AUTONOMY: [string, string, string][] = [

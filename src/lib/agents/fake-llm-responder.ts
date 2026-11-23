@@ -23,6 +23,7 @@ export function e2eFakeReply(req: FakeLlmRequest): FakeLlmReply {
       rationale: "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.", watchpoints: ["Mesurer l'effet sur la fenêtre d'observation prévue."],
     })) });
   }
+  if (req.system.includes("auditeur indépendant")) return JSON.stringify({ concern: false, reason: "", evidence: [] });
   if (req.system.includes("directrice du revenue management")) {
     return JSON.stringify({ summary: "Le rythme de réservation observé sur la période étudiée justifie un examen de ce dossier.", recommendation: "Retenir l'option du moteur, déjà simulée et auditée.", caveats: ["Le montant affiché est une simulation."] });
   }

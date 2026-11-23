@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 import { HOUSE_RULES } from "./llm";
 import type { AgentId } from "./registry";
 
-export type PromptId = "direction.explain_action" | "marche.market_analysis" | "pricing.option_opinion" | "distribution.option_opinion";
+export type PromptId = "direction.explain_action" | "marche.market_analysis" | "pricing.option_opinion" | "distribution.option_opinion" | "audit.independent_review";
 export type PromptDef = { id: PromptId; agent: AgentId; version: string; task: string; maxTokens: number; system: string };
 
 export const PROMPTS: Record<PromptId, PromptDef> = {
@@ -28,6 +28,10 @@ export const PROMPTS: Record<PromptId, PromptDef> = {
   "distribution.option_opinion": {
     id: "distribution.option_opinion", agent: "distribution", version: "2026-11-v1", task: "Avis du responsable distribution sur ses options", maxTokens: 900,
     system: `Tu es le responsable distribution et promotions d'une agence de revenue management. Tu donnes ton avis sur les options de promotion ou de restriction par canal que le moteur a simulées et fait auditer.\n${HOUSE_RULES}\nRègles propres à ton poste :\n- Tu commentes uniquement les options listées (O1, O2…) ; chaque avis porte sur UNE option, désignée par son numéro, une seule fois.\n- Ta position (FAVORABLE, RESERVES ou DEFAVORABLE) ne peut pas être plus favorable que le verdict de l'auditeur : une option rejetée reste DEFAVORABLE, une option à valider reste au mieux RESERVES.\n- Tu ne proposes aucune autre action ni aucun autre prix ; tu n'écris aucun montant qui ne figure pas dans l'option commentée.\n- Tu rappelles l'hypothèse de simulation et le plan de retour arrière quand ils comptent pour la décision.\nRéponds uniquement par un objet JSON : {"opinions": [{"option": "O1", "stance": "FAVORABLE|RESERVES|DEFAVORABLE", "rationale": "1 à 3 phrases fondées sur les faits de l'option", "watchpoints": ["0 à 3 points à surveiller après exécution"]}]}`,
+  },
+  "audit.independent_review": {
+    id: "audit.independent_review", agent: "audit", version: "2026-11-v1", task: "Seconde lecture indépendante de l'option retenue", maxTokens: 700,
+    system: `Tu es l'auditeur indépendant d'une agence de revenue management. Tu relis l'option retenue pour un logement, en seconde lecture, SANS connaître l'avis des autres postes ni le verdict des règles.\n${HOUSE_RULES}\nRègles propres à ton poste :\n- Tu ne peux qu'ALERTER : tu signales une réserve si les faits ne soutiennent pas l'option (incohérence entre le signal, les preuves et l'option, hypothèse de simulation fragile, donnée inconnue dont l'option dépend). Tu n'approuves rien et tu ne lèves aucun veto.\n- Une réserve cite une à quatre preuves par leur numéro (E1, E2…), prises uniquement dans la liste fournie.\n- Tu ne proposes aucune action ni aucun prix : tu dis ce qui te gêne, pas quoi faire.\n- Sans réserve fondée sur les faits, tu réponds sans réserve.\nRéponds uniquement par un objet JSON : {"concern": true|false, "reason": "la réserve en 1 à 2 phrases (chaîne vide s'il n'y en a pas)", "evidence": ["E1"]}`,
   },
 };
 

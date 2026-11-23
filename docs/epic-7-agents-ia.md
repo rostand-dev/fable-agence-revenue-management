@@ -102,3 +102,20 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Tests.** Unitaires (`strategist-opinions.test.ts`), base de données avec faux modèle (`strategist.db.test.ts` : avis valides, options/montants/audits strictement inchangés, sorties refusées, réutilisation, pas de nouvel essai après échec), E2E bureau/390/360 (`e2e/avis-strateges.spec.ts`).
 
 **Après relecture.** Chaque option du stratège doit être commentée (sinon sortie refusée) ; l'empreinte couvre la position des options dans le dossier ; les chiffres écrits en lettres et les dates ISO ne servent pas de caution ; les montants en centimes des paramètres sont acceptés en euros ; un repli dû au budget ne bloque pas le prochain essai.
+
+## US-073 — Auditeur de revenu indépendant (seconde lecture)
+
+**Plan.**
+1. *Le contrôle par règles ne change pas* : `auditCandidate` reste déterministe et produit seul le verdict (veto compris). L'US ajoute une **seconde lecture par modèle** de l'option retenue, faite après l'audit.
+2. *Indépendance* : Victor (agent `audit`) ne reçoit que les faits du dossier (période, signal, preuves numérotées E1…En) et l'option retenue (libellé, détail, simulation, paramètres, plan de retour arrière). Il ne voit ni la synthèse de Lina, ni l'analyse de Noor, ni les avis d'Elias et de Hugo, ni le verdict des règles.
+3. *Il ne peut qu'alerter* : sortie `{ concern, reason, evidence }`. Aucun champ ne permet d'approuver ni de lever un veto. Une réserve valide (preuves citées existantes, chiffres issus des faits, aucune proposition d'action) ajoute à l'option retenue la règle **INDEPENDENT_REVIEW** (alerte, effet « validation humaine ») : un verdict APPROUVE devient À VALIDER. Un REJETÉ reste rejeté ; l'option retenue (`selected`) et les montants ne changent pas. Sans réserve, ou sans modèle, rien ne change.
+4. *Registre des codes* : INDEPENDENT_REVIEW est déclaré dans `POLICY_RULES` (alerte seulement, jamais veto) ; les tests de cohérence du registre le couvrent. Le texte du poste (« Aucun LLM n'intervient dans son contrôle ») est corrigé : le contrôle par règles reste sans modèle, la seconde lecture est un ajout.
+5. *Stockage* : `signals.independentReview` (aucune migration). Réutilisation si faits et version du prompt inchangés ; pas de nouvel essai pendant 6 h après un échec du modèle ; la réserve est ré-appliquée à chaque rafraîchissement du dossier.
+6. *Interface* : bloc « Seconde lecture de Victor » sur l'option retenue (responsive), et la règle apparaît dans l'audit de l'option.
+7. *Tests* : unitaires (contrôles, application de la réserve, jamais de levée de veto), base de données avec faux modèle (réserve appliquée, rejet intact, sortie invalide, réutilisation), E2E bureau/390/360.
+
+**Livré.** Prompt `audit.independent_review` (version 2026-11-v1, hash verrouillé) ; règle `INDEPENDENT_REVIEW` au registre des codes (13 règles désormais ; alerte seulement, jamais de veto) ; poste de Victor, page Méthode et fiche équipe (Elias, Hugo, Victor : « Règles + raisonnement LLM ») mis à jour.
+
+**Déploiement.** Aucune migration, aucune nouvelle variable. Sans clé de modèle : aucune seconde lecture, verdicts identiques. Chaque dossier avec une option exécutable non rejetée consomme au plus un appel de plus (budget `AGENT_MAX_CALLS_PER_REVIEW`).
+
+**Tests.** Unitaires (`independent-review.test.ts` : invite sans verdict ni avis, contrôles, jamais de levée de veto, effet limité à l'option relue), base de données avec faux modèle (`auditor.db.test.ts` : réserve appliquée, rejets/montants/option retenue intacts, réutilisation, sortie refusée, invite sans verdict), E2E bureau/390/360 (`e2e/seconde-lecture.spec.ts`), non-régression (suites complètes, golden inchangé).

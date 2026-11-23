@@ -10,6 +10,8 @@ import { resolveTargets } from "../agents/llm-config";
 import { openBudget } from "../agents/runner";
 import { analyzeMarket } from "../agents/market-analyst";
 import { PROMPTS } from "../agents/prompts";
+import { secondReading, reviewPromptVersion } from "../agents/auditor";
+import { applyReview, reviewable, reviewHashOf, type IndependentReview } from "../agents/independent-review";
 import { opine, opinionPromptVersion } from "../agents/strategist";
 import { deterministicOpinion, deterministicOpinions, factsHashOf, ownedOptions, type AgentOpinion, type StrategistId } from "../agents/strategist-opinions";
 import { deterministicAnalysis, evidenceHashOf, type MarketAnalysis } from "../agents/market-analysis";
@@ -79,7 +81,7 @@ export function oppRow(o: DetectedOpportunity, scoring: ScoringConfig = DEFAULT_
   const score = scoreOpportunity(o, scoring);
   return {
     playbook: o.playbook, reasonCode: o.reasonCode, title: o.title, stayFrom: o.stayFrom, stayTo: o.stayTo,
-    signals: { ...o.signals, marketAnalysis: deterministicAnalysis(o), agentOpinions: deterministicOpinions(o), signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
+    signals: { ...o.signals, marketAnalysis: deterministicAnalysis(o), agentOpinions: deterministicOpinions(o), independentReview: undefined as IndependentReview | undefined, signalText: o.signalText, signalSource: o.signalSource, hypothesisText: o.hypothesisText, vetoText: o.vetoText ?? null, signal: o.signal ?? null, score },
     diagnosis: o.diagnosis, candidates: o.candidates, selected: o.selected, priority: score.score, confidence: o.diagnosis.confidence,
     risk: c.risk, impactCents: c.type === "NO_ACTION" ? 0 : c.expectedDeltaCents, veto: o.veto, expiresAt: o.expiresAt,
   };
@@ -128,6 +130,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const llm = await resolveTargets(tenantId, "direction");
   budget.targets.set("direction", llm);
   const llmMarche = (await resolveTargets(tenantId, "marche")).length > 0;
+  const llmAudit = (await resolveTargets(tenantId, "audit")).length > 0;
   const llmStrategist: Record<StrategistId, boolean> = { pricing: (await resolveTargets(tenantId, "pricing")).length > 0, distribution: (await resolveTargets(tenantId, "distribution")).length > 0 };
   let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
@@ -199,8 +202,21 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
         }
         return out;
       };
+      // US-073 : seconde lecture indépendante de l'option retenue. Elle ne peut qu'ajouter une alerte (validation humaine) ; la réserve est ré-appliquée à chaque rafraîchissement.
+      const secondReadingFor = async (oppId: string) => {
+        if (!reviewable(o)) return;
+        const old = prev?.signals?.independentReview as IndependentReview | undefined;
+        const same = !!old && old.factsHash === reviewHashOf(o, reviewPromptVersion());
+        let rev: IndependentReview | undefined;
+        if (same && (old!.mode === "LLM" || (!!old!.triedAt && +now - +new Date(old!.triedAt) < 6 * 3600_000))) rev = old;
+        else if (llmAudit) { const r = await secondReading(budget, o, oppId); await db.insert(agentRuns).values(r.outcome.run); rev = r.review; }
+        if (!rev) return;
+        row.signals = { ...row.signals, independentReview: rev };
+        row.candidates = applyReview(row.candidates, o.selected, rev);
+      };
       if (decision.action === "REFRESH" && prev) {
         row.signals = { ...row.signals, marketAnalysis: await analysisFor(prev.id), agentOpinions: await opinionsFor(prev.id) };
+        await secondReadingFor(prev.id);
         const sameChoice = prev.candidates?.[prev.selected]?.label === o.candidates[o.selected].label;
         await db.update(opportunities).set({ ...row, narrative: sameChoice && prev.narrative ? prev.narrative : deterministicNarrative(o) }).where(eq(opportunities.id, prev.id));
         refreshed++; continue;
@@ -214,6 +230,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       }
       // la synthèse adressée au propriétaire passe avant l'analyse : quand le plafond est serré, c'est elle qui est servie
       row.signals = { ...row.signals, marketAnalysis: await analysisFor(id), agentOpinions: await opinionsFor(id) };
+      await secondReadingFor(id);
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;
     }

@@ -11,6 +11,7 @@ const LOCK: Record<string, { version: string; hash: string }> = {
   "marche.market_analysis": { version: "2026-11-v1", hash: "6d651f15ecd1516d" },
   "pricing.option_opinion": { version: "2026-11-v1", hash: "9cc20ea98dcb74bd" },
   "distribution.option_opinion": { version: "2026-11-v1", hash: "6dc78b9f62296085" },
+  "audit.independent_review": { version: "2026-11-v1", hash: "7a1616653fb59c37" },
 };
 
 describe("registre des prompts (US-074)", () => {
