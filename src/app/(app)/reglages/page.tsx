@@ -21,6 +21,7 @@ import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/dates";
 import { rememberDaysFromEnv } from "@/lib/remember-policy";
+import { can, PERMISSIONS, PERMISSION_LABEL, ROLE_LABEL, ROLE_SUMMARY } from "@/lib/rbac";
 
 export const metadata = { title: "Réglages" };
 export default async function Reglages() {
@@ -35,7 +36,7 @@ export default async function Reglages() {
       <div className="page-head"><h1>Réglages</h1><p>Votre espace est isolé : vos logements, vos décisions et votre journal ne sont visibles que de vous.</p></div>
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Compte</h2>
-        <Recap rows={[["Nom", user.name], ["Adresse e-mail", user.email, true], ["Rôle", "Propriétaire — seule autorité d'approbation"]]} />
+        <Recap rows={[["Nom", user.name], ["Adresse e-mail", user.email, true], ["Rôle", ROLE_LABEL[user.role]]]} />
         <ActionForm action={renameTenantAction} style={{ marginTop: 18, maxWidth: 520 }}>
           <div className="field">
             <label htmlFor="tenantName">Nom de l'espace</label>
@@ -44,6 +45,15 @@ export default async function Reglages() {
           </div>
           <div style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer le nom</Submit></div>
         </ActionForm>
+      </section>
+      <section className="section" id="droits" data-testid="droits">
+        <h2>Vos droits</h2>
+        <p className="section-note"><strong>{ROLE_LABEL[user.role]}.</strong> {ROLE_SUMMARY[user.role]} Les droits s'appliquent au circuit de décision ; le serveur les vérifie à chaque action, et un refus est inscrit au journal d'audit.</p>
+        <div className="table-wrap"><table className="econ">
+          <caption className="visually-hidden">Ce que votre rôle permet</caption>
+          <thead><tr><th scope="col">Action</th><th scope="col">Votre rôle</th></tr></thead>
+          <tbody>{PERMISSIONS.map((p) => <tr key={p}><th scope="row">{PERMISSION_LABEL[p]}</th><td>{can(user.role, p) ? "Autorisé" : "Non autorisé"}</td></tr>)}</tbody>
+        </table></div>
       </section>
       <section className="section" id="fonctions">
         <h2>Fonctions activées</h2>
@@ -131,7 +141,7 @@ export default async function Reglages() {
         <h2>Démonstration</h2>
         <p className="section-note">Les deux logements de démonstration sont ancrés à une date. Les réinstaller efface leurs dossiers et repart d'aujourd'hui ; vos propres logements ne sont pas touchés.</p>
         <Recap rows={[["Ancrage actuel", user.settings.demoAnchor ? fmtDate(user.settings.demoAnchor) : "aucun", true]]} />
-        <ActionForm action={resetDemoAction} style={{ marginTop: 14 }}><Submit className="btn btn-danger" icon="undo" pendingLabel="Réinstallation…">Réinstaller la démonstration à la date du jour</Submit></ActionForm>
+        {can(user.role, "decision.decide") && <ActionForm action={resetDemoAction} style={{ marginTop: 14 }}><Submit className="btn btn-danger" icon="undo" pendingLabel="Réinstallation…">Réinstaller la démonstration à la date du jour</Submit></ActionForm>}
       </section>
     </Page>
   );

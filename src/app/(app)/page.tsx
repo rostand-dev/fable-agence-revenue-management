@@ -10,6 +10,7 @@ import { Icon } from "@/components/Icon";
 import { AGENTS } from "@/lib/agents/registry";
 import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
+import { can, denyMessage } from "@/lib/rbac";
 import { diffDays, fmtDate, fmtDateTime, todayISO } from "@/lib/dates";
 import type { Candidate } from "@/lib/engine/types";
 import { signedEuro } from "@/lib/format";
@@ -20,6 +21,7 @@ const FILTERS = [["a-traiter", "À traiter"], ["garde-fous", "Garde-fous & vetos
 export default async function Inbox({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
   const user = await requireUser();
   const f = (await searchParams).f ?? "a-traiter";
+  const canDecide = can(user.role, "decision.decide");
   const [props, all, review] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN", "DEFERRED", "DECIDED"]), lastReview(user.tenantId)]);
   const llmOn = (await getLlmStatus(user.tenantId)).source !== "aucune";
   const names = user.settings.agentNames ?? null;
@@ -61,7 +63,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
         <div className="mode-strip" style={{ marginBottom: 20 }}>
           <State role="tech">Mode démonstration</State>
           <span>Les logements marqués « démo » reposent sur des <strong>données synthétiques</strong>{anchor ? `, ancrées au ${fmtDate(anchor)}` : ""}. Les écritures PriceLabs y sont simulées.</span>
-          {stale >= 3 && <ActionForm action={resetDemoAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo" pendingLabel="Réinstallation…">Réancrer à aujourd'hui</Submit></ActionForm>}
+          {stale >= 3 && canDecide && <ActionForm action={resetDemoAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo" pendingLabel="Réinstallation…">Réancrer à aujourd'hui</Submit></ActionForm>}
         </div>
       )}
       <div className="page-head">
@@ -75,9 +77,11 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           {review ? <>Dernière revue de l'équipe : <strong style={{ color: "var(--ink)" }}>{fmtDateTime(review.startedAt)}</strong>. {llmOn ? "Synthèses rédigées avec le modèle de langage." : "Synthèses en mode déterministe (aucune clé API renseignée)."}</> : "L'équipe n'a pas encore passé vos logements en revue."}
           {" "}<Link href="/equipe">Voir l'équipe</Link>
         </p>
-        <ActionForm action={reviewAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="spin" pendingLabel="Revue en cours…">Relancer la revue</Submit></ActionForm>
+        {canDecide && <ActionForm action={reviewAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="spin" pendingLabel="Revue en cours…">Relancer la revue</Submit></ActionForm>}
       </div>
       {blocked > 0 && <Banner role="attention" title={`${blocked} logement${blocked > 1 ? "s" : ""} hors revue faute de données`} style={{ marginBottom: 14 }}>Aucune opportunité n'est ouverte tant que le calendrier ou le modèle économique est inconnu. <Link href="/logements">Compléter les logements</Link></Banner>}
+
+      {!canDecide && <div data-testid="lecture-seule" style={{ marginBottom: 14 }}><Banner role="tech" title="Lecture seule">{denyMessage(user.role, "decision.decide")} Vous pouvez parcourir les situations et ouvrir chaque dossier.</Banner></div>}
 
       <section className="section" aria-labelledby="synth-h" style={{ marginTop: 8 }}>
         <h2 id="synth-h" className="visually-hidden">Synthèse quotidienne</h2>
@@ -96,7 +100,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
           {FILTERS.map(([k, label]) => <Link key={k} className="chip" href={k === "a-traiter" ? "/" : `/?f=${k}`} aria-current={f === k ? "true" : undefined} scroll={false}>{label}</Link>)}
         </div>
         {shown.length > 0 ? (
-          <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={o.status === "OPEN" ? open.indexOf(o) + 1 : null} propertyName={pname.get(o.propertyId) ?? ""} names={names} provisional={prov.has(o.propertyId)} />)}</div>
+          <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={o.status === "OPEN" ? open.indexOf(o) + 1 : null} propertyName={pname.get(o.propertyId) ?? ""} names={names} provisional={prov.has(o.propertyId)} canDecide={canDecide} />)}</div>
         ) : (
           <div className="empty">
             <h3>{f === "a-traiter" ? "Rien à arbitrer" : "Aucune entrée"}</h3>

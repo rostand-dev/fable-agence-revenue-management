@@ -25,6 +25,7 @@ import { CHANNEL_LABEL, type Candidate, type EconomicModel } from "@/lib/engine/
 import { euro, signedEuro } from "@/lib/format";
 import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilities";
 import { flagFor } from "@/lib/services/flags";
+import { can, denyMessage, executePermission, ROLE_LABEL, rolesWith } from "@/lib/rbac";
 
 const RUNBOOK: Record<string, (c: Candidate) => string[]> = {
   CHANNEL_PROMO: (c) => [
@@ -91,6 +92,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const d = o.diagnosis, nar = o.narrative;
   const kinds = [["fait", "Faits relevés", "block-faits"], ["comparaison", "Comparaisons", "block-comparaisons"], ["interpretation", "Interprétations", "block-interpretations"]] as const;
   const mode: string | undefined = action?.simulation?.executionMode;
+  // US-084 : le serveur refuse ce que le rôle ne permet pas ; l'écran ne propose que ce qui sera accepté
+  const canDecide = can(user.role, "decision.decide"), canExec = can(user.role, executePermission(mode)), canVerify = can(user.role, "action.verify"), canRollback = can(user.role, "action.rollback");
+  const who = (perm: Parameters<typeof rolesWith>[0]) => rolesWith(perm).map((r) => ROLE_LABEL[r].toLowerCase()).join(", ");
   const exec = action?.execution, meas = action?.measurement;
   // US-002 : même règle que le serveur (`execute()`), pour ne jamais offrir un bouton qui sera refusé
   const target = providerOfTarget(action?.target?.system);
@@ -332,7 +336,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <p>{idx === o.selected ? nar?.recommendation : c.detail} {c.type !== "NO_ACTION" && "L'approbation prépare l'action : rien n'est écrit à l'instant de l'approbation."}</p>
             {(o.signals.independentReview as IndependentReview | undefined)?.concern && idx === o.selected && c.audit.rules.some((r) => r.code === "INDEPENDENT_REVIEW") && <p className="muted" data-testid="reserve-seconde-lecture" style={{ margin: "0 0 12px" }}>Réserve de la seconde lecture : {(o.signals.independentReview as IndependentReview).reason}</p>}
             {nar?.caveats?.length > 0 && idx === o.selected && <ul className="muted" style={{ margin: "0 0 16px", paddingLeft: 18 }}>{nar.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>}
-            {c.audit.verdict === "REJECT" ? (
+            {!canDecide ? (
+              <div data-testid="lecture-seule"><Banner role="tech" title="Lecture seule : décision réservée">{denyMessage(user.role, "decision.decide")} Cette décision revient à : {who("decision.decide")}.</Banner></div>
+            ) : c.audit.verdict === "REJECT" ? (
               <Banner role="veto" title="Option rejetée par l'auditeur">Elle ne peut pas être approuvée. {c.audit.rules.find((r) => r.outcome === "FAIL")?.detail}</Banner>
             ) : (
               <ActionForm action={approveAction} hidden={{ opportunityId: o.id, candidate: idx }}>
@@ -354,11 +360,11 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 </div>
               </ActionForm>
             )}
-            <div className="decision-secondary">
+            {canDecide && <div className="decision-secondary">
               <ActionForm action={rejectAction} hidden={{ opportunityId: o.id, comment: "" }} className="inline"><Submit className="btn btn-danger" icon="cross">Rejeter la proposition</Submit></ActionForm>
               {!o.veto && <ActionForm action={deferAction} hidden={{ opportunityId: o.id }} className="inline"><Submit className="btn btn-ghost" icon="clock">Différer de 3 jours</Submit></ActionForm>}
-            </div>
-            <p className="decision-note">Une seule commande primaire. {o.veto ? "Un dossier sous veto ne peut pas être différé." : "Rejeter et différer sont consignés au journal."}</p>
+            </div>}
+            <p className="decision-note">{canDecide ? <>Une seule commande primaire. {o.veto ? "Un dossier sous veto ne peut pas être différé." : "Rejeter et différer sont consignés au journal."}</> : "Vous pouvez lire le dossier et poser une question à l'équipe."}</p>
           </div>
         ) : (
           <>
@@ -368,7 +374,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               {action?.approvalComment && <>Commentaire : « {action.approvalComment} »</>}
               {o.decision === "APPROVED_SHADOW" && <> Logement en période d'observation : jugement hypothétique, aucune écriture externe.</>}
             </Banner>
-            {!action && o.status !== "EXPIRED" && (
+            {!action && o.status !== "EXPIRED" && canDecide && (
               <ActionForm action={reopenAction} hidden={{ opportunityId: o.id }} style={{ marginTop: 12 }}><Submit className="btn btn-ghost btn-sm" icon="undo">Rouvrir le dossier</Submit></ActionForm>
             )}
           </>
@@ -390,19 +396,20 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   ["Mode d'exécution", mode === "API_PRICELABS" ? (p.isDemo ? "Écriture simulée (démonstration)" : "API PriceLabs") : mode === "MANUAL_RUNBOOK" ? "Procédure manuelle guidée" : "Tâche interne"],
                   ["Retour arrière", action.rollbackPlan],
                 ]} />
-                {action.status === "APPROVED" && blocked && (
+                {action.status === "APPROVED" && !canExec && <div data-testid="execution-reservee"><Banner role="tech" title="Exécution réservée">{denyMessage(user.role, executePermission(mode))} Elle revient à : {who(executePermission(mode))}.</Banner></div>}
+                {action.status === "APPROVED" && canExec && blocked && (
                   <>
                     <div id="exec-blocked"><Banner role="veto" title="Exécution impossible">{blocked}</Banner></div>
                     <div><button type="button" className="btn btn-primary" disabled aria-describedby="exec-blocked"><Icon name="ban" />{mode === "API_PRICELABS" ? "Recontrôler puis écrire" : "Déclarer la réalisation"}</button></div>
                   </>
                 )}
-                {action.status === "APPROVED" && !blocked && mode === "API_PRICELABS" && (
+                {action.status === "APPROVED" && canExec && !blocked && mode === "API_PRICELABS" && (
                   <>
                     <Banner role="attention" title="Recontrôle avant écriture">La grille est relue au moment de l'envoi : si une nuit a été réservée depuis la simulation, l'écriture est abandonnée.</Banner>
                     <ActionForm action={executeAction} hidden={{ actionId: action.id }}><Submit icon="search" pendingLabel="Recontrôle…">Recontrôler puis écrire</Submit></ActionForm>
                   </>
                 )}
-                {action.status === "APPROVED" && !blocked && mode !== "API_PRICELABS" && (
+                {action.status === "APPROVED" && canExec && !blocked && mode !== "API_PRICELABS" && (
                   <>
                     <div>
                       <p className="gauge-label" style={{ marginBottom: 8 }}>Procédure pas à pas — {agentName(mode === "INTERNAL" ? "annonce" : "distribution", names)}</p>
@@ -443,7 +450,8 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <article className="stratum">
               <header><span className="st-no">3</span><h3>Vérification</h3><span className="badge badge-verif" style={{ marginLeft: "auto" }}><Icon name="search" />Vérification</span></header>
               <div className="stratum-body stack">
-                {action.status === "EXECUTED" && (
+                {action.status === "EXECUTED" && !canVerify && <div data-testid="verification-reservee"><Banner role="tech" title="Vérification réservée">{denyMessage(user.role, "action.verify")}</Banner></div>}
+                {action.status === "EXECUTED" && canVerify && (
                   <ActionForm action={verifyAction} hidden={{ actionId: action.id }}>
                     <p className="muted" style={{ margin: "0 0 12px" }}>{exec?.mode === "DEMO_SIMULATED" ? `${agentName("audit", names)} relit la grille et la compare à l'action approuvée.` : "Relisez l'état réel dans l'outil, puis confirmez qu'il correspond à l'action approuvée."}</p>
                     <Submit icon="search">{exec?.mode === "DEMO_SIMULATED" ? "Vérifier l'état relu" : "Confirmer la relecture"}</Submit>
@@ -467,7 +475,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               </div>
             </article>
           </div>
-          {["EXECUTED", "VERIFIED", "MEASURING", "FAILED"].includes(action.status) && (
+          {["EXECUTED", "VERIFIED", "MEASURING", "FAILED"].includes(action.status) && canRollback && (
             <details className="fold" style={{ marginTop: 14 }}>
               <summary><Icon name="undo" />Retour arrière</summary>
               <div className="fold-body">

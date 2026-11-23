@@ -93,6 +93,7 @@ export const AUDIT_TYPES = {
   "account.password_changed": { category: "ACCESS", label: "Mot de passe modifié" },
   "account.login_remembered": { category: "ACCESS", label: "Connexion automatique (appareil reconnu)" },
   "account.logout_everywhere": { category: "ACCESS", label: "Déconnexion de tous les appareils" },
+  "access.denied": { category: "ACCESS", label: "Action refusée (droits insuffisants)" },
   // système
   "review.completed": { category: "SYSTEM", label: "Revue terminée" },
   "demo.seeded": { category: "SYSTEM", label: "Démonstration installée" },

@@ -1,5 +1,6 @@
 import { withTenant } from "@/db/tenant";
 import { getUser } from "@/lib/auth";
+import { can, denyMessage } from "@/lib/rbac";
 import { listAuditEvents } from "@/lib/audit/query";
 import { auditCategoryOf, auditLabel, isAuditCategory } from "@/lib/audit/types";
 
@@ -17,6 +18,7 @@ const MAX = 100;
 export async function GET(req: Request) {
   const user = await getUser();
   if (!user) return Response.json({ error: "Session expirée : reconnectez-vous." }, { status: 401, headers: NO_STORE });
+  if (!can(user.role, "audit.read")) return Response.json({ error: denyMessage(user.role, "audit.read") }, { status: 403, headers: NO_STORE });
   const q = new URL(req.url).searchParams;
   const rawLimit = q.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
