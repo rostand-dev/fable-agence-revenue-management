@@ -17,6 +17,7 @@ const SPLIT: [string, string, string][] = [
   ["Calcul des planchers, cascade du revenu net, cumul des remises", "Règles déterministes", "Aucun modèle de langage ne décide si un prix est rentable."],
   ["Détection des signaux, dédoublonnage, classement de la file", "Règles déterministes", "Reproductible d'un jour à l'autre, testable."],
   ["Audit et veto, machine à états, droits", "Règles déterministes", "Un garde-fou ne se négocie pas."],
+  ["Avis des stratèges sur leurs options, seconde lecture de l'auditeur", "Modèle de langage, sur faits certifiés", "Ils commentent ou alertent ; ils ne changent ni montant, ni option retenue, ni veto."],
   ["Synthèse des dossiers, réponses à vos questions, bilan mensuel", "Modèle de langage, sur faits certifiés", "Il explique ; il n'ajoute aucun chiffre et n'exécute rien."],
 ];
 const AUTONOMY: [string, string, string][] = [
@@ -89,7 +90,7 @@ export default async function Methode() {
       </section>
       <section className="section" aria-labelledby="auditeur-h" data-testid="regles-auditeur">
         <h2 id="auditeur-h">Les règles de l'auditeur</h2>
-        <p className="section-note">Chaque option est contrôlée par des règles déterministes, chacune identifiée par un code. Un <strong>veto</strong> rejette l'option : elle ne peut pas être approuvée. Une <strong>validation humaine</strong> la laisse proposée, mais elle ne s'approuve qu'avec un commentaire. Aucun modèle de langage n'intervient dans ces contrôles.</p>
+        <p className="section-note">Chaque option est contrôlée par des règles déterministes, chacune identifiée par un code (la seconde lecture par modèle, INDEPENDENT_REVIEW, est un ajout qui ne peut qu'alerter). Un <strong>veto</strong> rejette l'option : elle ne peut pas être approuvée. Une <strong>validation humaine</strong> la laisse proposée, mais elle ne s'approuve qu'avec un commentaire. Aucun modèle de langage n'intervient dans ces contrôles.</p>
         <ul className="playbooks">
           {POLICY_CODES.map((c) => {
             const r = POLICY_RULES[c];
