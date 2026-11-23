@@ -119,3 +119,14 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Déploiement.** Aucune migration, aucune nouvelle variable. Sans clé de modèle : aucune seconde lecture, verdicts identiques. Chaque dossier avec une option exécutable non rejetée consomme au plus un appel de plus (budget `AGENT_MAX_CALLS_PER_REVIEW`).
 
 **Tests.** Unitaires (`independent-review.test.ts` : invite sans verdict ni avis, contrôles, jamais de levée de veto, effet limité à l'option relue), base de données avec faux modèle (`auditor.db.test.ts` : réserve appliquée, rejets/montants/option retenue intacts, réutilisation, sortie refusée, invite sans verdict), E2E bureau/390/360 (`e2e/seconde-lecture.spec.ts`), non-régression (suites complètes, golden inchangé).
+
+## US-075 — Golden cases des agents en CI, sans écriture externe
+
+**Ce qui change.** Trois garde-fous de non-régression, exécutés à chaque PR (dans `npm test` et dans une étape dédiée « `npm run test:golden` » du job *Typecheck et tests*) :
+1. **Golden cases** (`agents-golden.test.ts`, résultats figés dans `src/lib/agents/__golden__/agents-chatillon.json` et `agents-evry.json`). Les logements de démonstration passent dans le moteur, puis chaque agent (analyste, stratèges, seconde lecture) répond par un **fournisseur scripté** : aucun appel HTTP (`fetch` est piégé et le test vérifie qu'il n'a jamais été appelé), aucune clé. On fige ce que produit chaque agent et l'effet d'une réserve sur les verdicts. Des invariants sont vérifiés pour chaque dossier : ni l'option retenue ni un montant ne changent ; un veto n'est jamais levé.
+2. **Sorties fautives refusées** (14 cas, chacun avec le motif de refus attendu et 5 témoins valides sur les mêmes fixtures) : chiffre inventé, action proposée, preuve ou option inexistante, texte non JSON, option rejetée jugée favorable, réserve sans preuve… chacune est refusée après une seule correction (2 appels au plus).
+3. **Aucune écriture externe** (`no-external-write.test.ts`, contrôle statique) : les modules d'agents n'importent aucun adaptateur d'intégration ni service (liste blanche d'imports), n'écrivent pas en base (les traces sont insérées par l'appelant), n'appellent le réseau que depuis la passerelle et le transport Anthropic vers les seules API de modèles, et le port PriceLabs n'a aucune méthode d'écriture. Le contrôle lit le code avec le compilateur TypeScript (imports, ré-exports, `import()`, `require`), applique une liste d'imports **par fichier**, vérifie que les dépendances partagées autorisées n'importent elles-mêmes aucune intégration, et embarque un test de mutation (un import interdit, une écriture en base ou un `fetch` injectés sont bien détectés).
+
+**Mise à jour d'un golden voulue** : `npx vitest run -u src/lib/agents/agents-golden.test.ts`, puis relire le diff du fichier JSON en PR.
+
+**Déploiement.** Aucun impact : tests et CI seulement, aucune migration, aucune variable.

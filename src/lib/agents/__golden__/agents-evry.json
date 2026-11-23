@@ -1,0 +1,174 @@
+[
+ {
+  "playbook": "PB-06",
+  "title": "Le prix vendu Booking.com passe sous le plancher absolu sur 3 nuits",
+  "selected": 1,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "pricing": [
+    {
+     "candidate": 0,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    },
+    {
+     "candidate": 1,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    },
+    {
+     "candidate": 2,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "NEEDS_HUMAN",
+   "NEEDS_HUMAN",
+   "NEEDS_HUMAN",
+   "REJECT"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "NEEDS_HUMAN",
+   "NEEDS_HUMAN",
+   "REJECT"
+  ],
+  "appels": 1
+ },
+ {
+  "playbook": "PB-07",
+  "title": "Demande d'événement non reflétée dans le prix sur 3 nuits",
+  "selected": 0,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "pricing": [
+    {
+     "candidate": 0,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    },
+    {
+     "candidate": 1,
+     "stance": "FAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "NEEDS_HUMAN",
+   "APPROVE",
+   "APPROVE"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "APPROVE",
+   "APPROVE"
+  ],
+  "appels": 1
+ },
+ {
+  "playbook": "PB-02",
+  "title": "Réservations très en avance sur le marché sur J+31 à J+60",
+  "selected": 0,
+  "analyse": {
+   "mode": "LLM",
+   "constats": [
+    {
+     "texte": "Les pièces citées décrivent la situation observée sur la période étudiée.",
+     "preuves": [
+      "E1",
+      "E2"
+     ],
+     "confiance": "MOYENNE"
+    }
+   ],
+   "inconnus": []
+  },
+  "avis": {
+   "pricing": [
+    {
+     "candidate": 0,
+     "stance": "RESERVES",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    },
+    {
+     "candidate": 1,
+     "stance": "FAVORABLE",
+     "rationale": "Cette option a été simulée puis auditée par le moteur, son avis suit le verdict de l'auditeur.",
+     "watchpoints": [
+      "Mesurer l'effet sur la fenêtre d'observation prévue."
+     ]
+    }
+   ]
+  },
+  "secondeLecture": {
+   "concern": false,
+   "reason": ""
+  },
+  "verdictsAvant": [
+   "NEEDS_HUMAN",
+   "APPROVE",
+   "APPROVE"
+  ],
+  "verdictsApresReserve": [
+   "NEEDS_HUMAN",
+   "APPROVE",
+   "APPROVE"
+  ],
+  "appels": 1
+ }
+]

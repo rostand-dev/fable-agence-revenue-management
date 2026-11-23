@@ -13,6 +13,7 @@
     "docs:money": "tsx scripts/generate-money-doc.ts",
     "docs:capabilities": "tsx scripts/generate-capabilities-doc.ts",
     "docs:stacking": "tsx scripts/generate-stacking-doc.ts",
+    "test:golden": "vitest run src/lib/engine/review-golden.test.ts src/lib/agents/agents-golden.test.ts src/lib/agents/no-external-write.test.ts",
     "test:db": "vitest run -c vitest.db.config.mts",
     "test:all": "npm test && npm run test:db",
     "e2e": "playwright test",
