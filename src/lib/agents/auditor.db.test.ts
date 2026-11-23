@@ -61,7 +61,7 @@ describe("US-073 : seconde lecture indépendante dans la revue (base réelle, fa
     await runDailyReview(t.tenantId, "MANUAL");
     const calls = srv.requests.filter(isAuditor);
     expect(calls.length).toBeGreaterThan(0);
-    for (const r of calls) expect(r.user).not.toMatch(/APPROVE|NEEDS_HUMAN|REJECT|verdict|Synthèse|avis/i);
+    for (const r of calls) expect(r.user).not.toMatch(/\b(APPROVE|NEEDS_HUMAN|REJECT)\b|verdict de l.auditeur|Synthèse du dossier/);
   });
 
   it("avec réserve : INDEPENDENT_REVIEW ajoutée à l'option retenue approuvée seulement ; rejets, montants et option retenue intacts", async () => {

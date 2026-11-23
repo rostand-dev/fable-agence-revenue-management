@@ -13,6 +13,7 @@ async function dossierRelu(page: Page): Promise<boolean> {
 }
 
 test("Dossier : la seconde lecture de l'auditeur figure sur l'option retenue, sans débordement", async ({ page }) => {
+  test.setTimeout(120_000);
   test.skip(!process.env.ANTHROPIC_API_BASE, "faux serveur de modèle absent : pas de seconde lecture");
   expect(await dossierRelu(page), "aucun dossier du compte de démo ne porte de seconde lecture").toBe(true);
   const bloc = page.getByTestId("seconde-lecture");

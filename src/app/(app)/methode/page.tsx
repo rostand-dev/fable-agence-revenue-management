@@ -90,7 +90,7 @@ export default async function Methode() {
       </section>
       <section className="section" aria-labelledby="auditeur-h" data-testid="regles-auditeur">
         <h2 id="auditeur-h">Les règles de l'auditeur</h2>
-        <p className="section-note">Chaque option est contrôlée par des règles déterministes, chacune identifiée par un code. Un <strong>veto</strong> rejette l'option : elle ne peut pas être approuvée. Une <strong>validation humaine</strong> la laisse proposée, mais elle ne s'approuve qu'avec un commentaire. Aucun modèle de langage n'intervient dans ces contrôles.</p>
+        <p className="section-note">Chaque option est contrôlée par des règles déterministes, chacune identifiée par un code (la seconde lecture par modèle, INDEPENDENT_REVIEW, est un ajout qui ne peut qu'alerter). Un <strong>veto</strong> rejette l'option : elle ne peut pas être approuvée. Une <strong>validation humaine</strong> la laisse proposée, mais elle ne s'approuve qu'avec un commentaire. Aucun modèle de langage n'intervient dans ces contrôles.</p>
         <ul className="playbooks">
           {POLICY_CODES.map((c) => {
             const r = POLICY_RULES[c];

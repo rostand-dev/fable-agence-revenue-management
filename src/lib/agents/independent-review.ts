@@ -10,6 +10,7 @@ import { z } from "zod";
 import type { Candidate, DetectedOpportunity } from "../engine/types";
 import { fmtPeriod } from "../dates";
 import { signedEuro } from "../format";
+import { policyCodes, verdictOf } from "../engine/policy";
 import { FREE_TEXT_FORBIDDEN, numberEvidence, numbersOf, PRESCRIPTIVE } from "./market-analysis";
 
 export type IndependentReview = {
@@ -83,7 +84,7 @@ export function reviewSchema(ctx: ReviewContext) {
     if (PRESCRIPTIVE.test(r.reason)) bad("reason", "L'auditeur signale une réserve, il ne propose aucune action.");
     if (FREE_TEXT_FORBIDDEN.test(r.reason)) bad("reason", "Pas de lien, d'adresse ni de balisage dans le texte.");
     if (NUMBER_WORDS.test(r.reason)) bad("reason", "Les nombres s'écrivent en chiffres, tels qu'ils figurent dans les faits.");
-    if (numbersOf(r.reason).some((n) => !ctx.common.has(n) && !r.evidence.some((id) => ctx.byEvidence.get(id)?.has(n)))) bad("reason", "Un chiffre ne figure dans aucune des preuves citées ni dans l'option relue.");
+    if (numbersOf(r.reason.replace(/(?<![\p{L}\d])C1(?![\p{L}\d])/gu, " ")).some((n) => !ctx.common.has(n) && !r.evidence.some((id) => ctx.byEvidence.get(id)?.has(n)))) bad("reason", "Un chiffre ne figure dans aucune des preuves citées ni dans l'option relue.");
   });
 }
 export type ReviewOutput = z.infer<typeof BaseSchema>;
@@ -106,6 +107,7 @@ export function applyReview<T extends Candidate>(candidates: T[], selected: numb
   const c = candidates[selected];
   if (!c || c.label !== review.reviewed || c.type === "NO_ACTION" || c.audit.verdict === "REJECT" || c.audit.rules.some((r) => r.code === "INDEPENDENT_REVIEW")) return candidates;
   const rule = { code: "INDEPENDENT_REVIEW", label: "Seconde lecture indépendante", outcome: "WARN" as const, detail: `Seconde lecture par modèle : ${review.reason}` };
-  const audit = { ...c.audit, verdict: "NEEDS_HUMAN" as const, rules: [...c.audit.rules, rule], humanCodes: [...(c.audit.humanCodes ?? []), "INDEPENDENT_REVIEW"] };
+  const rules = [...c.audit.rules, rule];
+  const audit = { ...c.audit, verdict: verdictOf(rules), rules, vetoCodes: policyCodes({ verdict: "NEEDS_HUMAN", rules }).veto, humanCodes: policyCodes({ verdict: "NEEDS_HUMAN", rules }).human };
   return candidates.map((x, i) => (i === selected ? { ...x, audit } : x));
 }

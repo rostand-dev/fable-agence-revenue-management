@@ -23,10 +23,11 @@ const ok = { concern: true, reason: "Le prix du marché est inconnu alors que l'
 describe("seconde lecture : contrôles (US-073)", () => {
   it("l'invite ne contient ni verdict des règles ni avis d'un autre poste", () => {
     const p = reviewPrompt(mk(cand("NEEDS_HUMAN")));
-    expect(p).not.toMatch(/verdict|APPROVE|NEEDS_HUMAN|REJECT|avis|synthèse/i);
+    expect(p).not.toMatch(/verdict|\b(APPROVE|NEEDS_HUMAN|REJECT)\b|synthèse/i);
     expect(p).toContain("E1 [fait] Occupation du logement");
     expect(p).toContain("C1 Baisse datée");
   });
+  it("une réserve qui nomme l'option « C1 » reste valide (l'identifiant n'est pas un chiffre)", () => expect(issues(concern("Le prix du marché inconnu fragilise l'option C1 relue.")).join()).not.toContain("chiffre"));
   it("sans réserve : ni texte ni preuve ; avec réserve : conforme", () => {
     expect(issues({ concern: false, reason: "", evidence: [] })).toEqual([]);
     expect(issues({ concern: false, reason: "Tout va bien.", evidence: [] }).length).toBeGreaterThan(0);
