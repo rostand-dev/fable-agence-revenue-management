@@ -118,7 +118,8 @@ export function schemaHint(schema: z.ZodType): string {
 export function describeIssues(err: z.ZodError): string {
   // seuls le code de l'erreur et un chemin de forme sûre sont repris : un message ou une clé venus du modèle ne sont jamais renvoyés au modèle ni conservés
   const safePath = (p: PropertyKey[]) => p.map(String).filter((k) => /^[\w-]{1,40}$/.test(k)).join(".") || "(racine)";
-  return err.issues.slice(0, 5).map((i) => `${safePath(i.path)} : ${i.code}`).join(" ; ").slice(0, 300);
+  // les messages « custom » sont rédigés par nous (superRefine), jamais par le modèle : ils aident la correction
+  return err.issues.slice(0, 5).map((i) => `${safePath(i.path)} : ${i.code === "custom" ? i.message : i.code}`).join(" ; ").slice(0, 400);
 }
 
 // ───────────────────────── Appel ─────────────────────────

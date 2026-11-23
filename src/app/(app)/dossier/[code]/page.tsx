@@ -10,6 +10,7 @@ import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { needsComment } from "@/components/SitCard";
+import { deterministicAnalysis, type MarketAnalysis } from "@/lib/agents/market-analysis";
 import { Banner, Byline, Cascade, confidenceScale, Money, OppStatus, Recap, riskScale, State, VerdictState, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
 import { agentName } from "@/lib/agents/registry";
@@ -151,6 +152,23 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   <tbody>{(o.signals.signal.measures as SignalMeasure[]).map((m) => { const f = formatMeasure(m); return <tr key={m.key}><th scope="row">{f.label}</th><td className="mono">{f.observed}</td><td className="mono">{f.threshold ?? "—"}</td></tr>; })}</tbody></table></div>
               )}
               <div className="reg-foot"><span className="metric-source">Source : {o.signals.signalSource}{o.signals.signal?.playbook ? ` · ${o.signals.signal.playbook}, fenêtre ${o.signals.signal.horizon}` : ""}</span></div></article>
+            {(() => {
+              // les dossiers ouverts avant l'US-071 n'ont pas encore d'analyse enregistrée : on affiche celle par règles, calculée à la volée (elle ne dépend que des pièces)
+              const ma = (o.signals.marketAnalysis as MarketAnalysis | undefined) ?? deterministicAnalysis({ diagnosis: o.diagnosis, signalText: o.signals.signalText, stayFrom: o.stayFrom, stayTo: o.stayTo });
+              return (
+                <article data-testid="analyse-marche"><span className="reg-key"><Icon name="signal" />Analyse du marché</span>
+                  <Byline agent="marche" names={names} what={ma.mode === "LLM" ? "a rédigé ces constats à partir des pièces numérotées" : "constats composés par règles à partir des pièces"} />
+                  <ul className="findings" style={{ listStyle: "none", padding: 0, margin: "10px 0 0", display: "grid", gap: 10 }}>
+                    {ma.findings.map((f, i) => (
+                      <li key={i} data-testid="constat"><span>{f.statement}</span>{" "}
+                        <span className="metric-source">Confiance {f.confidence.toLowerCase()} · preuves {f.evidence.map((id, k) => <span key={id}>{k > 0 ? ", " : ""}<a href={`#preuve-${id}`} data-testid="renvoi-preuve">{id}</a></span>)}</span></li>
+                    ))}
+                  </ul>
+                  {ma.unknowns.length > 0 && <p className="muted" style={{ margin: "10px 0 0" }} data-testid="analyse-inconnus">Inconnu : {ma.unknowns.join(" ")}</p>}
+                  {ma.hypotheses.length > 0 && <p className="muted" style={{ margin: "6px 0 0" }}>Hypothèses concurrentes : {ma.hypotheses.map((h) => h.label).join(" ; ")}.</p>}
+                </article>
+              );
+            })()}
             {o.signals.score && (
               <article data-testid="rang-card"><span className="reg-key"><Icon name="signal" />Pourquoi cette priorité</span>
                 <p>Priorité {o.signals.score.score}, utilisée pour classer l'Inbox. Elle organise le travail et n'autorise ni n'écarte aucune action.</p>
@@ -199,7 +217,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 return (
                   <div className={`block ${cls}`} key={k} style={{ marginBottom: 10 }}>
                     <h3>{title}</h3>
-                    <dl>{ev.map((e: any, i: number) => <div key={i} className={String(e.value).length > 24 ? "is-long" : undefined}><dt>{e.label}<br /><span className="metric-source">{e.source}</span></dt><dd>{e.value}</dd></div>)}</dl>
+                    <dl>{ev.map((e: any, i: number) => <div key={i} id={`preuve-E${d.evidence.indexOf(e) + 1}`} className={String(e.value).length > 24 ? "is-long" : undefined}><dt><span className="metric-source" data-testid="numero-preuve">E{d.evidence.indexOf(e) + 1}</span> {e.label}<br /><span className="metric-source">{e.source}</span></dt><dd>{e.value}</dd></div>)}</dl>
                   </div>
                 );
               })}

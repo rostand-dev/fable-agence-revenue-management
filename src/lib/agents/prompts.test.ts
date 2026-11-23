@@ -8,6 +8,7 @@ import { PROMPTS, promptHash, promptRef } from "./prompts";
  */
 const LOCK: Record<string, { version: string; hash: string }> = {
   "direction.explain_action": { version: "2026-11-v1", hash: "e2853e40365e971b" },
+  "marche.market_analysis": { version: "2026-11-v1", hash: "6d651f15ecd1516d" },
 };
 
 describe("registre des prompts (US-074)", () => {
