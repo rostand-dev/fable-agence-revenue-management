@@ -29,6 +29,7 @@ export const AUDIT_TYPES = {
   // exécution et mesure
   "action.executed": { category: "EXECUTION", label: "Action exécutée" },
   "action.failed": { category: "EXECUTION", label: "Exécution en échec" },
+  "action.precondition_failed": { category: "EXECUTION", label: "Précondition d'écriture non remplie" },
   "action.verified": { category: "EXECUTION", label: "Action vérifiée" },
   "action.verification_failed": { category: "EXECUTION", label: "Vérification en échec" },
   "action.rolled_back": { category: "EXECUTION", label: "Retour arrière" },

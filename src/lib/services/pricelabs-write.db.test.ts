@@ -39,7 +39,7 @@ async function action(t: { tenantId: string }, propertyId: string, type: string,
 describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", () => {
   it("prix minimum : écrit, relu, journalisé CONFIRMED, sans clé API dans le journal", async () => {
     const { t, prop, read } = await setup("min");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     const w = await preparePriceLabsWrite(prop, a);
     expect(w.plan).toEqual({ kind: "LISTING_LIMITS", limits: { minCents: 9500 } });
     const out = await sendPriceLabsWrite(w);
@@ -54,23 +54,23 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("une seconde écriture pour la même action est refusée : jamais deux envois", async () => {
     const { t, prop, writer } = await setup("idem");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
     const sent = writer.calls.filter((c) => c.method === "setListingLimits").length;
-    await expect(sendPriceLabsWrite(await preparePriceLabsWrite(prop, a))).rejects.toMatchObject({ code: "IDEMPOTENT" });
+    await expect(preparePriceLabsWrite(prop, a)).rejects.toMatchObject({ code: "IDEMPOTENT" }); // refusé dès la préparation
     expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(sent);
     expect(await writesOfAction(t.tenantId, a.id)).toHaveLength(1);
   });
 
-  it("prix daté à prix fixe : conserve l'état d'avant pour le retour arrière", async () => {
+  it("prix daté à prix fixe : un prix manuel déjà posé bloque l'écriture (précondition), le même prix est un rejeu inoffensif", async () => {
     const { t, prop, writer } = await setup("ov");
     await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 15000 }], { currency: "EUR", reason: "manuel" });
     const a = await action(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1, D2] });
+    await expect(preparePriceLabsWrite(prop, a)).rejects.toMatchObject({ code: "PRECONDITION", message: expect.stringContaining("porte déjà un prix daté") });
+    await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 11000 }], { currency: "EUR", reason: "manuel" });
     const out = await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
     expect(out.after.overrides.map((o) => [o.date, o.priceCents])).toEqual([[D1, 11000], [D2, 11000]]);
-    expect(out.before.overrides.map((o) => [o.date, o.priceCents])).toEqual([[D1, 15000]]);
     expect(out.previousOverrides).toHaveLength(1);
-    expect(out.previousOverrides[0]).toMatchObject({ date: D1, price: "150", reason: "manuel" });
   });
 
   it("refus à la préparation : rien n'est envoyé ni journalisé", async () => {
@@ -92,7 +92,7 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("refus de PriceLabs (403) : journal FAILED, valeur inchangée, message clair", async () => {
     const { t, prop, read, writer } = await setup("403");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     const w = await preparePriceLabsWrite(prop, a);
     writer.failWrites = { status: 403 };
     await expect(sendPriceLabsWrite(w)).rejects.toMatchObject({ code: "SEND", message: expect.stringContaining("Rien n'a été modifié") });
@@ -113,7 +113,7 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("le coupe-circuit levé pendant la préparation bloque l'envoi après le journal : rien n'est écrit", async () => {
     const { t, prop, read, writer } = await setup("recheck");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     const w = await preparePriceLabsWrite(prop, a);
     await expect(sendPriceLabsWrite(w, { recheck: async () => { throw new WriteError("Coupe-circuit activé."); } })).rejects.toMatchObject({ message: expect.stringContaining("Coupe-circuit") });
     expect(writer.calls.some((c) => c.method === "setListingLimits")).toBe(false);
@@ -123,7 +123,7 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("vérification ultérieure : conforme, puis écart détecté si PriceLabs a changé entre-temps", async () => {
     const { t, prop, read } = await setup("verify");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     const out = await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
     expect((await readBackPriceLabsWrite(prop, out.plan)).mismatches).toEqual([]);
     (read.scenario.listings[0] as any).min = 80; // quelqu'un modifie le minimum dans PriceLabs
@@ -134,18 +134,18 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("l'état d'avant est inscrit au journal avant l'envoi, sans clé API", async () => {
     const { t, prop, writer } = await setup("avant");
-    await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 15000 }], { currency: "EUR", reason: "manuel" });
+    await writer.setPriceOverrides(FAKE_LISTING_ID, "superhote", [{ date: D1, priceCents: 11000 }], { currency: "EUR", reason: "manuel" });
     const a = await action(t, prop.id, "PRICE_OVERRIDE", { nightlyCents: 11000, restoresFloor: true, dates: [D1] });
     await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
     const [row] = await writesOfAction(t.tenantId, a.id);
     expect((row.plan as any).before.limits.minCents).toBe(8300);
-    expect((row.plan as any).before.overrides[0]).toMatchObject({ date: D1, price: "150" });
+    expect((row.plan as any).before.overrides[0]).toMatchObject({ date: D1, price: "110" });
     expect(JSON.stringify(row)).not.toContain(KEY);
   });
 
   it("réponse ambiguë (500 après reprises) : journal « envoyée », message honnête, jamais « rien n'a été modifié »", async () => {
     const { t, prop, writer } = await setup("ambigu");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     const w = await preparePriceLabsWrite(prop, a);
     writer.failWrites = { status: 503 };
     const err = await sendPriceLabsWrite(w).catch((e) => e);
@@ -158,7 +158,7 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("deux envois simultanés pour la même action : un seul part, l'autre est refusé", async () => {
     const { t, prop, writer } = await setup("course");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     const [w1, w2] = [await preparePriceLabsWrite(prop, a), await preparePriceLabsWrite(prop, a)];
     const res = await Promise.allSettled([sendPriceLabsWrite(w1), sendPriceLabsWrite(w2)]);
     expect(res.filter((r) => r.status === "fulfilled")).toHaveLength(1);
@@ -168,7 +168,7 @@ describe("écriture PriceLabs d'une action (journal, relecture, idempotence)", (
 
   it("isolation : le journal d'un espace n'est pas lisible depuis un autre (filtre applicatif)", async () => {
     const { t, prop } = await setup("rls");
-    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     await sendPriceLabsWrite(await preparePriceLabsWrite(prop, a));
     const other = await makeTenant("autre");
     expect(await writesOfAction(other.tenantId, a.id)).toHaveLength(0);
@@ -187,9 +187,36 @@ describe("execute / verify / rollback d'une action sur un logement réel", () =>
   afterEach(() => withGate(undefined));
   const status = async (id: string) => (await db.select().from(revenueActions).where(eq(revenueActions.id, id)))[0];
 
+  it("précondition non remplie : action laissée APPROUVÉE, rien d'envoyé, refus tracé dans le journal d'audit", async () => {
+    withGate("true");
+    const { t, prop, read, writer } = await setup("exec-precond");
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 7000 }); // la simulation partait de 70 €, PriceLabs est à 83 €
+    await expect(D.execute(t.actor, a.id, undefined)).rejects.toThrow(/Précondition non remplie/);
+    expect((await status(a.id)).status).toBe("APPROVED");
+    expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(0);
+    expect((await read.listListings())[0].minCents).toBe(8300);
+    expect(await writesOfAction(t.tenantId, a.id)).toHaveLength(0);
+    const ev = await db.select().from(schema.auditEvents).where(eq(schema.auditEvents.tenantId, t.tenantId));
+    expect(ev.some((e) => e.type === "action.precondition_failed" && e.entityId === a.id)).toBe(true);
+  });
+
+  it("rejeu d'une action dont l'écriture est déjà partie : IDEMPOTENT, pas une fausse précondition", async () => {
+    const { t, prop } = await setup("rejeu");
+    const a = await action(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 7000 });
+    await sendPriceLabsWrite(await preparePriceLabsWrite(prop, { ...a, parameters: { minPriceCents: 9500, previousMinPriceCents: 8300 } }));
+    await expect(preparePriceLabsWrite(prop, a)).rejects.toMatchObject({ code: "IDEMPOTENT" });
+  });
+
+  it("logement de démonstration : jamais de lecture chez PriceLabs ni d'audit de précondition", async () => {
+    const t = await makeTenant("demo-precond"), id = await makeProperty(t.tenantId);
+    await db.update(properties).set({ isDemo: true }).where(eq(properties.id, id));
+    const [p] = await db.select().from(properties).where(eq(properties.id, id));
+    await expect(preparePriceLabsWrite(p, { id: newId("act"), tenantId: t.tenantId, type: "MIN_PRICE_CHANGE", parameters: { minPriceCents: 9500 } })).rejects.toThrow(/démonstration/);
+  });
+
   it("verrou fermé : refus clair, action laissée APPROUVÉE, rien d'envoyé", async () => {
     const { t, prop, writer } = await setup("exec-ferme");
-    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     await expect(D.execute(t.actor, a.id, undefined)).rejects.toThrow(/PRICELABS_WRITE_ENABLED|Désactivée|désactivée/);
     expect((await status(a.id)).status).toBe("APPROVED");
     expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(0);
@@ -199,7 +226,7 @@ describe("execute / verify / rollback d'une action sur un logement réel", () =>
   it("verrou ouvert : écriture, reçu, vérification conforme ; le retour arrière automatique est refusé (US-093)", async () => {
     withGate("true");
     const { t, prop, read } = await setup("exec-ouvert");
-    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     await D.execute(t.actor, a.id, undefined);
     const row = await status(a.id);
     expect(row.status).toBe("EXECUTED");
@@ -216,7 +243,7 @@ describe("execute / verify / rollback d'une action sur un logement réel", () =>
     withGate("true");
     const { t, prop, writer } = await setup("exec-kill");
     await db.insert(schema.integrations).values({ id: newId("int"), tenantId: t.tenantId, provider: "pricelabs", status: "CONNECTED", capabilities: {}, killSwitch: true } as any).onConflictDoNothing();
-    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500 });
+    const a = await approved(t, prop.id, "MIN_PRICE_CHANGE", { minPriceCents: 9500, previousMinPriceCents: 8300 });
     await expect(D.execute(t.actor, a.id, undefined)).rejects.toThrow(/coupe-circuit/i);
     expect((await status(a.id)).status).toBe("APPROVED");
     expect(writer.calls.filter((c) => c.method === "setListingLimits")).toHaveLength(0);

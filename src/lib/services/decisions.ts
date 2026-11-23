@@ -178,7 +178,11 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
   let prepared: PreparedWrite | null = null;
   if (real) {
     try { prepared = await preparePriceLabsWrite(p, { id: a.id, tenantId: actor.tenantId, type: a.type, parameters: a.parameters }); }
-    catch (e) { throw e instanceof WriteError ? new DecisionError(e.message) : e; }
+    catch (e) {
+      // précondition non remplie : l'action reste APPROUVÉE, mais le refus est tracé (US-091)
+      if (e instanceof WriteError && e.code === "PRECONDITION") await audit(db, actor.tenantId, userActor(actor.id), "action.precondition_failed", "RevenueAction", a.id, `Écriture de « ${a.label} » refusée : ${e.message}`, { code: o.code, actionType: a.type }).catch(() => {}); // la consignation ne masque pas le refus lisible
+      throw e instanceof WriteError ? new DecisionError(e.message) : e;
+    }
     // même précondition que la simulation, mais AVANT d'écrire : on n'envoie rien à PriceLabs pour échouer ensuite en base
     const local = dates.length ? await db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), inArray(calendarDays.date, dates))) : [];
     if (local.some((d) => d.state !== "FREE")) throw new DecisionError("Recontrôle : une des nuits a été réservée depuis la simulation. Écriture abandonnée, relancez la revue.");
