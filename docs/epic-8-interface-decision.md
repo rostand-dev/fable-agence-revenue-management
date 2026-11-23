@@ -90,3 +90,14 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - Page Historique : formulaire GET (dates + auteur) conservant la famille et la pagination ; dates inversées remises dans l'ordre ; état vide qui n'affirme pas qu'« il ne s'est rien passé ».
 - Aucune migration (le journal reste intact, index existants suffisants), aucune variable d'environnement.
 - Tests : unitaires (jours valides), base de données (bornes de période, auteurs, étanchéité entre propriétaires), E2E 3 viewports (filtres, vide, réinitialisation, API).
+
+## US-081 — Espace logement à 90 jours
+
+**Plan.** La fiche logement a déjà ses onglets (vue d'ensemble, calendrier 90 jours, stratégie, économie, canaux, données). Il manque la lecture synthétique de l'horizon D+90 et la chronologie du logement.
+
+- `src/lib/engine/horizon.ts` (pur, testé) : synthèse de l'horizon (nuits réservées / bloquées / libres, taux d'occupation des nuits vendables, nuits touchées par un dossier ouvert, dont veto, nuits libres au prix inconnu — jamais comptées comme nulles). Affichée en tête de l'onglet « 90 jours ».
+- Onglet **Historique** : chronologie du logement = journal d'audit du logement, de ses dossiers et de ses actions (`propertyAuditTrail`, 50 derniers, plus récent d'abord) ; réservé à `audit.read` comme le journal, message de rôle sinon. Liens vers les dossiers.
+- Aucune migration, aucune variable d'environnement. Isolation du propriétaire par la requête et le test.
+- Tests : unitaires (synthèse), base de données (chronologie : mélange logement/dossier/action, autre logement exclu, autre propriétaire exclu), E2E 3 viewports (synthèse visible, onglet Historique, rôle sans droit, aucun débordement).
+
+Après relecture (US-081) : « nuits libres au prix inconnu » se calcule sur le prix réellement affiché (canal choisi compris) ; la synthèse et les codes de dossiers ne sont calculés que pour l'onglet qui les affiche ; dette notée : le triple OR de `propertyAuditTrail` pourrait devenir trois sélections `UNION ALL` bornées si le journal devient très volumineux.

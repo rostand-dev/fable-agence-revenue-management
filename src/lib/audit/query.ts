@@ -57,3 +57,18 @@ export async function listAuditEvents(tenantId: string, opts: AuditFilter & { li
 export async function auditTrail(tenantId: string, entity: string, entityId: string): Promise<AuditRow[]> {
   return db.select().from(t).where(and(eq(t.tenantId, tenantId), eq(t.entity, entity), eq(t.entityId, entityId))).orderBy(t.createdAt, t.id);
 }
+
+/**
+ * Chronologie d'un logement : événements du logement lui-même, de ses dossiers (opportunités) et de leurs actions,
+ * du plus récent au plus ancien. Réservée à l'appelant qui a le droit `audit.read` (à vérifier avant l'appel).
+ */
+export async function propertyAuditTrail(tenantId: string, propertyId: string, limit = 50, ex: Pick<typeof db, "select"> = db): Promise<AuditRow[]> {
+  const opps = ex.select({ id: schema.opportunities.id }).from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, tenantId), eq(schema.opportunities.propertyId, propertyId)));
+  const acts = ex.select({ id: schema.revenueActions.id }).from(schema.revenueActions).where(and(eq(schema.revenueActions.tenantId, tenantId), eq(schema.revenueActions.propertyId, propertyId)));
+  const scope = sql`(
+    (${t.entity} = 'Property' and ${t.entityId} = ${propertyId})
+    or (${t.entity} = 'Opportunity' and ${t.entityId} in (${opps}))
+    or (${t.entity} = 'RevenueAction' and ${t.entityId} in (${acts}))
+  )`;
+  return ex.select().from(t).where(and(eq(t.tenantId, tenantId), scope)).orderBy(desc(t.createdAt), desc(t.id)).limit(Math.min(Math.max(Math.trunc(limit), 1), 200));
+}
