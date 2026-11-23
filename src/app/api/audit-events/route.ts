@@ -1,7 +1,7 @@
 import { withTenant } from "@/db/tenant";
 import { getUser } from "@/lib/auth";
 import { can, denyMessage } from "@/lib/rbac";
-import { listAuditEvents } from "@/lib/audit/query";
+import { isActorKind, listAuditEvents, parseDay } from "@/lib/audit/query";
 import { auditCategoryOf, auditLabel, isAuditCategory } from "@/lib/audit/types";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ const MAX = 100;
 
 /**
  * Journal d'audit du propriétaire connecté, paginé (blueprint §13.1, GET /v1/audit-events).
- *   ?limit=1..100 (50)  ?cursor=<nextCursor>  ?category=APPROVAL|EXECUTION|CONFIGURATION|INTEGRATION|ACCESS|SYSTEM  ?entity=…  ?entityId=…
+ *   ?limit=1..100 (50)  ?cursor=<nextCursor>  ?category=APPROVAL|EXECUTION|CONFIGURATION|INTEGRATION|ACCESS|SYSTEM  ?entity=…  ?entityId=…  ?from=AAAA-MM-JJ  ?to=AAAA-MM-JJ (jours UTC inclusifs)  ?actor=human|agent|system
  * Lecture seule : le journal n'a pas d'écriture publique. Le propriétaire n'est jamais un paramètre, il vient de la session.
  */
 export async function GET(req: Request) {
@@ -25,9 +25,14 @@ export async function GET(req: Request) {
   if (!Number.isInteger(limit) || limit < 1 || limit > MAX) return Response.json({ error: `limit doit être un entier entre 1 et ${MAX}.` }, { status: 400, headers: NO_STORE });
   const category = q.get("category");
   if (category !== null && !isAuditCategory(category)) return Response.json({ error: "category inconnue." }, { status: 400, headers: NO_STORE });
+  const from = q.get("from"), to = q.get("to"), actor = q.get("actor");
+  if (from !== null && !parseDay(from)) return Response.json({ error: "from doit être un jour AAAA-MM-JJ valide." }, { status: 400, headers: NO_STORE });
+  if (to !== null && !parseDay(to)) return Response.json({ error: "to doit être un jour AAAA-MM-JJ valide." }, { status: 400, headers: NO_STORE });
+  if (from && to && from > to) return Response.json({ error: "from ne peut pas être postérieur à to." }, { status: 400, headers: NO_STORE });
+  if (actor !== null && !isActorKind(actor)) return Response.json({ error: "actor doit valoir human, agent ou system." }, { status: 400, headers: NO_STORE });
   const short = (v: string | null) => (v && v.length <= 120 ? v : undefined);
   // lecture sous isolation de la base (US-011) : même sans le filtre applicatif, la base ne montrerait que ce propriétaire
-  const page = await withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { limit, cursor: short(q.get("cursor")) ?? null, category: category ?? undefined, entity: short(q.get("entity")), entityId: short(q.get("entityId")) }, tx));
+  const page = await withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { limit, cursor: short(q.get("cursor")) ?? null, category: category ?? undefined, entity: short(q.get("entity")), entityId: short(q.get("entityId")), from: from ?? undefined, to: to ?? undefined, actorKind: actor ?? undefined }, tx));
   return Response.json({
     events: page.events.map((e) => ({ id: e.id, at: e.createdAt.toISOString(), actor: e.actor, type: e.type, label: auditLabel(e.type), category: auditCategoryOf(e.type), entity: e.entity, entityId: e.entityId, summary: e.summary, payload: e.payload ?? null })),
     nextCursor: page.nextCursor,

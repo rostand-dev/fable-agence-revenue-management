@@ -125,3 +125,50 @@ describe("lecture paginée du journal", () => {
     expect(stolen.events.every((e) => e.tenantId === b.tenantId)).toBe(true);
   });
 });
+
+describe("filtres du journal : période et auteur (US-085)", () => {
+  const at = (tenantId: string, createdAt: string, actor: string, summary: string) =>
+    db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId, actor, type: "action.approved", entity: "RevenueAction", entityId: "act_x", summary, createdAt: new Date(createdAt) });
+  it("la période est en jours UTC inclusifs, bornes comprises", async () => {
+    const { tenantId } = await makeTenant();
+    await at(tenantId, "2026-03-09T23:59:59Z", "user:u", "veille");
+    await at(tenantId, "2026-03-10T00:00:00Z", "user:u", "premier instant");
+    await at(tenantId, "2026-03-10T23:59:59Z", "user:u", "dernier instant");
+    await at(tenantId, "2026-03-11T00:00:00Z", "user:u", "lendemain");
+    const names = async (o: object) => (await listAuditEvents(tenantId, o)).events.map((e) => e.summary).sort();
+    expect(await names({ from: "2026-03-10", to: "2026-03-10" })).toEqual(["dernier instant", "premier instant"]);
+    expect(await names({ from: "2026-03-10" })).toEqual(["dernier instant", "lendemain", "premier instant"]);
+    expect(await names({ to: "2026-03-09" })).toEqual(["veille"]);
+    expect(await names({ from: "2026-02-31" })).toHaveLength(4); // jour invalide ignoré, jamais une erreur SQL
+  });
+  it("l'auteur distingue personne, agent et système ; combinable avec la famille", async () => {
+    const { tenantId } = await makeTenant();
+    await at(tenantId, "2026-03-10T10:00:00Z", "user:u1", "humain");
+    await at(tenantId, "2026-03-10T10:00:01Z", "agent:marche", "agent");
+    await at(tenantId, "2026-03-10T10:00:02Z", "system", "système");
+    await at(tenantId, "2026-03-10T10:00:03Z", "demo", "démo");
+    const names = async (actorKind: "human" | "agent" | "system") => (await listAuditEvents(tenantId, { actorKind })).events.map((e) => e.summary).sort();
+    expect(await names("human")).toEqual(["humain"]);
+    expect(await names("agent")).toEqual(["agent"]);
+    expect(await names("system")).toEqual(["démo", "système"]);
+    expect((await listAuditEvents(tenantId, { actorKind: "human", category: "EXECUTION" })).events).toHaveLength(0);
+  });
+  it("ne franchit jamais la frontière du propriétaire, filtres ou non", async () => {
+    const a = await makeTenant(), b = await makeTenant();
+    await at(a.tenantId, "2026-03-10T10:00:00Z", "user:u", "chez A");
+    expect((await listAuditEvents(b.tenantId, { from: "2026-03-10", to: "2026-03-10", actorKind: "human" })).events).toHaveLength(0);
+  });
+  it("pagination et filtres combinés : aucun doublon ni saut ; un curseur rejoué avec un autre filtre ne plante pas", async () => {
+    const { tenantId } = await makeTenant();
+    for (const n of [1, 2, 3]) await at(tenantId, "2026-03-10T10:00:00Z", "user:u", "h" + n);
+    await at(tenantId, "2026-03-10T10:00:00Z", "agent:x", "a1");
+    const p1 = await listAuditEvents(tenantId, { actorKind: "human", limit: 2 });
+    expect(p1.events).toHaveLength(2);
+    expect(p1.nextCursor).not.toBeNull();
+    const p2 = await listAuditEvents(tenantId, { actorKind: "human", limit: 2, cursor: p1.nextCursor });
+    expect(p2.nextCursor).toBeNull();
+    expect([...p1.events, ...p2.events].map((e) => e.summary).sort()).toEqual(["h1", "h2", "h3"]);
+    const autre = await listAuditEvents(tenantId, { actorKind: "agent", limit: 2, cursor: p1.nextCursor });
+    expect(autre.events.every((e) => e.actor.startsWith("agent:"))).toBe(true);
+  });
+});
