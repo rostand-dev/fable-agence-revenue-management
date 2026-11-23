@@ -73,7 +73,22 @@ Blueprint E9 (P1, « sous réserve d'accès ») : US-090 (adaptateur d'applicati
 **Limites connues, assumées (suite dans les US suivantes)** :
 - Une action restée « en exécution » après un arrêt brutal du serveur n'est pas réconciliée automatiquement : l'alerte et l'écran de reprise arrivent avec l'US-094 (le journal `external_writes` porte déjà l'état d'avant et le statut).
 - Plus de 31 dates, ou prix courant inconnu pour un pourcentage : le refus tombe à l'exécution (action laissée APPROUVÉE) et non à la proposition.
-- Le prix de base proposé se calcule sur la stratégie locale ; sa comparaison au prix de base distant est la précondition de l'US-091.
-- Un prix daté posé sur une date qui avait déjà un séjour minimum peut le remplacer : la comparaison du séjour minimum est ajoutée avec l'US-091.
+- Le prix de base proposé se calcule sur la stratégie locale ; sa comparaison au prix de base distant est faite par l'US-091.
+
+## US-091 — Préconditions avant écriture
+
+Avant tout envoi, l'état réel chez PriceLabs est comparé à celui sur lequel la simulation a été faite (`src/lib/integrations/pricelabs-preconditions.ts`, fonction pure testée). Un refus laisse l'action **APPROUVÉE**, n'envoie rien, n'inscrit rien au journal d'écriture et ajoute l'événement d'audit `action.precondition_failed` (catégorie Exécution), avec la raison en clair.
+
+| Contrôle | Règle |
+|---|---|
+| Synchronisation | Refus si `push_enabled` vaut faux chez PriceLabs (l'écriture n'aurait aucun effet). Valeur inconnue : pas de refus (assumé, PriceLabs ne la renvoie pas toujours). |
+| Prix minimum | Doit valoir, chez PriceLabs, la valeur de départ figée dans l'action (`previousMinPriceCents`) ; à défaut, le minimum de la stratégie ; ni l'un ni l'autre = refus (« relancez la revue »). Déjà à la valeur cible = conforme (rejeu). |
+| Prix de base | Écart ≤ 2 % avec le prix de base de départ figé dans l'action (`previousBasePriceCents`, à défaut la stratégie). |
+| Contrôles croisés | minimum ≤ base ≤ maximum, uniquement pour les couples qui touchent un champ modifié : une incohérence préexistante sans rapport ne bloque pas. |
+| Prix daté | Un prix daté différent déjà posé sur la date n'est pas écrasé. Le même prix est un rejeu inoffensif, sauf s'il porte un séjour minimum (que l'écriture effacerait) : refus. Prix fixe comparé aux minimum et maximum réels (choix prudent : la documentation PriceLabs ne dit pas si un prix fixe y est soumis). |
+| Variation en % | La grille chez PriceLabs doit rester à ≤ 5 % (variation quotidienne maximale de la stratégie) des prix simulés, figés dans l'action par date (`simulatedPrices`) ; prix simulé ou réel inconnu = refus. |
+| Rejeu | Une écriture déjà engagée pour l'action est détectée AVANT toute précondition (message « aucun second envoi »). |
+
+Aucune migration, aucune variable d'environnement. Les dossiers créés avant cette US ne portent pas `simulatedPrices` : pour une variation en %, ils sont refusés avec « relancez la revue » (comportement voulu, échec fermé). Les tolérances (2 % et 5 %) sont des constantes du module, à ajuster ici si l'usage le demande.
 
 *(Les sections des autres US sont ajoutées au fil de l'épic.)*

@@ -26,6 +26,8 @@ function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: 
 }
 /** Écriture PriceLabs par API seulement si la capacité existe pour ce logement (US-002) ; sinon procédure manuelle guidée. */
 /** Écriture par API seulement si la capacité est ouverte ET si ce type d'action s'écrit par API (sur un logement réel, voir API_WRITE_TYPES) ; sinon procédure manuelle. */
+/** Prix de la grille locale sur lesquels la simulation s'est appuyée, figés dans l'action : l'écriture réelle les compare à l'état chez PriceLabs (US-091) */
+const simulatedPrices = (ctx: Ctx, dates: ISODate[]) => Object.fromEntries(dates.map((d) => [d, ctx.byDate.get(d)?.priceCents ?? null]));
 const plExec = (ctx: Ctx, type: string): Candidate["executionMode"] => (ctx.capabilities["pricelabs.write"] && apiWriteSupports(type, ctx.property.isDemo) ? "API_PRICELABS" : "MANUAL_RUNBOOK");
 
 function noAction(ctx: Ctx, from: ISODate, to: ISODate, current: StackResult | null, why: string, reviewInDays = 7): Candidate {
@@ -311,7 +313,7 @@ function eventUplift(ctx: Ctx, signals: Signal<EventUpliftPayload>[]): DetectedO
       return finalize(ctx, {
         type: "PRICE_OVERRIDE", label: `Relever le prix de ${up} % sur les dates de l'événement`,
         detail: `Prix publié moyen porté de ${euro(a.price)} à ${euro(capped)} la nuit.`, agent: "pricing",
-        target: { system: "PRICELABS" }, parameters: { changePct: up, nightlyCents: Math.round(capped), dates: run }, nightsTouched: run.length, priceChangePct: up,
+        target: { system: "PRICELABS" }, parameters: { changePct: up, nightlyCents: Math.round(capped), dates: run, simulatedPrices: simulatedPrices(ctx, run) }, nightsTouched: run.length, priceChangePct: up,
         current: cur, proposed: stack(ctx, channel, los, capped, promos), expectedDeltaCents: base !== null && e !== null ? e - base : null,
         hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer le prix daté : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 14,
       }, from, to);
@@ -384,7 +386,7 @@ function paceLow(ctx: Ctx, signals: Signal<PaceLowPayload>[]): DetectedOpportuni
     cands.push(finalize(ctx, {
       type: "PRICE_OVERRIDE", label: `Baisser le prix de 5 % sur ${plural(target.length, "nuit")} libre${target.length > 1 ? "s" : ""}`,
       detail: `Prix publié moyen ramené de ${euro(a.price)} à ${euro(a.price * 0.95)} du ${fmtDay(tFrom)} au ${fmtDay(tTo)}, sur tous les canaux.`, agent: "pricing",
-      target: { system: "PRICELABS" }, parameters: { changePct: -5, nightlyCents: Math.round(a.price * 0.95), dates: target }, nightsTouched: target.length, priceChangePct: -5,
+      target: { system: "PRICELABS" }, parameters: { changePct: -5, nightlyCents: Math.round(a.price * 0.95), dates: target, simulatedPrices: simulatedPrices(ctx, target) }, nightsTouched: target.length, priceChangePct: -5,
       current: cur, proposed: stack(ctx, channel, los, a.price * 0.95, promos), expectedDeltaCents: base !== null && eDown !== null ? eDown - base : null,
       hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer les prix datés : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 7,
     }, tFrom, tTo));
@@ -464,7 +466,7 @@ function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportu
     const cands: Candidate[] = [finalize(ctx, {
       type: "BASE_PRICE_CHANGE", label: "Relever le prix de base de 5 %",
       detail: `S'applique aux ${horizonFree.length} nuits encore libres à partir du ${fmtDay(w.from)} ; les réservations acquises ne changent pas.`, agent: "pricing",
-      target: { system: "PRICELABS" }, parameters: { changePct: 5, basePriceCents: ctx.strategy.basePriceCents ? Math.round(ctx.strategy.basePriceCents * 1.05) : null, dates: horizonFree }, nightsTouched: horizonFree.length, priceChangePct: 5,
+      target: { system: "PRICELABS" }, parameters: { changePct: 5, basePriceCents: ctx.strategy.basePriceCents ? Math.round(ctx.strategy.basePriceCents * 1.05) : null, previousBasePriceCents: ctx.strategy.basePriceCents ?? null, dates: horizonFree }, nightsTouched: horizonFree.length, priceChangePct: 5,
       current: cur, proposed: stack(ctx, channel, los, a.price! * 1.05, promos), expectedDeltaCents: b0 !== null && b1 !== null ? b1 - b0 : null,
       hypothesis: `${DEMAND_MODEL_NOTE} La demande propre au logement est estimée par son avance sur le marché.`, rollbackPlan: "Rétablir le prix de base précédent ; fenêtre d'observation minimale de 14 jours.", executionMode: ctx.property.isDemo || ctx.strategy.basePriceCents ? plExec(ctx, "BASE_PRICE_CHANGE") : "MANUAL_RUNBOOK", risk: "HIGH", measurementWindowDays: 21,
     }, w.from, lastFree)];
@@ -474,7 +476,7 @@ function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportu
       cands.push(finalize(ctx, {
         type: "PRICE_OVERRIDE", label: `Relever de 5 % les ${plural(winFree.length, "nuit")} libre${winFree.length > 1 ? "s" : ""} de la fenêtre`,
         detail: `Action limitée à ${w.label} : le prix de base reste inchangé.`, agent: "pricing",
-        target: { system: "PRICELABS" }, parameters: { changePct: 5, nightlyCents: Math.round(aw.price! * 1.05), dates: winFree }, nightsTouched: winFree.length, priceChangePct: 5,
+        target: { system: "PRICELABS" }, parameters: { changePct: 5, nightlyCents: Math.round(aw.price! * 1.05), dates: winFree, simulatedPrices: simulatedPrices(ctx, winFree) }, nightsTouched: winFree.length, priceChangePct: 5,
         current: stack(ctx, channel, los, aw.price!, promos), proposed: stack(ctx, channel, los, aw.price! * 1.05, promos), expectedDeltaCents: w0 !== null && w1 !== null ? w1 - w0 : null,
         hypothesis: DEMAND_MODEL_NOTE, rollbackPlan: "Supprimer les prix datés : PriceLabs reprend son calcul.", executionMode: plExec(ctx, "PRICE_OVERRIDE"), risk: "MEDIUM", measurementWindowDays: 14,
       }, w.from, w.to));

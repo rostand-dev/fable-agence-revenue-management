@@ -1,8 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import type { ISODate } from "../dates";
 import { PriceLabsError, priceLabsFor } from "../integrations/pricelabs";
 import { mapPrices } from "../integrations/pricelabs-map";
+import { checkPreconditions } from "../integrations/pricelabs-preconditions";
 import { planWrite, priceLabsWriterFor, type WritePlan } from "../integrations/pricelabs-write";
 import type { ListingLimits, PriceLabsWritePort, RemoteOverride, WriteReceipt } from "../integrations/pricelabs-write-port";
 import { decryptSecret } from "../secret";
@@ -15,17 +16,18 @@ import { decryptSecret } from "../secret";
  * 3. `readBackPriceLabsWrite` : la vérification demandée plus tard (`verify()`), même comparaison.
  * Aucune clé API n'est écrite dans le journal, ni dans le reçu, ni dans les messages.
  */
-const { externalWrites, properties } = schema;
+const { externalWrites, properties, calendarDays } = schema;
 
 /** Refus ou échec lisible : le message est affiché tel quel et inscrit au journal d'audit. */
 export class WriteError extends Error {
   /** `sent` : la requête d'écriture est partie (ou a pu partir) : PriceLabs a peut-être été modifié, même si l'on n'en a pas la preuve. */
-  constructor(message: string, readonly code: "PREPARE" | "SEND" | "CONFIRM" | "IDEMPOTENT" = "PREPARE", readonly sent = false, readonly writeId: string | null = null) { super(message); }
+  constructor(message: string, readonly code: "PREPARE" | "PRECONDITION" | "SEND" | "CONFIRM" | "IDEMPOTENT" = "PREPARE", readonly sent = false, readonly writeId: string | null = null) { super(message); }
 }
 
 /** État réel d'une annonce, en centimes. `limits` = prix minimum, de base, maximum ; `prices` = grille sur les dates demandées ; `overrides` = prix datés en vigueur. */
 export type RemoteState = {
   readAt: string;
+  pushEnabled: boolean | null;
   currency: string | null;
   limits: { minCents: number | null; baseCents: number | null; maxCents: number | null };
   prices: Record<string, number | null>;
@@ -64,7 +66,7 @@ export async function readRemoteState(t: Target, dates: string[], writer: PriceL
       for (const d of mapPrices(item)) if (d.date >= from && d.date <= to) prices[d.date] = d.priceCents;
       overrides = await writer.getOverrides(t.listingId, t.pms, from, to);
     }
-    return { readAt: new Date().toISOString(), currency: listing.currency, limits: { minCents: listing.minCents, baseCents: listing.baseCents, maxCents: listing.maxCents }, prices, overrides };
+    return { readAt: new Date().toISOString(), pushEnabled: listing.pushEnabled, currency: listing.currency, limits: { minCents: listing.minCents, baseCents: listing.baseCents, maxCents: listing.maxCents }, prices, overrides };
   } catch (e) {
     throw new WriteError(`Lecture de l'état PriceLabs impossible : ${msg(e)}`);
   }
@@ -95,6 +97,9 @@ export type PreparedWrite = { actionId: string; tenantId: string; propertyId: st
  */
 export async function preparePriceLabsWrite(p: Prop, a: { id: string; tenantId: string; type: string; parameters: Record<string, any> }): Promise<PreparedWrite> {
   const target = targetOf(p);
+  // une écriture déjà engagée pour cette action prime sur toute précondition : l'état chez PriceLabs a justement pu changer à cause d'elle
+  const [already] = await db.select({ id: externalWrites.id }).from(externalWrites).where(eq(externalWrites.idempotencyKey, `${a.id}:APPLY`));
+  if (already) throw new WriteError("Une écriture PriceLabs a déjà été engagée pour cette action : aucun second envoi. Consultez son reçu ou le journal d'écriture.", "IDEMPOTENT");
   const dates: string[] = Array.isArray(a.parameters?.dates) ? a.parameters.dates : [];
   const needsDates = a.type === "PRICE_OVERRIDE" || a.type === "RULE_EXCLUSION";
   const before = await readRemoteState(target, needsDates ? dates : []);
@@ -103,6 +108,11 @@ export async function preparePriceLabsWrite(p: Prop, a: { id: string; tenantId: 
   const state = needsGrid ? before : { ...before, prices: {} };
   const plan = planWrite({ type: a.type, parameters: a.parameters }, state.prices, { minCents: p.strategy?.minPriceCents ?? null, maxCents: p.strategy?.maxPriceCents ?? null });
   if (plan.kind === "UNSUPPORTED") throw new WriteError(plan.reason);
+  // US-091 : l'état réel doit être celui sur lequel la simulation a été faite
+  const localPrices: Record<string, number | null> = {};
+  if (needsGrid && dates.length) for (const d of await db.select({ date: calendarDays.date, priceCents: calendarDays.priceCents }).from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), inArray(calendarDays.date, dates)))) localPrices[d.date] = d.priceCents;
+  const problems = checkPreconditions({ plan, type: a.type, parameters: a.parameters, remote: { limits: before.limits, pushEnabled: before.pushEnabled, prices: before.prices, overrides: before.overrides }, local: { prices: localPrices, baseCents: p.strategy?.basePriceCents ?? null, minCents: p.strategy?.minPriceCents ?? null } });
+  if (problems.length) throw new WriteError(`Précondition non remplie, rien n'est écrit : ${problems.join(" ; ")}.`, "PRECONDITION");
   return { actionId: a.id, tenantId: a.tenantId, propertyId: p.id, target, plan, before };
 }
 
