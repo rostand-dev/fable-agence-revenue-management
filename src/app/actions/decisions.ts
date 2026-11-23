@@ -24,6 +24,8 @@ export async function reopenAction(_: FormState, fd: FormData) { return run((a) 
 export async function executeAction(_: FormState, fd: FormData) { return run((a) => D.execute(a, s(fd, "actionId"), fd.has("scope") ? { scope: s(fd, "scope"), date: s(fd, "date"), proof: s(fd, "proof") } : undefined)); }
 export async function verifyAction(_: FormState, fd: FormData) { return run((a) => D.verify(a, s(fd, "actionId"))); }
 export async function rollbackAction(_: FormState, fd: FormData) { return run((a) => D.rollback(a, s(fd, "actionId"), s(fd, "reason"))); }
+export async function acknowledgeAlertAction(_: FormState, fd: FormData) { return run((a) => D.acknowledge(a, s(fd, "alertId")), "Alerte prise en compte."); }
+export async function interruptStuckAction(_: FormState, fd: FormData) { return run((a) => D.interruptStuck(a, s(fd, "actionId")), "Action marquée comme interrompue."); }
 export async function reviewAction(_: FormState, __: FormData) {
   return run(async (a) => { await D.requireDecide(a); const r = await runDailyReview(a.tenantId, "MANUAL"); return r; }, "Revue terminée.");
 }

@@ -5,13 +5,14 @@ import { createContext, useContext, useEffect, useRef } from "react";
 import { Icon, Logo } from "./Icon";
 import { logoutAction } from "@/app/actions/auth";
 
-type Item = { href: string; icon: string; label: string; primary?: boolean; count?: boolean };
+type Item = { href: string; icon: string; label: string; primary?: boolean; count?: boolean; alerts?: boolean };
 const GROUPS: { label: string; items: Item[] }[] = [
   { label: "Poste de travail", items: [
     { href: "/portefeuille", icon: "chart", label: "Tableau de bord" },
     { href: "/", icon: "inbox", label: "Opportunités", primary: true, count: true },
     { href: "/logements", icon: "home", label: "Logements", primary: true },
     { href: "/historique", icon: "history", label: "Historique", primary: true },
+    { href: "/alertes", icon: "alert", label: "Alertes", alerts: true },
   ] },
   { label: "Agence IA", items: [
     { href: "/equipe", icon: "team", label: "Équipe", primary: true },
@@ -28,10 +29,10 @@ const GROUPS: { label: string; items: Item[] }[] = [
 const FLAT = GROUPS.flatMap((g) => g.items.map((item) => ({ item, group: g.label })));
 const isCurrent = (path: string, href: string) => (href === "/" ? path === "/" || path.startsWith("/dossier") : path === href || path.startsWith(href + "/"));
 
-const NavCtx = createContext<{ open: number }>({ open: 0 });
+const NavCtx = createContext<{ open: number; alerts: number }>({ open: 0, alerts: 0 });
 
 /** Une seule source de navigation, trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
-export function Shell({ open, demo = false, exitHref = "/demo", children }: { open: number; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
+export function Shell({ open, alerts = 0, demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
   const path = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
   const more = useRef<HTMLButtonElement>(null);
@@ -56,7 +57,7 @@ export function Shell({ open, demo = false, exitHref = "/demo", children }: { op
 
   const overflowCurrent = FLAT.some((e) => !e.item.primary && isCurrent(path, e.item.href));
   return (
-    <NavCtx.Provider value={{ open }}>
+    <NavCtx.Provider value={{ open, alerts }}>
       <div className="app">
         <nav className="rail" aria-label="Navigation du cockpit">
           <Link className="brand" href="/" aria-label="NuitSignal — accueil"><Logo /></Link>
@@ -68,6 +69,7 @@ export function Shell({ open, demo = false, exitHref = "/demo", children }: { op
                   <Link key={it.href} className="rail-link" href={it.href} aria-current={isCurrent(path, it.href) ? "page" : undefined}>
                     <span data-icon><Icon name={it.icon} /></span>{it.label}
                     {it.count && open > 0 && <span className="rail-count">{open}</span>}
+                    {it.alerts && alerts > 0 && <span className="rail-count rail-count-alert" role="img" aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""} à traiter`}>{alerts}</span>}
                   </Link>
                 ))}
               </div>
@@ -85,6 +87,7 @@ export function Shell({ open, demo = false, exitHref = "/demo", children }: { op
         ))}
         <button type="button" className="bottombar-link" ref={more} aria-haspopup="dialog" aria-current={overflowCurrent ? "page" : undefined} onClick={() => sheet.current?.showModal()}>
           <span data-icon><Icon name="sliders" /></span><span className="bottombar-label">Plus</span>
+          {alerts > 0 && <span className="bottombar-count bottombar-count-alert" role="img" aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""} à traiter`}>{alerts}</span>}
         </button>
       </nav>
       <dialog className="nav-sheet" ref={sheet} aria-labelledby="nav-sheet-title" onClick={(e) => { if (e.target === sheet.current) sheet.current?.close(); }} onClose={() => more.current?.focus()}>
@@ -100,7 +103,7 @@ export function Shell({ open, demo = false, exitHref = "/demo", children }: { op
                 const cur = isCurrent(path, it.href);
                 return (
                   <Link key={it.href} className="nav-sheet-link" href={it.href} aria-current={cur ? "page" : undefined}>
-                    <span data-icon><Icon name={it.icon} /></span><span>{it.label}</span>{cur && <span className="nav-sheet-here">écran courant</span>}
+                    <span data-icon><Icon name={it.icon} /></span><span>{it.label}</span>{it.alerts && alerts > 0 && <span className="rail-count rail-count-alert">{alerts}</span>}{cur && <span className="nav-sheet-here">écran courant</span>}
                   </Link>
                 );
               })}
@@ -128,7 +131,7 @@ export function Shell({ open, demo = false, exitHref = "/demo", children }: { op
 /** Rangée de navigation tablette, placée entre la barre de titre et le fil d'Ariane. */
 export function TabletNav() {
   const path = usePathname();
-  const { open } = useContext(NavCtx);
+  const { open, alerts } = useContext(NavCtx);
   let last: string | null = null;
   return (
     <nav className="navbar" aria-label="Navigation du cockpit">
@@ -140,6 +143,7 @@ export function TabletNav() {
             <Link className="navbar-link" href={item.href} aria-current={isCurrent(path, item.href) ? "page" : undefined}>
               <span data-icon><Icon name={item.icon} /></span><span>{item.label}</span>
               {item.count && open > 0 && <span className="rail-count">{open}</span>}
+              {item.alerts && alerts > 0 && <span className="rail-count rail-count-alert">{alerts}</span>}
             </Link>
           </span>
         );

@@ -1,5 +1,5 @@
 import { commitStrategy } from "./strategy";
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { assertTransition, type ActionState } from "../engine/stateMachine";
@@ -9,6 +9,8 @@ import { flagFor } from "./flags";
 import { recordAudit } from "../audit/log";
 import { agentActor, userActor, type AuditType } from "../audit/types";
 import { preparePriceLabsWrite, readBackPriceLabsWrite, sendPriceLabsWrite, WriteError, rollbackContext, rollbackPriceLabsWrite, manualRestoreText, type PreparedWrite, type SafePlan, type WriteOutcome } from "./pricelabs-write";
+import { raiseAlert, resolveAlerts, acknowledgeAlert, getAlert, STUCK_AFTER_MS } from "./execution-alerts";
+import { requestHash } from "../integrations/pricelabs-write";
 import { can, denyMessage, executePermission, PERMISSION_LABEL, ROLE_LABEL, type Permission, type Role } from "../rbac";
 
 const { opportunities, revenueActions, calendarDays, promotions, properties, integrations, agentRuns } = schema;
@@ -181,6 +183,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
     catch (e) {
       // précondition non remplie : l'action reste APPROUVÉE, mais le refus est tracé (US-091)
       if (e instanceof WriteError && e.code === "PRECONDITION") await audit(db, actor.tenantId, userActor(actor.id), "action.precondition_failed", "RevenueAction", a.id, `Écriture de « ${a.label} » refusée : ${e.message}`, { code: o.code, actionType: a.type }).catch(() => {}); // la consignation ne masque pas le refus lisible
+      if (e instanceof WriteError && e.code === "PRECONDITION") await raiseAlert({ tenantId: actor.tenantId, propertyId: p.id, actionId: a.id, kind: "PRECONDITION_FAILED", dedupeKey: `PRECONDITION:${a.id}`, title: `Écriture de « ${a.label} » refusée : PriceLabs ne correspond plus à ce qui avait été simulé`, detail: `${e.message} L'action reste approuvée, rien n'a été écrit ; relancez la revue si la situation a changé.` });
       throw e instanceof WriteError ? new DecisionError(e.message) : e;
     }
     // même précondition que la simulation, mais AVANT d'écrire : on n'envoie rien à PriceLabs pour échouer ensuite en base
@@ -244,20 +247,33 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
         execution = { mode: "INTERNAL", note: decl?.scope || "Tâche interne lancée.", baseline };
       }
       await move(tx, a.id, actor.tenantId, "EXECUTING", "EXECUTED", { execution, executedAt: new Date() });
+      if (mode === "API_PRICELABS") await tx.update(schema.executionAlerts).set({ status: "RESOLVED", resolvedAt: new Date(), resolution: "L'action a été écrite avec succès." }).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PRECONDITION_FAILED"), ne(schema.executionAlerts.status, "RESOLVED")));
       await audit(tx, actor.tenantId, userActor(actor.id), "action.executed", "RevenueAction", a.id, `« ${a.label} » exécutée (${execution.mode === "PRICELABS_API" ? "écriture PriceLabs confirmée par relecture" : execution.mode === "DEMO_SIMULATED" ? "écriture simulée, démonstration" : execution.mode === "MANUAL_DECLARED" ? "procédure manuelle déclarée" : "tâche interne"}).`,
         { code: o.code, actionType: a.type, mode: execution.mode, declaredScope: execution.declaredScope ?? null, declaredDate: execution.declaredDate ?? null, proof: execution.proof ?? null,
           ...(execution.mode === "PRICELABS_API" ? { writeId: execution.writeId, receipt: execution.receipt, adapter: execution.adapter, beforeHash: execution.beforeHash, afterHash: execution.afterHash } : {}) });
     });
   } catch (e) {
     // message technique brut (SQL, URL…) jamais écrit dans le journal : seules nos erreurs métier le sont
-    const msg = (e instanceof DecisionError || e instanceof WriteError ? e.message : "erreur technique pendant l'exécution") + (written ? " L'écriture PriceLabs avait déjà été envoyée et confirmée : vérifiez la grille dans PriceLabs et remettez les valeurs d'avant si besoin." : e instanceof WriteError && e.sent && !/incertaine|non confirmée|ne la retrouve pas/.test(e.message) ? " L'écriture PriceLabs a pu être envoyée : vérifiez dans PriceLabs." : "");
     const writeId = written?.writeId ?? (e instanceof WriteError ? e.writeId : null);
+    // l'issue est incertaine quand l'écriture est confirmée mais n'a pas pu être finalisée, ou quand le journal n'est pas « refusée » (refus certain de PriceLabs, rien modifié)
+    // dans le doute, l'issue est incertaine : « rien n'a été modifié » n'est dit que pour un refus certain (journal « refusée ») ou un refus interne avant tout envoi
+    let uncertain = true;
+    if (!written) {
+      if (e instanceof WriteError && !e.sent && e.code !== "IDEMPOTENT") uncertain = false;
+      else if (writeId) { try { const [w] = await db.select({ status: schema.externalWrites.status }).from(schema.externalWrites).where(eq(schema.externalWrites.id, writeId)); uncertain = !(w && w.status === "FAILED"); } catch { /* dans le doute */ } }
+    }
+    const msg = (e instanceof DecisionError || e instanceof WriteError ? e.message : "erreur technique pendant l'exécution") + (written ? " L'écriture PriceLabs avait déjà été envoyée et confirmée : vérifiez la grille dans PriceLabs et remettez les valeurs d'avant si besoin." : uncertain && e instanceof WriteError && e.sent && !/incertaine|non confirmée|ne la retrouve pas/.test(e.message) ? " L'écriture PriceLabs a pu être envoyée : vérifiez dans PriceLabs." : "");
     try {
       await db.transaction(async (tx) => {
         await move(tx, a.id, actor.tenantId, "EXECUTING", "FAILED", { execution: { error: msg, ...(writeId ? { writeId } : {}) } });
         await audit(tx, actor.tenantId, "system", "action.failed", "RevenueAction", a.id, `Échec d'exécution de « ${a.label} » : ${msg}`, { code: o.code, actionType: a.type });
       });
     } catch { /* l'erreur d'origine prime sur l'échec de sa propre consignation */ }
+    // US-094 : alerte immédiate sur un logement réel (jamais pour la démonstration ni une procédure manuelle)
+    if (real) {
+      await raiseAlert({ tenantId: actor.tenantId, propertyId: p.id, actionId: a.id, writeId, kind: uncertain ? "WRITE_UNCONFIRMED" : "WRITE_FAILED", dedupeKey: `FAILED:${a.id}`,
+        title: uncertain ? `Écriture de « ${a.label} » non confirmée : l'état chez PriceLabs est à vérifier` : `Écriture de « ${a.label} » en échec : rien n'a été modifié chez PriceLabs`, detail: msg });
+    }
     throw e instanceof WriteError ? new DecisionError(e.message) : e;
   }
 }
@@ -276,8 +292,10 @@ export async function verify(actor: Actor, actionId: string) {
     catch (e) { throw new DecisionError(e instanceof WriteError ? e.message : "Relecture PriceLabs impossible : réessayez plus tard."); }
     if (back.mismatches.length) {
       await audit(db, actor.tenantId, agentActor("audit"), "action.verification_failed", "RevenueAction", a.id, `Vérification en échec pour « ${a.label} » : l'état relu chez PriceLabs diffère de l'action approuvée (${back.mismatches.join(" ; ")}).`, { actionType: a.type, mismatches: back.mismatches });
+      await raiseAlert({ tenantId: actor.tenantId, propertyId: a.propertyId, actionId: a.id, kind: "DRIFT", supersedes: true, dedupeKey: `DRIFT:${a.id}:${requestHash(back.mismatches).slice(0, 12)}`, title: `« ${a.label} » : PriceLabs ne correspond plus à l'écriture faite`, detail: `${back.mismatches.join(" ; ")}. Lancez un retour arrière si ce n'est pas voulu.` });
       throw new DecisionError(`L'état relu chez PriceLabs diffère de l'action approuvée (${back.mismatches.join(" ; ")}). Aucune correction n'est improvisée : lancez un retour arrière.`);
     }
+    await resolveAlerts(actor.tenantId, a.id, "Vérification conforme.", ["DRIFT"]);
     check = { mode: "READ_BACK", note: "Relecture chez PriceLabs conforme à l'écriture enregistrée.", state: back.state };
   } else if (a.execution?.mode === "DEMO_SIMULATED") {
     const dates: ISODate[] = a.parameters.dates ?? [];
@@ -316,12 +334,16 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
     };
     const manual = ctxW.apply ? ` Valeurs d'avant à remettre à la main dans PriceLabs : ${manualRestoreText(ctxW.apply)}.` : "";
     const first = await guard();
-    if (first) throw new DecisionError(`Retour arrière automatique impossible : ${first}${manual}`);
+    if (first) {
+      await raiseAlert({ tenantId: actor.tenantId, propertyId: a.propertyId, actionId: a.id, kind: "ROLLBACK_FAILED", severity: "WARNING", dedupeKey: `ROLLBACK:${a.id}`, title: `Retour arrière de « ${a.label} » impossible : ${first}`, detail: `${first}${manual}` });
+      throw new DecisionError(`Retour arrière automatique impossible : ${first}${manual}`);
+    }
     try {
       remote = await rollbackPriceLabsWrite(p, actor.tenantId, a.id, { recheck: async () => { const again = await guard(); if (again) throw new WriteError(again); } });
     } catch (e) {
       const m = e instanceof WriteError ? e.message : "erreur technique pendant le retour arrière";
       await audit(db, actor.tenantId, userActor(actor.id), "action.rollback_failed", "RevenueAction", a.id, `Retour arrière de « ${a.label} » en échec : ${m}`, { actionType: a.type, code: e instanceof WriteError ? e.code : "TECH" }).catch(() => {});
+      await raiseAlert({ tenantId: actor.tenantId, propertyId: a.propertyId, actionId: a.id, writeId: e instanceof WriteError ? e.writeId : null, kind: "ROLLBACK_FAILED", dedupeKey: `ROLLBACK:${a.id}`, title: `Retour arrière de « ${a.label} » en échec`, detail: m });
       throw e instanceof WriteError ? new DecisionError(m) : e;
     }
   }
@@ -344,8 +366,42 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
       if (a.type === "PROMO_REMOVAL") await tx.update(promotions).set({ status: "ACTIVE" }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
     }
     await move(tx, a.id, actor.tenantId, a.status as ActionState, "ROLLED_BACK", { execution: { ...a.execution, rollback: { at: new Date().toISOString(), reason: reason.trim() || null, manual: a.execution?.mode === "MANUAL_DECLARED", ...(remote ? { writeIds: remote.writeIds, noop: remote.noop, adapter: remote.adapter } : {}) } } });
+    // une ligne restée « en préparation » (arrêt brutal) n'a jamais eu d'issue connue : elle passe en « envoyée, non confirmée », l'état réel ayant été remis par le retour arrière
+    await tx.update(schema.externalWrites).set({ status: "SENT", error: "Issue inconnue (arrêt du serveur) : état remis par le retour arrière.", updatedAt: new Date() }).where(and(eq(schema.externalWrites.actionId, a.id), eq(schema.externalWrites.tenantId, actor.tenantId), eq(schema.externalWrites.status, "PENDING")));
     await audit(tx, actor.tenantId, userActor(actor.id), "action.rolled_back", "RevenueAction", a.id, `Retour arrière sur « ${a.label} »${reason ? " — " + reason.trim() : ""}. Plan : ${a.rollbackPlan}`, { actionType: a.type, fromStatus: a.status, reason: reason.trim() || null, rollbackPlan: a.rollbackPlan, ...(remote ? { writeIds: remote.writeIds, remoteNoop: remote.noop } : {}) });
   });
+  // US-094 : l'action est revenue en arrière, les alertes qui la concernaient n'ont plus d'objet
+  await resolveAlerts(actor.tenantId, a.id, "Retour arrière effectué.");
+}
+
+/** US-094 : prise en compte d'une alerte d'exécution par une personne habilitée à décider. L'alerte reste visible, sans nouvel e-mail. */
+export async function acknowledge(actor: Actor, alertId: string) {
+  await requirePermission(actor, "action.rollback", "Alert", alertId);
+  const al = await getAlert(actor.tenantId, alertId);
+  if (!al) throw new DecisionError("Alerte introuvable.", "NOT_FOUND");
+  if (al.status !== "OPEN") throw new DecisionError("Cette alerte a déjà été prise en compte ou résolue : rechargez la page.");
+  const done = await acknowledgeAlert(actor.tenantId, alertId, actor.id);
+  if (!done) throw new DecisionError("Cette alerte vient de changer d'état : rechargez la page.");
+  await audit(db, actor.tenantId, userActor(actor.id), "alert.acknowledged", "RevenueAction", al.actionId ?? al.id, `Alerte « ${al.title} » prise en compte par ${actor.name}.`, { alertId, kind: al.kind });
+}
+
+/**
+ * US-094 : reprise d'une action restée « en exécution » (arrêt du serveur). Aucune décision automatique : une personne vérifie PriceLabs, puis marque l'action
+ * comme interrompue. Elle passe en échec ; le retour arrière reste possible et repart de l'état réel chez PriceLabs (ce qui n'a pas été écrit est sauté).
+ */
+export async function interruptStuck(actor: Actor, actionId: string) {
+  await requirePermission(actor, "action.rollback", "RevenueAction", actionId);
+  const a = await getAction(actor.tenantId, actionId);
+  if (a.status !== "EXECUTING") throw new DecisionError("Cette action n'est plus en exécution : rechargez la page.");
+  if (+new Date() - +a.updatedAt < STUCK_AFTER_MS) throw new DecisionError("Cette action est en exécution depuis moins de 15 minutes : laissez-lui le temps de se terminer.");
+  const message = "Exécution interrompue (arrêt du serveur ?), marquée comme telle par une personne. L'écriture a pu partir chez PriceLabs : vérifiez la grille, ou lancez le retour arrière qui remet les valeurs d'avant.";
+  await db.transaction(async (tx) => {
+    await move(tx, a.id, actor.tenantId, "EXECUTING", "FAILED", { execution: { error: message } });
+    // l'appel resté « en préparation » n'a pas d'issue connue : « envoyée, non confirmée », pour que le journal ne le relève plus à chaque passage
+    await tx.update(schema.externalWrites).set({ status: "SENT", error: "Issue inconnue (exécution interrompue) : à vérifier dans PriceLabs.", updatedAt: new Date() }).where(and(eq(schema.externalWrites.actionId, a.id), eq(schema.externalWrites.tenantId, actor.tenantId), eq(schema.externalWrites.status, "PENDING")));
+    await audit(tx, actor.tenantId, userActor(actor.id), "action.failed", "RevenueAction", a.id, `« ${a.label} » marquée comme interrompue par ${actor.name} : ${message}`, { actionType: a.type, interrupted: true });
+  });
+  await resolveAlerts(actor.tenantId, a.id, "Action marquée comme interrompue.", ["STUCK", "STUCK_WRITE"]);
 }
 
 /**

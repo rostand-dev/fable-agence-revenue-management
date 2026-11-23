@@ -42,7 +42,7 @@ services:
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
       # Facultatif : jours pendant lesquels un appareil reste reconnu après « Rester connecté sur cet appareil » (défaut 30, de 1 à 90 ; 0 désactive la fonction).
       - REMEMBER_ME_DAYS=${REMEMBER_ME_DAYS:-30}
-      # Clé API Resend pour envoyer les e-mails (mot de passe oublié, confirmation d'inscription). Vide = aucun e-mail envoyé.
+      # Clé API Resend pour envoyer les e-mails (mot de passe oublié, confirmation d'inscription, alertes d'exécution PriceLabs). Vide = aucun e-mail envoyé (les alertes restent visibles dans l'écran « Alertes »).
       - RESEND_API_KEY=${RESEND_API_KEY:-}
       # Expéditeur des e-mails, sur un domaine vérifié dans Resend. Ex. : NuitSignal <no-reply@votre-domaine.fr>
       - EMAIL_FROM=${EMAIL_FROM:-}

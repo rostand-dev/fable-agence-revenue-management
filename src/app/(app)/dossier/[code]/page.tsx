@@ -27,6 +27,9 @@ import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilitie
 import { flagFor } from "@/lib/services/flags";
 import { WriteProof } from "@/components/WriteProof";
 import { writesOfAction } from "@/lib/services/pricelabs-write";
+import { listAlerts } from "@/lib/services/execution-alerts";
+import { AlertCard } from "@/components/AlertCard";
+import { emailConfigured } from "@/lib/email/resend";
 import { FloorGauge, PromoStack, Waterfall } from "@/components/Waterfall";
 import { sharedAxis } from "@/lib/engine/waterfall";
 import { auditTrail } from "@/lib/audit/query";
@@ -108,6 +111,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const who = (perm: Parameters<typeof rolesWith>[0]) => rolesWith(perm).map((r) => ROLE_LABEL[r].toLowerCase()).join(", ");
   const exec = action?.execution, meas = action?.measurement;
   const writes = action ? await writesOfAction(user.tenantId, action.id) : [];
+  const actionAlerts = action ? (await listAlerts(user.tenantId, { actionId: action.id, resolvedLimit: 5 })).active : [];
   // US-002 : même règle que le serveur (`execute()`), pour ne jamais offrir un bouton qui sera refusé
   const target = providerOfTarget(action?.target?.system);
   const blocked = action ? executionBlock(mode, { actionType: action.type, provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch, flagOff: (await flagFor(user.tenantId, "write.api", { propertyId: p.id, provider: target })).reason }) : null;
@@ -466,6 +470,11 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             </article>
 
             <WriteProof writes={writes} />
+            {actionAlerts.length > 0 && (
+              <div className="alert-list" data-testid="dossier-alerts" aria-label="Alertes de cette action">
+                {actionAlerts.map((al) => <AlertCard key={al.id} alert={al} code={null} canAct={canRollback} emailOn={emailConfigured()} />)}
+              </div>
+            )}
 
             <article className="stratum">
               <header><span className="st-no">3</span><h3>Vérification</h3><span className="badge badge-verif" style={{ marginLeft: "auto" }}><Icon name="search" />Vérification</span></header>

@@ -190,6 +190,13 @@
       "when": 1795459548002,
       "tag": "0026_us_092_write_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795462667653,
+      "tag": "0027_us_094_execution_alerts",
+      "breakpoints": true
     }
   ]
 }
