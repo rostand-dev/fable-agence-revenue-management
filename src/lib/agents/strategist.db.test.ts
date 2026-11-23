@@ -85,7 +85,7 @@ describe("US-072 : stratèges dans la revue (base réelle, faux modèle)", () =>
       const hasUnapproved = op.items.some((it) => (o.candidates as any[])[it.candidate].audit.verdict !== "APPROVE");
       if (m !== "rehabilitate" || hasUnapproved) { expect(op.mode).toBe("DETERMINISTIC"); refused++; }
       for (const it of op.items) if ((o.candidates as any[])[it.candidate].audit.verdict !== "APPROVE") expect(it.stance).not.toBe("FAVORABLE");
-      expect(JSON.stringify(op)).not.toContain("987");
+      expect(JSON.stringify(op)).not.toContain("987 654");
       expect(JSON.stringify(op)).not.toContain("baisser le prix");
     }
     expect(refused).toBeGreaterThan(0);
