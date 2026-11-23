@@ -23,11 +23,11 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
     <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Configuration" }, { label: "Intégrations" }]}>
       <div className="page-head">
         <h1>Ce que l'agence peut lire et écrire</h1>
-        <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. Dans cette version, l'agence ne modifie rien chez vos fournisseurs : toute modification passe par une procédure manuelle guidée, avec preuve.</p>
+        <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. L'écriture chez PriceLabs n'existe que pour les logements réels, une fois ouverte par l'hébergeur de l'application (verrou d'environnement) et tant que le coupe-circuit est levé ; sinon, toute modification passe par une procédure manuelle guidée, avec preuve.</p>
       </div>
       <p style={{ margin: "0 0 18px" }} data-testid="ingestion-link"><Link className="btn btn-ghost btn-sm" href="/integrations/erreurs">Erreurs d'ingestion SuperHote{ingestErrors > 0 ? ` (${ingestErrors})` : ""}</Link></p>
       {llm === "supprimee" && <Banner role="sain" title="Clé supprimée" style={{ marginBottom: 18 }}>Les agents reviennent au modèle du serveur, ou au mode déterministe s'il n'y en a pas. Les modèles choisis par agent ont été réinitialisés.</Banner>}
-      <Banner role="tech" title="Démonstration simulée, logements réels en lecture" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
+      <Banner role="tech" title="Démonstration simulée, logements réels en lecture (écriture PriceLabs verrouillée par défaut)" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
       <div className="stack">
         {PROVIDERS.map((k) => {
           const info = PROVIDER_INFO[k], f = facts[k], [label, role] = ST[providerStatus(k, f)];

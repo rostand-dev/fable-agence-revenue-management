@@ -204,3 +204,20 @@ test("PriceLabs (faux serveur) : marché illisible, la lecture réussit et les s
   await expect(rep.getByText(/signaux de marché restent inconnus/)).toBeVisible();
   await expectNoHorizontalOverflow(page, "onglet PriceLabs (marché illisible)");
 });
+
+// US-090 : l'écriture chez PriceLabs est fermée par défaut (verrou d'environnement). Sur un logement réel branché, la page Intégrations le dit clairement
+// et le faux serveur ne reçoit aucune écriture. Contrôle sur bureau et mobile (390 et 360 px).
+test("PriceLabs (faux serveur) : écriture désactivée sur cet environnement, affichée clairement et sans écriture", async ({ page }, info) => {
+  const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
+  await linked(page, info, "nominal", "write off");
+  await expect(page.getByText("réussie")).toBeVisible();
+  const before = (await calls(page)).length;
+  await page.goto("/integrations");
+  const card = page.locator("article.stratum", { has: page.getByRole("heading", { name: "PriceLabs" }) });
+  await expect(card.getByText("Désactivée sur cet environnement")).toBeVisible();
+  await expect(card.getByText(/PRICELABS_WRITE_ENABLED/).first()).toBeVisible();
+  await expect(card.getByText("Bloquée par le coupe-circuit")).toHaveCount(0);
+  await expectNoHorizontalOverflow(page, "page Intégrations (écriture désactivée)");
+  expect((await calls(page)).slice(before).filter((c) => c.write), "aucune écriture chez PriceLabs").toEqual([]);
+  expect(errors).toEqual([]);
+});

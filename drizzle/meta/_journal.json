@@ -176,6 +176,13 @@
       "when": 1795390243206,
       "tag": "0024_us_074_agent_traces",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795455876240,
+      "tag": "0025_us_090_external_writes",
+      "breakpoints": true
     }
   ]
 }

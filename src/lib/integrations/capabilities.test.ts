@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  AVAILABILITY, CAPABILITIES, PROVIDERS, PROVIDER_INFO, capabilitiesOf, capabilityFlags, checkWrite, executionBlock, isProvider,
+  AVAILABILITY, CAPABILITIES, PROVIDERS, currentGates, envGateOpen, PROVIDER_INFO, capabilitiesOf, capabilityFlags, checkWrite, executionBlock, isProvider,
   providerOfTarget, providerStatus, KILL_SWITCH_PROVIDERS, resolveCapability, resolveProvider, type AccountFacts,
 } from "./capabilities";
 import { renderCapabilitiesMarkdown } from "./capabilities-doc";
@@ -26,19 +26,28 @@ describe("catalogue des capacités", () => {
     for (const c of CAPABILITIES) { expect(c.id.startsWith(c.provider + "."), c.id).toBe(true); expect(c.detail.length, c.id).toBeGreaterThan(30); }
     for (const c of CAPABILITIES.filter((x) => x.built === "NONE")) expect(["PARTNER_ACCESS", "POLICY"].includes(c.blocker ?? "") || c.id === "superhote.webhooks", c.id).toBe(true);
   });
-  it("ne déclare aucune écriture réelle : aucun client du code n'écrit chez un fournisseur", () => {
-    expect(CAPABILITIES.filter((c) => c.kind === "write" && c.built === "REAL")).toEqual([]);
+  it("la seule écriture réelle est celle de PriceLabs, et elle est verrouillée par une variable d'environnement", () => {
+    const real = CAPABILITIES.filter((c) => c.kind === "write" && c.built === "REAL");
+    expect(real.map((c) => c.id)).toEqual(["pricelabs.write"]);
+    expect(real[0].envGate).toBe("PRICELABS_WRITE_ENABLED");
+    expect(CAPABILITIES.filter((c) => c.envGate).map((c) => c.id)).toEqual(["pricelabs.write"]);
     // SuperHote : lecture des réservations, du calendrier et des logements ; la seule écriture est la gestion des abonnements webhook (/webhooks), jamais une réservation ni un prix
     const sh = read("superhote.ts");
     expect(sh).not.toMatch(/"(PUT|PATCH)"/);
     const writes = [...sh.matchAll(/call\(token, ([^,)]+)[^)]*\{ method: "(POST|DELETE)"/g)].map((m) => m[1]);
     expect(writes.length).toBeGreaterThan(0);
     for (const target of writes) expect(target, "écriture SuperHote hors /webhooks").toMatch(/\/webhooks/);
-    // PriceLabs : le seul POST est la lecture de la grille (`/listing_prices`) ; aucune autre méthode d'écriture
+    // PriceLabs, client de LECTURE : le seul POST est la lecture de la grille (`/listing_prices`) ; aucune méthode d'écriture
     const pl = read("pricelabs.ts");
     expect(pl).not.toMatch(/"(PUT|PATCH|DELETE)"/);
     expect([...pl.matchAll(/method: "POST"/g)]).toHaveLength(1);
     expect(pl).toMatch(/"\/listing_prices", \{ method: "POST"/);
+    // PriceLabs, client d'ÉCRITURE (épic 9) : jamais PUT ni PATCH ; POST (limites, prix datés) et DELETE (prix datés) seulement, sur deux chemins
+    const w = read("pricelabs-write.ts");
+    expect(w).not.toMatch(/"(PUT|PATCH)"/);
+    expect([...w.matchAll(/this\.send\("(POST|DELETE)", ([^,]+)/g)].map((m) => `${m[1]} ${m[2]}`).sort()).toEqual([
+      'DELETE `/listings/${q(id)}/overrides`', 'POST "/listings"', 'POST `/listings/${q(id)}/overrides`', 'POST `/listings/${q(id)}/overrides`',
+    ]);
   });
 });
 
@@ -52,11 +61,29 @@ describe("état effectif d'une capacité", () => {
     expect(ok.reason).toContain("1 logement sur 2");
     expect(resolveCapability(cap("superhote.reconcile"), real(2)).reason).toContain("2 logements sur 2");
   });
-  it("l'écriture PriceLabs n'existe qu'en simulation sur la démonstration, jamais sur un logement réel", () => {
+  it("l'écriture PriceLabs : simulée en démonstration, fermée sur un logement réel tant que le verrou d'environnement n'est pas ouvert", () => {
     expect(resolveCapability(cap("pricelabs.write"), demo).status).toBe("SIMULATED");
-    expect(resolveCapability(cap("pricelabs.write"), real(2)).status).toBe("NOT_BUILT");
-    expect(resolveCapability(cap("pricelabs.write"), real(2)).usable).toBe(false);
-    expect(resolveCapability(cap("pricelabs.write"), none).status).toBe("NOT_BUILT");
+    // verrou absent ou fermé : désactivée, jamais utilisable
+    for (const gates of [undefined, {} as Record<string, boolean>, { PRICELABS_WRITE_ENABLED: false }] as (Record<string, boolean> | undefined)[]) {
+      const r = resolveCapability(cap("pricelabs.write"), { ...real(2), gates });
+      expect(r.status).toBe("DISABLED"); expect(r.usable).toBe(false); expect(r.reason).toContain("PRICELABS_WRITE_ENABLED");
+    }
+    // verrou ouvert : disponible
+    const open = resolveCapability(cap("pricelabs.write"), { ...real(2), gates: { PRICELABS_WRITE_ENABLED: true } });
+    expect(open.status).toBe("AVAILABLE"); expect(open.usable).toBe(true);
+    // aucun logement branché : à connecter, même verrou ouvert
+    expect(resolveCapability(cap("pricelabs.write"), { ...none, gates: { PRICELABS_WRITE_ENABLED: true } }).status).toBe("NEEDS_CONNECTION");
+    // un coupe-circuit prime sur un verrou ouvert
+    expect(resolveCapability(cap("pricelabs.write"), { ...real(2, 2, true), gates: { PRICELABS_WRITE_ENABLED: true } })).toMatchObject({ status: "AVAILABLE", killed: true, usable: false });
+  });
+  it("le verrou d'environnement se lit à chaque appel et n'accepte que « true »", () => {
+    const d = cap("pricelabs.write");
+    expect(envGateOpen(d, {})).toBe(false);
+    for (const v of ["", "false", "0", "yes", "oui", "1"]) expect(envGateOpen(d, { PRICELABS_WRITE_ENABLED: v }), v).toBe(false);
+    for (const v of ["true", "TRUE", " true "]) expect(envGateOpen(d, { PRICELABS_WRITE_ENABLED: v }), v).toBe(true);
+    expect(envGateOpen(cap("pricelabs.read"), {})).toBe(true); // pas de verrou : ouverte
+    expect(currentGates({ PRICELABS_WRITE_ENABLED: "true" })).toEqual({ PRICELABS_WRITE_ENABLED: true });
+    expect(currentGates({})).toEqual({ PRICELABS_WRITE_ENABLED: false });
   });
   it("capacités non développées : dépendance visible, jamais disponible", () => {
     expect(resolveCapability(cap("booking.promotions.read"), real(2)).status).toBe("NEEDS_ACCESS");
@@ -80,10 +107,18 @@ describe("garde d'écriture", () => {
   it("accepte l'écriture PriceLabs simulée sur la démonstration, coupe-circuit levé", () => {
     expect(checkWrite("pricelabs.write", { isDemo: true, killSwitch: false })).toEqual({ ok: true, simulated: true });
   });
-  it("refuse l'écriture PriceLabs sur un logement réel", () => {
-    const w = checkWrite("pricelabs.write", { isDemo: false, killSwitch: false });
-    expect(w).toMatchObject({ ok: false, code: "NOT_SUPPORTED" });
-    expect((w as { reason: string }).reason).toContain("procédure manuelle");
+  it("refuse l'écriture PriceLabs sur un logement réel tant que le verrou d'environnement est fermé", () => {
+    for (const gateOpen of [undefined, false]) {
+      const w = checkWrite("pricelabs.write", { isDemo: false, killSwitch: false, gateOpen });
+      expect(w).toMatchObject({ ok: false, code: "DISABLED" });
+      expect((w as { reason: string }).reason).toContain("procédure manuelle");
+      expect((w as { reason: string }).reason).toContain("PRICELABS_WRITE_ENABLED");
+    }
+  });
+  it("autorise l'écriture PriceLabs sur un logement réel quand le verrou est ouvert, et la démonstration reste simulée", () => {
+    expect(checkWrite("pricelabs.write", { isDemo: false, killSwitch: false, gateOpen: true })).toEqual({ ok: true, simulated: false });
+    expect(checkWrite("pricelabs.write", { isDemo: true, killSwitch: false, gateOpen: true })).toEqual({ ok: true, simulated: true });
+    expect(checkWrite("pricelabs.write", { isDemo: false, killSwitch: true, gateOpen: true })).toMatchObject({ ok: false, code: "KILL_SWITCH" });
   });
   it("refuse sous coupe-circuit, même sur la démonstration", () => {
     expect(checkWrite("pricelabs.write", { isDemo: true, killSwitch: true })).toMatchObject({ ok: false, code: "KILL_SWITCH" });
@@ -106,7 +141,8 @@ describe("blocage d'exécution (API et fiche du dossier)", () => {
     expect(executionBlock("INTERNAL", { provider: null, isDemo: false, killSwitch: false })).toBeNull();
   });
   it("bloque l'écriture par API sur un logement réel et sous coupe-circuit", () => {
-    expect(executionBlock("API_PRICELABS", { ...ok, isDemo: false })).toContain("procédure manuelle");
+    expect(executionBlock("API_PRICELABS", { ...ok, isDemo: false })).toContain("procédure manuelle"); // verrou d'environnement fermé
+    expect(executionBlock("API_PRICELABS", { ...ok, isDemo: false, gateOpen: false })).toContain("PRICELABS_WRITE_ENABLED");
     expect(executionBlock("API_PRICELABS", { ...ok, killSwitch: true })).toContain("Coupe-circuit");
   });
   it("le coupe-circuit ne coupe que l'API : la procédure manuelle reste possible", () => {
@@ -131,10 +167,28 @@ describe("blocage d'exécution (API et fiche du dossier)", () => {
   });
 });
 
+describe("types d'action écrits par l'API (épic 9)", () => {
+  const live = { provider: "pricelabs" as const, isDemo: false, killSwitch: false, gateOpen: true };
+  it("sur un logement réel au verrou ouvert, seuls les types écrits par l'API s'exécutent", () => {
+    for (const t of ["MIN_PRICE_CHANGE", "BASE_PRICE_CHANGE", "PRICE_OVERRIDE", "RULE_EXCLUSION"]) expect(executionBlock("API_PRICELABS", { ...live, actionType: t }), t).toBeNull();
+    expect(executionBlock("API_PRICELABS", { ...live, actionType: "MIN_STAY_OVERRIDE" })).toContain("ne s'écrit pas par l'API");
+    expect(executionBlock("API_PRICELABS", { ...live, actionType: "N_IMPORTE_QUOI" })).toContain("ne s'écrit pas par l'API");
+  });
+  it("la démonstration simule tous les types, séjour minimum compris", () => {
+    expect(executionBlock("API_PRICELABS", { provider: "pricelabs", isDemo: true, killSwitch: false, actionType: "MIN_STAY_OVERRIDE" })).toBeNull();
+  });
+  it("le coupe-circuit et le verrou priment sur le type", () => {
+    expect(executionBlock("API_PRICELABS", { ...live, killSwitch: true, actionType: "MIN_PRICE_CHANGE" })).toContain("Coupe-circuit");
+    expect(executionBlock("API_PRICELABS", { ...live, gateOpen: false, actionType: "MIN_PRICE_CHANGE" })).toContain("PRICELABS_WRITE_ENABLED");
+  });
+});
+
 describe("drapeaux et statuts", () => {
-  it("drapeaux d'un logement : écriture PriceLabs vraie seulement en démonstration et sans coupe-circuit", () => {
+  it("drapeaux d'un logement : écriture PriceLabs vraie en démonstration, ou sur un logement réel si le verrou est ouvert, et jamais sous coupe-circuit", () => {
     expect(capabilityFlags({ isDemo: true, killSwitch: {} })["pricelabs.write"]).toBe(true);
-    expect(capabilityFlags({ isDemo: false, killSwitch: {} })["pricelabs.write"]).toBe(false);
+    expect(capabilityFlags({ isDemo: false, killSwitch: {}, gates: {} })["pricelabs.write"]).toBe(false);
+    expect(capabilityFlags({ isDemo: false, killSwitch: {}, gates: { PRICELABS_WRITE_ENABLED: true } })["pricelabs.write"]).toBe(true);
+    expect(capabilityFlags({ isDemo: false, killSwitch: { pricelabs: true }, gates: { PRICELABS_WRITE_ENABLED: true } })["pricelabs.write"]).toBe(false);
     expect(capabilityFlags({ isDemo: true, killSwitch: { pricelabs: true } })["pricelabs.write"]).toBe(false);
     const f = capabilityFlags({ isDemo: false, killSwitch: {} });
     expect(f["pricelabs.read"]).toBe(true); expect(f["superhote.webhooks"]).toBe(true); expect(f["booking.promotions.write"]).toBe(false);

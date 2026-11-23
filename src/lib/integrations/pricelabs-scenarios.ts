@@ -6,7 +6,8 @@ import { addDays, dow, type ISODate } from "../dates";
  * Servent au faux adaptateur en mémoire, au serveur HTTP factice (tests E2E) et à la fixture rejouée.
  * Aucune donnée réelle : un logement fictif, deux réservations à venir, une passée, une annulée.
  */
-export type Endpoint = "listings" | "prices" | "neighborhood" | "reservations";
+/** `write` : toutes les écritures (min/base/max et prix datés), épic 9. */
+export type Endpoint = "listings" | "prices" | "neighborhood" | "reservations" | "write";
 export type Scenario = {
   /** Réponse `/listings` : annonces du compte. */
   listings: any[];
@@ -22,7 +23,7 @@ export type Scenario = {
   flaky?: Partial<Record<Endpoint, { status: number; times: number }>>;
 };
 
-export const SCENARIO_NAMES = ["nominal", "toggle-off", "market-down", "market-sparse", "unauthorized", "forbidden", "rate-limited", "partial-grid", "min-above-base", "two-listings", "flaky"] as const;
+export const SCENARIO_NAMES = ["nominal", "toggle-off", "market-down", "market-sparse", "unauthorized", "forbidden", "rate-limited", "partial-grid", "min-above-base", "two-listings", "flaky", "write-forbidden", "write-down", "write-flaky"] as const;
 export type ScenarioName = (typeof SCENARIO_NAMES)[number];
 export const isScenarioName = (v: unknown): v is ScenarioName => typeof v === "string" && (SCENARIO_NAMES as readonly string[]).includes(v);
 
@@ -101,6 +102,10 @@ export function buildScenario(name: ScenarioName, today: ISODate, opts: { idSuff
     case "rate-limited": sc.failures = { listings: 429, prices: 429, neighborhood: 429, reservations: 429 }; break;
     // 60 jours seulement, et un prix absent toutes les dix nuits : PriceLabs n'a pas fini de calculer la grille
     case "partial-grid": sc.prices[id] = priceItem(listing, today, 60, (row, i) => (i % 10 === 4 ? { ...row, price: "NA", user_price: "NA" } : row)); break;
+    // épic 9 : la lecture est nominale, l'écriture est refusée (clé sans droit), en panne, ou tombe en 429 une fois puis réussit (rejeu)
+    case "write-forbidden": sc.failures = { write: 403 }; break;
+    case "write-down": sc.failures = { write: 500 }; break;
+    case "write-flaky": sc.flaky = { write: { status: 429, times: 1 } }; break;
     case "flaky": sc.flaky = { listings: { status: 503, times: 1 }, prices: { status: 503, times: 1 } }; break;
     default: break;
   }

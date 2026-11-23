@@ -35,6 +35,9 @@ services:
       - AGENT_MAX_CALLS_PER_REVIEW=${AGENT_MAX_CALLS_PER_REVIEW:-80}
       # Facultatif : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300000). Atteint : repli déterministe jusqu'au lendemain. 0 désactive les appels de modèle.
       - AGENT_DAILY_TOKEN_BUDGET=${AGENT_DAILY_TOKEN_BUDGET:-300000}
+      # Verrou d'écriture chez PriceLabs (épic 9) : « true » autorise NuitSignal à modifier les prix d'un logement réel (prix minimum, de base, prix datés à prix fixe) ; tout autre valeur = fermé (défaut « false »).
+      # Les logements de démonstration restent toujours simulés. À n'ouvrir qu'après la procédure de première écriture (docs/epic-9-execution-pricelabs.md). Facultatif.
+      - PRICELABS_WRITE_ENABLED=${PRICELABS_WRITE_ENABLED:-false}
       # Facultatif : minutes d'inactivité avant déconnexion automatique (défaut 15, minimum 2). Sur la démo, la session expirée se rouvre seule.
       - SESSION_IDLE_MINUTES=${SESSION_IDLE_MINUTES:-15}
       # Facultatif : jours pendant lesquels un appareil reste reconnu après « Rester connecté sur cet appareil » (défaut 30, de 1 à 90 ; 0 désactive la fonction).

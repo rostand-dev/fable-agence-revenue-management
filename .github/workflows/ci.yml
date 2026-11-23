@@ -131,6 +131,7 @@ jobs:
       SIGNUP_EMAIL_CONFIRMATION: "false"
       # Faux serveur de l'API PriceLabs (scripts/fake-pricelabs-server.ts), lancé par Playwright : l'application le lit comme elle lirait PriceLabs. Aucune clé ni donnée réelle.
       PRICELABS_API_BASE: http://127.0.0.1:4010/v1
+      # PRICELABS_WRITE_ENABLED est volontairement absent : l'écriture réelle chez PriceLabs reste fermée en CI, et le test e2e vérifie l'affichage « Désactivée sur cet environnement ».
       # Faux serveur de modèle de langage (scripts/fake-llm-server.ts), lancé par Playwright : les agents l'interrogent comme ils interrogeraient Anthropic. Clé factice, aucun appel externe.
       ANTHROPIC_API_BASE: http://127.0.0.1:4011
       ANTHROPIC_API_KEY: ci-fake-llm-key-0123456789

@@ -107,7 +107,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const exec = action?.execution, meas = action?.measurement;
   // US-002 : même règle que le serveur (`execute()`), pour ne jamais offrir un bouton qui sera refusé
   const target = providerOfTarget(action?.target?.system);
-  const blocked = action ? executionBlock(mode, { provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch, flagOff: (await flagFor(user.tenantId, "write.api", { propertyId: p.id, provider: target })).reason }) : null;
+  const blocked = action ? executionBlock(mode, { actionType: action.type, provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch, flagOff: (await flagFor(user.tenantId, "write.api", { propertyId: p.id, provider: target })).reason }) : null;
 
   return (
     <Page title={`Dossier ${o.code} · ${p.name}`} sub={`${o.playbook} · ouvert le ${fmtDateTime(o.createdAt)} · ${fmtPeriod(o.stayFrom, o.stayTo)}`}
@@ -452,7 +452,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               <div className="stratum-body stack">
                 {!exec ? <p className="muted" style={{ margin: 0 }}>Aucune exécution enregistrée.</p> : exec.error ? <Banner role="attention" title="Exécution en échec">{exec.error}</Banner> : (
                   <Recap rows={[
-                    ["Mode", exec.mode === "DEMO_SIMULATED" ? "Écriture PriceLabs simulée" : exec.mode === "MANUAL_DECLARED" ? "Procédure manuelle déclarée" : "Tâche interne"],
+                    ["Mode", exec.mode === "PRICELABS_API" ? "Écriture PriceLabs (API), confirmée par relecture" : exec.mode === "DEMO_SIMULATED" ? "Écriture PriceLabs simulée" : exec.mode === "MANUAL_DECLARED" ? "Procédure manuelle déclarée" : "Tâche interne"],
                     ["Exécutée le", action.executedAt ? fmtDateTime(action.executedAt) : "—", true],
                     ...(exec.declaredScope ? [["Portée déclarée", exec.declaredScope] as [string, string]] : []),
                     ...(exec.mode === "MANUAL_DECLARED" ? [["Preuve", exec.proof ?? <Vq>aucune pièce jointe</Vq>] as [string, React.ReactNode]] : []),
@@ -468,8 +468,8 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 {action.status === "EXECUTED" && !canVerify && <div data-testid="verification-reservee"><Banner role="tech" title="Vérification réservée">{denyMessage(user.role, "action.verify")}</Banner></div>}
                 {action.status === "EXECUTED" && canVerify && (
                   <ActionForm action={verifyAction} hidden={{ actionId: action.id }}>
-                    <p className="muted" style={{ margin: "0 0 12px" }}>{exec?.mode === "DEMO_SIMULATED" ? `${agentName("audit", names)} relit la grille et la compare à l'action approuvée.` : "Relisez l'état réel dans l'outil, puis confirmez qu'il correspond à l'action approuvée."}</p>
-                    <Submit icon="search">{exec?.mode === "DEMO_SIMULATED" ? "Vérifier l'état relu" : "Confirmer la relecture"}</Submit>
+                    <p className="muted" style={{ margin: "0 0 12px" }}>{exec?.mode === "PRICELABS_API" ? `${agentName("audit", names)} relit l'état réel chez PriceLabs et le compare à l'écriture enregistrée.` : exec?.mode === "DEMO_SIMULATED" ? `${agentName("audit", names)} relit la grille et la compare à l'action approuvée.` : "Relisez l'état réel dans l'outil, puis confirmez qu'il correspond à l'action approuvée."}</p>
+                    <Submit icon="search">{exec?.mode === "PRICELABS_API" ? "Relire chez PriceLabs" : exec?.mode === "DEMO_SIMULATED" ? "Vérifier l'état relu" : "Confirmer la relecture"}</Submit>
                   </ActionForm>
                 )}
                 {exec?.verification ? <Recap rows={[["Vérifiée le", action.verifiedAt ? fmtDateTime(action.verifiedAt) : "—", true], ["Constat", exec.verification.note], ["Mesure prévue le", action.measureDueAt ? fmtDate(action.measureDueAt) : "—", true]]} />

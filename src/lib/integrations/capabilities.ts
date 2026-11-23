@@ -6,6 +6,7 @@
  * (`services/decisions.ts`), la règle d'audit CAPABILITY le répercute, et l'interface désactive le bouton.
  * Module pur (aucun accès base) : testable, et sert aussi à générer `docs/capacites-integrations.md`.
  */
+import { API_WRITE_TYPES } from "./pricelabs-write-types";
 export type Provider = "superhote" | "pricelabs" | "booking" | "airbnb";
 export const PROVIDERS: Provider[] = ["superhote", "pricelabs", "booking", "airbnb"];
 export const isProvider = (v: unknown): v is Provider => typeof v === "string" && (PROVIDERS as string[]).includes(v);
@@ -28,13 +29,15 @@ export type CapabilityDef = {
   label: string;
   built: Built;
   blocker?: Blocker;
+  /** Variable d'environnement qui doit valoir « true » pour que cette capacité s'exerce sur un logement réel (fermée par défaut). La démonstration n'est pas concernée. */
+  envGate?: string;
   /** Ce que le code fait, ou ce qui manque, en une phrase */
   detail: string;
 };
 
 export const PROVIDER_INFO: Record<Provider, { name: string; role: string; next: string }> = {
   superhote: { name: "SuperHote", role: "PMS et channel manager · source des réservations", next: "Les réservations sont reçues en temps réel par webhooks (à activer dans l'onglet SuperHote, adresse publique en https exigée) et relues par l'API selon la cadence du logement, qui sert de filet de sécurité. Connexion par logement : fiche du logement, onglet SuperHote." },
-  pricelabs: { name: "PriceLabs", role: "Moteur de prix · grille, réglages et marché", next: "La connexion se fait par logement : fiche du logement, onglet PriceLabs, clé API. Lecture seule dans cette version : toute modification de prix passe par la procédure manuelle guidée." },
+  pricelabs: { name: "PriceLabs", role: "Moteur de prix · grille, réglages et marché", next: "La connexion se fait par logement : fiche du logement, onglet PriceLabs, clé API. L'écriture (prix minimum, prix de base, prix datés) n'est ouverte sur un environnement que par la variable PRICELABS_WRITE_ENABLED ; fermée, toute modification de prix passe par la procédure manuelle guidée." },
   booking: { name: "Booking.com", role: "Canal · promotions et commissions", next: "L'API Promotions exige un accès Connectivity Partner. D'ici là : procédure manuelle guidée, avec preuve." },
   airbnb: { name: "Airbnb", role: "Canal · promotions et commissions", next: "Aucune automatisation de navigateur : les conditions d'Airbnb l'interdisent. Procédure manuelle guidée, avec preuve." },
 };
@@ -46,8 +49,8 @@ export const CAPABILITIES: CapabilityDef[] = [
     detail: "Point d'entrée signé (HMAC-SHA256) et idempotent : SuperHote pousse les réservations créées, modifiées et annulées. L'abonnement se crée depuis la fiche du logement (jeton avec le scope public-api:webhooks.manage) et demande une adresse publique en https. La lecture planifiée reste le filet de sécurité." },
   { id: "pricelabs.read", provider: "pricelabs", kind: "read", label: "Lecture de la grille de prix, du marché et des réservations relayées", built: "REAL",
     detail: "API client PriceLabs en lecture seule (clé API par logement) : annonces, prix, marché, réservations." },
-  { id: "pricelabs.write", provider: "pricelabs", kind: "write", label: "Écriture des prix et restrictions, après approbation", built: "DEMO_ONLY",
-    detail: "Le client PriceLabs ne sait que lire. L'écriture n'est simulée que sur les logements de démonstration ; sur un logement réel, seule la procédure manuelle guidée s'applique. L'accès en écriture de l'API client reste à confirmer auprès de PriceLabs." },
+  { id: "pricelabs.write", provider: "pricelabs", kind: "write", label: "Écriture des prix minimum, de base et datés, après approbation", built: "REAL", envGate: "PRICELABS_WRITE_ENABLED",
+    detail: "Écriture par l'API client PriceLabs (POST /listings pour le prix minimum et de base, /listings/{id}/overrides pour un prix daté), après approbation, avec relecture de confirmation. Fermée tant que la variable PRICELABS_WRITE_ENABLED n'est pas posée sur l'environnement ; le séjour minimum daté reste en procédure manuelle guidée. Simulée sur les logements de démonstration." },
   { id: "booking.promotions.read", provider: "booking", kind: "read", label: "Lecture des promotions", built: "NONE", blocker: "PARTNER_ACCESS",
     detail: "L'API Promotions de Booking.com exige un accès Connectivity Partner, non obtenu. Le registre des promotions se tient à la main." },
   { id: "booking.promotions.write", provider: "booking", kind: "write", label: "Écriture des promotions", built: "NONE", blocker: "PARTNER_ACCESS",
@@ -61,7 +64,7 @@ export const capability = (id: string): CapabilityDef | undefined => CAPABILITIE
 export const capabilitiesOf = (p: Provider): CapabilityDef[] => CAPABILITIES.filter((c) => c.provider === p);
 
 /** État affiché d'une capacité. Le libellé dit toujours ce qui se passe : l'état n'est jamais porté par la couleur seule. */
-export type Availability = "AVAILABLE" | "SIMULATED" | "NEEDS_CONNECTION" | "NOT_BUILT" | "NEEDS_ACCESS" | "FORBIDDEN";
+export type Availability = "AVAILABLE" | "SIMULATED" | "NEEDS_CONNECTION" | "NOT_BUILT" | "NEEDS_ACCESS" | "FORBIDDEN" | "DISABLED";
 export const AVAILABILITY: Record<Availability, { label: string; role: "sain" | "tech" | "neutre" }> = {
   AVAILABLE: { label: "Disponible", role: "sain" },
   SIMULATED: { label: "Simulée (démonstration)", role: "tech" },
@@ -69,10 +72,11 @@ export const AVAILABILITY: Record<Availability, { label: string; role: "sain" | 
   NOT_BUILT: { label: "Non développée", role: "neutre" },
   NEEDS_ACCESS: { label: "Accès partenaire requis", role: "neutre" },
   FORBIDDEN: { label: "Exclue (conditions du canal)", role: "neutre" },
+  DISABLED: { label: "Désactivée sur cet environnement", role: "neutre" },
 };
 
 /** Ce que l'on sait du compte : logements réels (hors démonstration), ceux qui sont branchés au fournisseur, logements de démonstration */
-export type AccountFacts = { realTotal: number; realLinked: number; demoCount: number; killSwitch: boolean };
+export type AccountFacts = { realTotal: number; realLinked: number; demoCount: number; killSwitch: boolean; /** Variables d'environnement qui ouvrent une capacité sur un logement réel : absente = fermée (défaut sûr). Voir `envGateOpen`. */ gates?: Record<string, boolean> };
 export type ResolvedCapability = {
   id: CapabilityId; label: string; kind: "read" | "write"; status: Availability;
   /** Utilisable maintenant : développée, branchée (ou simulée) et, pour une écriture, coupe-circuit levé */
@@ -83,10 +87,16 @@ export type ResolvedCapability = {
 };
 
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
+/** La variable d'environnement d'une capacité est-elle posée à « true » ? Sans variable à poser, la capacité n'a pas de verrou. Lue à chaque appel. */
+export const envGateOpen = (def: CapabilityDef, env: Record<string, string | undefined> = process.env): boolean => !def.envGate || (env[def.envGate] ?? "").trim().toLowerCase() === "true";
+/** Verrous d'environnement de toutes les capacités, pour `AccountFacts.gates`. */
+export const currentGates = (env: Record<string, string | undefined> = process.env): Record<string, boolean> => Object.fromEntries(CAPABILITIES.filter((c) => c.envGate).map((c) => [c.envGate!, envGateOpen(c, env)]));
 export function resolveCapability(def: CapabilityDef, f: AccountFacts): ResolvedCapability {
   let status: Availability, reason = def.detail;
+  const gateClosed = !!def.envGate && f.gates?.[def.envGate] !== true;
   if (def.built === "NONE") status = def.blocker === "PARTNER_ACCESS" ? "NEEDS_ACCESS" : def.blocker === "POLICY" ? "FORBIDDEN" : "NOT_BUILT";
   else if (def.built === "DEMO_ONLY") status = f.demoCount > 0 ? "SIMULATED" : "NOT_BUILT";
+  else if (f.realLinked > 0 && gateClosed) { status = "DISABLED"; reason = `Fermée sur cet environnement : la variable ${def.envGate} n'est pas posée à « true ». ${def.detail}`; }
   else if (f.realLinked > 0) { status = "AVAILABLE"; reason = `Branchée sur ${f.realLinked} logement${plural(f.realLinked, "", "s")} sur ${f.realTotal}. ${def.detail}`; }
   else if (f.demoCount > 0) status = "SIMULATED";
   else { status = "NEEDS_CONNECTION"; reason = (f.realTotal ? "Aucun de vos logements n'est branché. " : "Aucun logement réel pour l'instant. ") + def.detail; }
@@ -96,21 +106,24 @@ export function resolveCapability(def: CapabilityDef, f: AccountFacts): Resolved
 export const resolveProvider = (p: Provider, f: AccountFacts): ResolvedCapability[] => capabilitiesOf(p).map((c) => resolveCapability(c, f));
 
 /** Contrôle d'une écriture : la seule porte vers un fournisseur externe. Refus = aucune écriture, aucune exception à prévoir côté appelant. */
-export type WriteCheck = { ok: true; simulated: boolean } | { ok: false; code: "UNKNOWN_CAPABILITY" | "KILL_SWITCH" | "NOT_SUPPORTED"; reason: string };
-export function checkWrite(id: string, ctx: { isDemo: boolean; killSwitch: boolean }): WriteCheck {
+export type WriteCheck = { ok: true; simulated: boolean } | { ok: false; code: "UNKNOWN_CAPABILITY" | "KILL_SWITCH" | "NOT_SUPPORTED" | "DISABLED"; reason: string };
+/** `gateOpen` : le verrou d'environnement de la capacité est-il ouvert ? Absent : lu dans l'environnement du processus. */
+export function checkWrite(id: string, ctx: { isDemo: boolean; killSwitch: boolean; gateOpen?: boolean }): WriteCheck {
   const def = capability(id);
   if (!def || def.kind !== "write") return { ok: false, code: "UNKNOWN_CAPABILITY", reason: "Capacité d'écriture inconnue : aucune écriture n'est faite." };
   const name = PROVIDER_INFO[def.provider].name;
   if (ctx.killSwitch) return { ok: false, code: "KILL_SWITCH", reason: `Coupe-circuit actif sur ${name} : aucune écriture possible.` };
   if (def.built === "NONE") return { ok: false, code: "NOT_SUPPORTED", reason: `L'écriture vers ${name} n'est pas possible : ${def.detail}` };
   if (def.built === "DEMO_ONLY" && !ctx.isDemo) return { ok: false, code: "NOT_SUPPORTED", reason: `L'écriture vers ${name} n'est pas développée pour un logement réel : utilisez la procédure manuelle guidée.` };
-  return { ok: true, simulated: def.built === "DEMO_ONLY" };
+  // la démonstration est toujours simulée ; un logement réel n'écrit que si le verrou d'environnement est ouvert
+  if (!ctx.isDemo && def.envGate && !(ctx.gateOpen ?? envGateOpen(def))) return { ok: false, code: "DISABLED", reason: `L'écriture vers ${name} est fermée sur cet environnement (variable ${def.envGate}) : utilisez la procédure manuelle guidée.` };
+  return { ok: true, simulated: def.built === "DEMO_ONLY" || ctx.isDemo };
 }
 
 /** Drapeaux de capacités d'UN logement, transmis au moteur et à l'auditeur. Coupe-circuit levé ou non, par fournisseur. */
-export function capabilityFlags(ctx: { isDemo: boolean; killSwitch: Partial<Record<Provider, boolean>> }): Record<string, boolean> {
+export function capabilityFlags(ctx: { isDemo: boolean; killSwitch: Partial<Record<Provider, boolean>>; gates?: Record<string, boolean> }): Record<string, boolean> {
   const out: Record<string, boolean> = {};
-  for (const c of CAPABILITIES) out[c.id] = c.kind === "write" ? checkWrite(c.id, { isDemo: ctx.isDemo, killSwitch: !!ctx.killSwitch[c.provider] }).ok : c.built !== "NONE";
+  for (const c of CAPABILITIES) out[c.id] = c.kind === "write" ? checkWrite(c.id, { isDemo: ctx.isDemo, killSwitch: !!ctx.killSwitch[c.provider], gateOpen: c.envGate && ctx.gates ? ctx.gates[c.envGate] === true : undefined }).ok : c.built !== "NONE";
   return out;
 }
 
@@ -122,7 +135,7 @@ export const providerOfTarget = (system: string | undefined | null): Provider | 
  * Raison pour laquelle une action approuvée ne peut PAS être exécutée maintenant, ou null si elle le peut.
  * Appelée par `execute()` (refus côté API, avant tout changement d'état) et par la fiche du dossier (bouton désactivé) : une seule règle.
  */
-export function executionBlock(mode: string | undefined, ctx: { provider: Provider | null; isDemo: boolean; killSwitch: boolean; /** raison d'un drapeau « écriture automatique » coupé (US-013), null s'il est actif */ flagOff?: string | null }): string | null {
+export function executionBlock(mode: string | undefined, ctx: { provider: Provider | null; isDemo: boolean; killSwitch: boolean; /** raison d'un drapeau « écriture automatique » coupé (US-013), null s'il est actif */ flagOff?: string | null; /** type de l'action : sur un logement réel, seuls les types écrits par l'API PriceLabs s'exécutent (épic 9) */ actionType?: string; gateOpen?: boolean }): string | null {
   // le coupe-circuit ne coupe que l'écriture automatique par API ; la procédure manuelle (geste humain, avec preuve) reste possible
   // liste blanche : tout mode inconnu ou toute future écriture « API_* » est refusé tant qu'il n'a pas de capacité
   if (mode === "INTERNAL" || mode === "MANUAL_RUNBOOK") return null;
@@ -130,8 +143,11 @@ export function executionBlock(mode: string | undefined, ctx: { provider: Provid
     // le coupe-circuit consulté est celui de la cible : une écriture PriceLabs visant un autre fournisseur est incohérente, donc refusée
     if (ctx.provider !== "pricelabs") return "Écriture par API incohérente avec la cible de l'action : aucune exécution possible.";
     if (ctx.flagOff) return ctx.flagOff;
-    const w = checkWrite("pricelabs.write", { isDemo: ctx.isDemo, killSwitch: ctx.killSwitch });
-    return w.ok ? null : w.reason;
+    const w = checkWrite("pricelabs.write", { isDemo: ctx.isDemo, killSwitch: ctx.killSwitch, gateOpen: ctx.gateOpen });
+    if (!w.ok) return w.reason;
+    // un logement réel n'écrit que ce que l'API PriceLabs permet d'écrire sans ambiguïté (voir API_WRITE_TYPES) : le reste se fait par la procédure manuelle guidée
+    if (!ctx.isDemo && !(API_WRITE_TYPES as readonly string[]).includes(ctx.actionType ?? "")) return "Ce type d'action ne s'écrit pas par l'API PriceLabs : utilisez la procédure manuelle guidée.";
+    return null;
   }
   return "Mode d'exécution inconnu : aucune exécution possible.";
 }

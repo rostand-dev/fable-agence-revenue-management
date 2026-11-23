@@ -6,8 +6,10 @@ US-002 · blueprint §4.2. Le catalogue décrit ce que le **code** sait faire au
 
 ## Règles
 
-- **Lecture seule par défaut** : aucun client du code n'écrit chez un fournisseur. Un test le vérifie (aucune méthode PUT, PATCH, DELETE ; le seul POST de PriceLabs lit la grille).
-- **Démonstration** : l'écriture PriceLabs est simulée sur les logements de démonstration. Sur un logement réel, l'option est proposée en procédure manuelle guidée.
+- **Fermé par défaut** : le client de lecture PriceLabs ne contient aucune méthode d'écriture (un test le vérifie) ; l'écriture vit dans un module distinct (`pricelabs-write.ts`) que les agents n'importent pas (contrôle statique).
+- **Verrou d'environnement** : l'écriture PriceLabs sur un logement réel n'est ouverte que si `PRICELABS_WRITE_ENABLED=true` est posée sur l'environnement. Absente, l'option reste proposée en procédure manuelle guidée.
+- **Types écrits par API** : prix minimum, prix de base, prix datés. Le séjour minimum daté reste en procédure manuelle guidée (sémantique de l'API non confirmée).
+- **Démonstration** : l'écriture PriceLabs est simulée sur les logements de démonstration, tous types d'action confondus.
 - **Coupe-circuit** : uniquement pour les fournisseurs ayant une écriture automatique (PriceLabs). Il bloque l'écriture par API, immédiatement ; les lectures et les procédures manuelles guidées continuent.
 - **Déduit des logements** : le statut d'un fournisseur et le nombre de logements branchés viennent des rattachements réels (`listingId` PriceLabs, `rentalId` SuperHote), jamais d'une ligne de configuration.
 
@@ -21,6 +23,7 @@ US-002 · blueprint §4.2. Le catalogue décrit ce que le **code** sait faire au
 | Non développée | non développée dans cette version |
 | Accès partenaire requis | non développée, et dépend d'un accès partenaire non obtenu |
 | Exclue (conditions du canal) | exclue : les conditions du canal l'interdisent |
+| Désactivée sur cet environnement | développée et branchée, mais fermée sur cet environnement tant que sa variable d'environnement n'est pas posée à « true » (écriture PriceLabs : PRICELABS_WRITE_ENABLED) |
 
 ## SuperHote
 
@@ -40,9 +43,9 @@ Moteur de prix · grille, réglages et marché.
 | Capacité | Identifiant | Nature | Développée | Raison |
 |---|---|---|---|---|
 | Lecture de la grille de prix, du marché et des réservations relayées | `pricelabs.read` | lecture | oui, sur logement réel | API client PriceLabs en lecture seule (clé API par logement) : annonces, prix, marché, réservations. |
-| Écriture des prix et restrictions, après approbation | `pricelabs.write` | écriture | simulée sur la démonstration seulement | Le client PriceLabs ne sait que lire. L'écriture n'est simulée que sur les logements de démonstration ; sur un logement réel, seule la procédure manuelle guidée s'applique. L'accès en écriture de l'API client reste à confirmer auprès de PriceLabs. |
+| Écriture des prix minimum, de base et datés, après approbation | `pricelabs.write` | écriture | oui, sur logement réel | Écriture par l'API client PriceLabs (POST /listings pour le prix minimum et de base, /listings/{id}/overrides pour un prix daté), après approbation, avec relecture de confirmation. Fermée tant que la variable PRICELABS_WRITE_ENABLED n'est pas posée sur l'environnement ; le séjour minimum daté reste en procédure manuelle guidée. Simulée sur les logements de démonstration. |
 
-Suite : La connexion se fait par logement : fiche du logement, onglet PriceLabs, clé API. Lecture seule dans cette version : toute modification de prix passe par la procédure manuelle guidée.
+Suite : La connexion se fait par logement : fiche du logement, onglet PriceLabs, clé API. L'écriture (prix minimum, prix de base, prix datés) n'est ouverte sur un environnement que par la variable PRICELABS_WRITE_ENABLED ; fermée, toute modification de prix passe par la procédure manuelle guidée.
 
 ## Booking.com
 

@@ -51,6 +51,36 @@ export const retryDelayMs = (attempt: number, retryAfter: string | null): number
 };
 export type HttpOptions = { tap?: HttpTap; /** Reprises après un échec passager (défaut 2). */ retries?: number; /** Attente entre deux essais (remplaçable en test). */ sleep?: (ms: number) => Promise<void> };
 
+/**
+ * Un appel à l'API client PriceLabs, avec reprises sur échec passager (429, 502, 503, 504, coupure réseau). Un délai dépassé n'est pas repris :
+ * trois attentes de 45 s feraient attendre une minute de trop. Partagé par la lecture (`HttpPriceLabs`) et l'écriture (`HttpPriceLabsWriter`, US-090) :
+ * les écritures de l'épic 9 posent des valeurs absolues, les rejouer après un échec passager est donc sans danger.
+ * Une réponse 204 ou vide renvoie `null`.
+ */
+export async function plRequest(apiKey: string, path: string, init: { method?: string; body?: unknown; timeoutMs?: number; /** Reçoit le statut HTTP de la réponse réussie (pour le reçu d'écriture). */ onStatus?: (status: number) => void } = {}, retries = 2, sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms))): Promise<any> {
+  for (let attempt = 0; ; attempt++) {
+    const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), init.timeoutMs ?? 45000);
+    let res: Response;
+    try {
+      res = await fetch(base() + path, { method: init.method ?? "GET", signal: ctrl.signal, cache: "no-store", headers: { "X-API-Key": apiKey, accept: "application/json", ...(init.body ? { "content-type": "application/json" } : {}) }, body: init.body ? JSON.stringify(init.body) : undefined });
+    } catch (e: any) {
+      if (e?.name === "AbortError") throw new PriceLabsError("PriceLabs n'a pas répondu à temps.");
+      if (attempt < retries) { await sleep(retryDelayMs(attempt, null)); continue; }
+      throw new PriceLabsError("PriceLabs est injoignable depuis le serveur.");
+    } finally { clearTimeout(timer); }
+    if (!res.ok) {
+      if (TRANSIENT_STATUSES.includes(res.status) && attempt < retries) { await res.body?.cancel().catch(() => {}); await sleep(retryDelayMs(attempt, res.headers.get("retry-after"))); continue; }
+      throw errorForStatus(res.status);
+    }
+    init.onStatus?.(res.status);
+    if (res.status === 204) return null;
+    let text: string;
+    try { text = await res.text(); } catch { throw new PriceLabsError("Réponse PriceLabs illisible."); }
+    if (!text.trim()) return null;
+    try { return JSON.parse(text); } catch { throw new PriceLabsError("Réponse PriceLabs illisible."); }
+  }
+}
+
 export class HttpPriceLabs implements PriceLabsPort {
   readonly adapter = "HTTP" as const;
   private tap?: HttpTap; private retries: number; private sleep: (ms: number) => Promise<void>;
@@ -58,24 +88,9 @@ export class HttpPriceLabs implements PriceLabsPort {
     this.tap = opts.tap; this.retries = opts.retries ?? 2; this.sleep = opts.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
   }
 
-  /** Un appel, avec reprises sur échec passager (429, 502, 503, 504, coupure réseau). Un délai dépassé n'est pas repris : trois attentes de 45 s feraient attendre une minute de trop. */
-  private async call(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<any> {
-    for (let attempt = 0; ; attempt++) {
-      const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), init.timeoutMs ?? 45000);
-      let res: Response;
-      try {
-        res = await fetch(base() + path, { method: init.method ?? "GET", signal: ctrl.signal, cache: "no-store", headers: { "X-API-Key": this.apiKey, accept: "application/json", ...(init.body ? { "content-type": "application/json" } : {}) }, body: init.body ? JSON.stringify(init.body) : undefined });
-      } catch (e: any) {
-        if (e?.name === "AbortError") throw new PriceLabsError("PriceLabs n'a pas répondu à temps.");
-        if (attempt < this.retries) { await this.sleep(retryDelayMs(attempt, null)); continue; }
-        throw new PriceLabsError("PriceLabs est injoignable depuis le serveur.");
-      } finally { clearTimeout(timer); }
-      if (!res.ok) {
-        if (TRANSIENT_STATUSES.includes(res.status) && attempt < this.retries) { await res.body?.cancel().catch(() => {}); await this.sleep(retryDelayMs(attempt, res.headers.get("retry-after"))); continue; }
-        throw errorForStatus(res.status);
-      }
-      try { return await res.json(); } catch { throw new PriceLabsError("Réponse PriceLabs illisible."); }
-    }
+  /** Un appel, avec reprises sur échec passager (voir `plRequest`). */
+  private call(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}): Promise<any> {
+    return plRequest(this.apiKey, path, init, this.retries, this.sleep);
   }
 
   async listListings(): Promise<PlListing[]> {

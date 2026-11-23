@@ -8,6 +8,7 @@ import { executionBlock, providerOfTarget } from "../integrations/capabilities";
 import { flagFor } from "./flags";
 import { recordAudit } from "../audit/log";
 import { agentActor, userActor, type AuditType } from "../audit/types";
+import { preparePriceLabsWrite, readBackPriceLabsWrite, sendPriceLabsWrite, WriteError, writesOfAction, type PreparedWrite, type SafePlan, type WriteOutcome } from "./pricelabs-write";
 import { can, denyMessage, executePermission, PERMISSION_LABEL, ROLE_LABEL, type Permission, type Role } from "../rbac";
 
 const { opportunities, revenueActions, calendarDays, promotions, properties, integrations, agentRuns } = schema;
@@ -85,7 +86,7 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
   if (p?.status !== "SHADOW") {
     const prov = providerOfTarget(c.target.system);
     const [ig] = prov ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, prov))) : [];
-    const blocked = executionBlock(c.executionMode, { provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: o.propertyId, provider: prov })).reason });
+    const blocked = executionBlock(c.executionMode, { actionType: c.type, provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: o.propertyId, provider: prov })).reason });
     if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée, ou utilisez la procédure manuelle.");
   }
   const id = newId("act");
@@ -165,22 +166,42 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
     killSwitch = !!i?.killSwitch;
   }
   // US-002 : un write non supporté est impossible. Refus avant tout changement d'état (l'action reste APPROVED), même règle que le bouton de la fiche.
-  const blocked = executionBlock(mode, { provider, isDemo: p.isDemo, killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: p.id, provider })).reason });
+  const blocked = executionBlock(mode, { actionType: a.type, provider, isDemo: p.isDemo, killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: p.id, provider })).reason });
   if (blocked) throw new DecisionError(blocked);
   const dates: ISODate[] = a.parameters.dates ?? [];
   // les erreurs de saisie sont refusées avant tout changement d'état : une faute de frappe ne fait pas échouer l'action
   if (mode === "MANUAL_RUNBOOK" && (!declaration || declaration.scope.trim().length < 5 || !declaration.date)) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
   const decl = declaration ? { scope: clip(declaration.scope), date: clip(declaration.date, 10), proof: clip(declaration.proof, 1000) } : undefined;
   const baseline = await bookedCount(a.propertyId, o.stayFrom, o.stayTo);
+  // écriture réelle chez PriceLabs (épic 9) : on relit l'état réel et on calcule l'écriture AVANT de quitter « Approuvée » ; un refus ici ne change rien
+  const real = mode === "API_PRICELABS" && !p.isDemo;
+  let prepared: PreparedWrite | null = null;
+  if (real) {
+    try { prepared = await preparePriceLabsWrite(p, { id: a.id, tenantId: actor.tenantId, type: a.type, parameters: a.parameters }); }
+    catch (e) { throw e instanceof WriteError ? new DecisionError(e.message) : e; }
+    // même précondition que la simulation, mais AVANT d'écrire : on n'envoie rien à PriceLabs pour échouer ensuite en base
+    const local = dates.length ? await db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), inArray(calendarDays.date, dates))) : [];
+    if (local.some((d) => d.state !== "FREE")) throw new DecisionError("Recontrôle : une des nuits a été réservée depuis la simulation. Écriture abandonnée, relancez la revue.");
+  }
   await move(db, a.id, actor.tenantId, "APPROVED", "EXECUTING");
+  let written: WriteOutcome | null = null;
   try {
+    if (real && prepared) {
+      // juste avant l'envoi : le coupe-circuit, le drapeau et le mode du logement sont relus (un geste fait pendant la lecture compte)
+      written = await sendPriceLabsWrite(prepared, { recheck: async () => {
+        const [ig] = provider ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, provider))) : [];
+        const again = executionBlock(mode, { actionType: a.type, provider, isDemo: p.isDemo, killSwitch: !!ig?.killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: p.id, provider })).reason });
+        if (again) throw new WriteError(again);
+      } });
+    }
     // écritures, passage à EXECUTED et événement d'audit forment une seule transaction : un échec ne laisse ni demi-écriture ni état sans trace
     await db.transaction(async (tx) => {
       let execution: any;
       if (mode === "API_PRICELABS") {
-        const before = dates.length ? await tx.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), inArray(calendarDays.date, dates))) : [];
+        // logement réel : la grille locale appartient à PriceLabs (relue à la prochaine synchronisation) ; seule la stratégie est mise à jour ici, et le contrôle « nuit libre » a été fait avant l'envoi
+        const before = real || !dates.length ? [] : await tx.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), inArray(calendarDays.date, dates)));
         // précondition : l'état relu doit être celui sur lequel la simulation a été faite
-        if (before.some((d) => d.state !== "FREE")) throw new DecisionError("Recontrôle : une des nuits a été réservée depuis la simulation. Écriture abandonnée, relancez la revue.");
+        if (!real && before.some((d) => d.state !== "FREE")) throw new DecisionError("Recontrôle : une des nuits a été réservée depuis la simulation. Écriture abandonnée, relancez la revue.");
         for (const d of before) {
           const patch: Partial<typeof calendarDays.$inferInsert> = {};
           if (a.type === "MIN_STAY_OVERRIDE") patch.minStay = a.parameters.minStay;
@@ -199,7 +220,9 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
           const r = await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, minPriceCents: a.parameters.minPriceCents }), source: "ACTION", createdBy: actor.id });
           if (r) prevMin = r.previous.minPriceCents ?? null;
         }
-        execution = { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline };
+        execution = written
+          ? { mode: "PRICELABS_API", note: "Écriture PriceLabs confirmée par relecture.", writeId: written.writeId, adapter: written.adapter, receipt: { method: written.receipt.method, endpoint: written.receipt.endpoint, status: written.receipt.status, requestHash: written.receipt.requestHash, sentAt: written.receipt.sentAt }, plan: written.plan, remoteBefore: written.before, remoteAfter: written.after, previousOverrides: written.previousOverrides, before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline }
+          : { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline };
       } else if (mode === "MANUAL_RUNBOOK") {
         if (!decl) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
         const ch = a.target.channel ?? a.parameters.channel;
@@ -217,19 +240,21 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
         execution = { mode: "INTERNAL", note: decl?.scope || "Tâche interne lancée.", baseline };
       }
       await move(tx, a.id, actor.tenantId, "EXECUTING", "EXECUTED", { execution, executedAt: new Date() });
-      await audit(tx, actor.tenantId, userActor(actor.id), "action.executed", "RevenueAction", a.id, `« ${a.label} » exécutée (${execution.mode === "DEMO_SIMULATED" ? "écriture simulée, démonstration" : execution.mode === "MANUAL_DECLARED" ? "procédure manuelle déclarée" : "tâche interne"}).`,
-        { code: o.code, actionType: a.type, mode: execution.mode, declaredScope: execution.declaredScope ?? null, declaredDate: execution.declaredDate ?? null, proof: execution.proof ?? null });
+      await audit(tx, actor.tenantId, userActor(actor.id), "action.executed", "RevenueAction", a.id, `« ${a.label} » exécutée (${execution.mode === "PRICELABS_API" ? "écriture PriceLabs confirmée par relecture" : execution.mode === "DEMO_SIMULATED" ? "écriture simulée, démonstration" : execution.mode === "MANUAL_DECLARED" ? "procédure manuelle déclarée" : "tâche interne"}).`,
+        { code: o.code, actionType: a.type, mode: execution.mode, declaredScope: execution.declaredScope ?? null, declaredDate: execution.declaredDate ?? null, proof: execution.proof ?? null,
+          ...(execution.mode === "PRICELABS_API" ? { writeId: execution.writeId, receipt: execution.receipt, adapter: execution.adapter } : {}) });
     });
   } catch (e) {
     // message technique brut (SQL, URL…) jamais écrit dans le journal : seules nos erreurs métier le sont
-    const msg = e instanceof DecisionError ? e.message : "erreur technique pendant l'exécution";
+    const msg = (e instanceof DecisionError || e instanceof WriteError ? e.message : "erreur technique pendant l'exécution") + (written ? " L'écriture PriceLabs avait déjà été envoyée et confirmée : vérifiez la grille dans PriceLabs et remettez les valeurs d'avant si besoin." : e instanceof WriteError && e.sent && !/incertaine|non confirmée|ne la retrouve pas/.test(e.message) ? " L'écriture PriceLabs a pu être envoyée : vérifiez dans PriceLabs." : "");
+    const writeId = written?.writeId ?? (e instanceof WriteError ? e.writeId : null);
     try {
       await db.transaction(async (tx) => {
-        await move(tx, a.id, actor.tenantId, "EXECUTING", "FAILED", { execution: { error: msg } });
+        await move(tx, a.id, actor.tenantId, "EXECUTING", "FAILED", { execution: { error: msg, ...(writeId ? { writeId } : {}) } });
         await audit(tx, actor.tenantId, "system", "action.failed", "RevenueAction", a.id, `Échec d'exécution de « ${a.label} » : ${msg}`, { code: o.code, actionType: a.type });
       });
     } catch { /* l'erreur d'origine prime sur l'échec de sa propre consignation */ }
-    throw e;
+    throw e instanceof WriteError ? new DecisionError(e.message) : e;
   }
 }
 
@@ -239,7 +264,18 @@ export async function verify(actor: Actor, actionId: string) {
   const a = await getAction(actor.tenantId, actionId);
   if (a.status !== "EXECUTED") throw new DecisionError("Seule une action exécutée peut être vérifiée.");
   let check: any = { mode: "DECLARED", note: "Relecture déclarée par le propriétaire dans l'extranet officiel." };
-  if (a.execution?.mode === "DEMO_SIMULATED") {
+  if (a.execution?.mode === "PRICELABS_API") {
+    // relecture réelle chez PriceLabs, comparée à ce qui a été écrit ; une relecture impossible n'est pas une vérification réussie
+    const [prop] = await db.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
+    let back;
+    try { back = await readBackPriceLabsWrite(prop, a.execution.plan as SafePlan); }
+    catch (e) { throw new DecisionError(e instanceof WriteError ? e.message : "Relecture PriceLabs impossible : réessayez plus tard."); }
+    if (back.mismatches.length) {
+      await audit(db, actor.tenantId, agentActor("audit"), "action.verification_failed", "RevenueAction", a.id, `Vérification en échec pour « ${a.label} » : l'état relu chez PriceLabs diffère de l'action approuvée (${back.mismatches.join(" ; ")}).`, { actionType: a.type, mismatches: back.mismatches });
+      throw new DecisionError(`L'état relu chez PriceLabs diffère de l'action approuvée (${back.mismatches.join(" ; ")}). Aucune correction n'est improvisée : lancez un retour arrière.`);
+    }
+    check = { mode: "READ_BACK", note: "Relecture chez PriceLabs conforme à l'écriture enregistrée.", state: back.state };
+  } else if (a.execution?.mode === "DEMO_SIMULATED") {
     const dates: ISODate[] = a.parameters.dates ?? [];
     const now = dates.length ? await db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, a.propertyId), inArray(calendarDays.date, dates))) : [];
     const ok = a.type === "MIN_STAY_OVERRIDE" ? now.every((d) => d.minStay === a.parameters.minStay) : a.type === "RULE_EXCLUSION" ? now.every((d) => d.rule === null) : a.type === "MIN_PRICE_CHANGE" ? ((await db.select().from(properties).where(eq(properties.id, a.propertyId)))[0]?.strategy?.minPriceCents === a.parameters.minPriceCents) : true;
@@ -262,6 +298,10 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
   await requirePermission(actor, "action.rollback", "RevenueAction", actionId);
   const a = await getAction(actor.tenantId, actionId);
   if (!["EXECUTED", "VERIFIED", "MEASURING", "FAILED"].includes(a.status)) throw new DecisionError("Cette action ne peut pas être annulée dans son état actuel.");
+  // US-090 : tant que le retour arrière par l'API n'existe pas (US-093), annuler une écriture réelle sans la défaire serait un mensonge : refusé
+  // une écriture partie chez PriceLabs ne se défait pas en changeant seulement l'état local, même si l'action est « échouée » (le mode n'y est alors plus enregistré)
+  const sentWrites = (await writesOfAction(actor.tenantId, a.id)).filter((w) => w.status !== "FAILED" || w.receipt || w.error?.includes("incertaine"));
+  if (a.execution?.mode === "PRICELABS_API" || sentWrites.length) throw new DecisionError("Le retour arrière automatique d'une écriture PriceLabs n'est pas encore disponible : remettez les valeurs précédentes dans PriceLabs (elles figurent dans le journal d'écriture de l'action).");
   await db.transaction(async (tx) => {
     if (a.execution?.mode === "DEMO_SIMULATED") {
       for (const d of a.execution.before ?? []) await tx.update(calendarDays).set({ priceCents: d.priceCents, minStay: d.minStay, rule: d.rule }).where(and(eq(calendarDays.propertyId, a.propertyId), eq(calendarDays.date, d.date)));

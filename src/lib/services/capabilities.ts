@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/db";
 import type { AccountFacts, Provider } from "../integrations/capabilities";
-import { KILL_SWITCH_PROVIDERS, PROVIDERS } from "../integrations/capabilities";
+import { currentGates, KILL_SWITCH_PROVIDERS, PROVIDERS } from "../integrations/capabilities";
 
 export type ProviderFacts = AccountFacts & { degraded: boolean; lastSyncAt: Date | null };
 
@@ -24,7 +24,7 @@ export async function loadProviderFacts(tenantId: string): Promise<Record<Provid
     const syncs = linked.map((p) => (key === "pricelabs" ? p.pricelabs : p.superhote)?.lastSync).filter(Boolean) as { ok?: boolean; at?: string }[];
     const times = syncs.map((s) => (s.at ? new Date(s.at) : null)).filter((d): d is Date => !!d && !Number.isNaN(+d));
     out[provider] = {
-      realTotal: real.length, realLinked: linked.length, demoCount, killSwitch: !!row?.killSwitch && KILL_SWITCH_PROVIDERS.includes(provider), // un ancien coupe-circuit sur un fournisseur sans écriture automatique n'a plus d'effet : on ne l'affiche pas
+      gates: currentGates(), realTotal: real.length, realLinked: linked.length, demoCount, killSwitch: !!row?.killSwitch && KILL_SWITCH_PROVIDERS.includes(provider), // un ancien coupe-circuit sur un fournisseur sans écriture automatique n'a plus d'effet : on ne l'affiche pas
       degraded: syncs.some((s) => s.ok === false),
       // sans logement réel branché, la seule synchronisation connue est celle de la démonstration
       lastSyncAt: times.length ? new Date(Math.max(...times.map(Number))) : linked.length ? null : row?.lastSyncAt ?? null,
