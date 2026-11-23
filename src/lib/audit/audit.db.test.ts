@@ -2,9 +2,9 @@ import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { db, newId, schema } from "@/db";
 import { failure } from "@/test/errors";
-import { makeTenant } from "@/test/db";
+import { makeProperty, makeTenant } from "@/test/db";
 import { recordAudit } from "./log";
-import { auditTrail, listAuditEvents } from "./query";
+import { auditTrail, listAuditEvents, propertyAuditTrail } from "./query";
 
 const ev = (tenantId: string, over: Partial<Parameters<typeof recordAudit>[1]> = {}) =>
   recordAudit(db, { tenantId, actor: "user:u", type: "action.approved", entity: "RevenueAction", entityId: "act_1", summary: "Test", ...over });
@@ -170,5 +170,47 @@ describe("filtres du journal : période et auteur (US-085)", () => {
     expect([...p1.events, ...p2.events].map((e) => e.summary).sort()).toEqual(["h1", "h2", "h3"]);
     const autre = await listAuditEvents(tenantId, { actorKind: "agent", limit: 2, cursor: p1.nextCursor });
     expect(autre.events.every((e) => e.actor.startsWith("agent:"))).toBe(true);
+  });
+});
+
+describe("chronologie d'un logement (US-081)", () => {
+  const mkOpp = async (tenantId: string, propertyId: string) => {
+    const id = newId("opp");
+    await db.insert(schema.opportunities).values({ id, tenantId, propertyId, code: "OPP-" + id.slice(-6), playbook: "PB-01", reasonCode: "X", title: "t", stayFrom: "2026-12-01", stayTo: "2026-12-05", dedupeKey: id, signals: {}, diagnosis: {}, candidates: [], expiresAt: "2027-01-01" });
+    return id;
+  };
+  const mkAct = async (tenantId: string, propertyId: string, opportunityId: string) => {
+    const id = newId("act");
+    await db.insert(schema.revenueActions).values({ id, tenantId, propertyId, opportunityId, type: "PRICE", label: "a", target: {}, parameters: {}, simulation: {}, audit: {}, status: "DRAFT", riskLevel: "LOW", rollbackPlan: "-", idempotencyKey: id });
+    return id;
+  };
+  it("réunit logement, dossiers et actions du logement, sans l'autre logement ni l'autre propriétaire", async () => {
+    const { tenantId } = await makeTenant(), other = await makeTenant();
+    const p1 = await makeProperty(tenantId), p2 = await makeProperty(tenantId, "Autre");
+    const o1 = await mkOpp(tenantId, p1), o2 = await mkOpp(tenantId, p2);
+    const a1 = await mkAct(tenantId, p1, o1), a2 = await mkAct(tenantId, p2, o2);
+    await ev(tenantId, { entity: "Property", entityId: p1, type: "property.updated", summary: "logement 1" });
+    await ev(tenantId, { entity: "Opportunity", entityId: o1, type: "opportunity.deferred", summary: "dossier 1" });
+    await ev(tenantId, { entity: "RevenueAction", entityId: a1, summary: "action 1" });
+    await ev(tenantId, { entity: "Property", entityId: p2, type: "property.updated", summary: "logement 2" });
+    await ev(tenantId, { entity: "Opportunity", entityId: o2, type: "opportunity.deferred", summary: "dossier 2" });
+    await ev(tenantId, { entity: "RevenueAction", entityId: a2, summary: "action 2" });
+    await ev(other.tenantId, { entity: "Property", entityId: p1, type: "property.updated", summary: "autre propriétaire" });
+    const rows = await propertyAuditTrail(tenantId, p1);
+    expect(rows.map((r) => r.summary).sort()).toEqual(["action 1", "dossier 1", "logement 1"]);
+    expect((await propertyAuditTrail(other.tenantId, p1)).map((r) => r.summary)).toEqual(["autre propriétaire"]);
+    expect(await propertyAuditTrail(tenantId, "prop_inconnu")).toEqual([]);
+    expect(await propertyAuditTrail(tenantId, p1, 2)).toHaveLength(2);
+  });
+  it("du plus récent au plus ancien, la limite garde les plus récents ; un événement d'un autre propriétaire portant l'id d'un dossier n'entre pas", async () => {
+    const { tenantId } = await makeTenant(), other = await makeTenant();
+    const p = await makeProperty(tenantId), o = await mkOpp(tenantId, p);
+    const put = (t: string, createdAt: string, summary: string, entityId = o) => db.insert(schema.auditEvents).values({ id: newId("evt"), tenantId: t, actor: "system", type: "opportunity.deferred", entity: "Opportunity", entityId, summary, createdAt: new Date(createdAt) });
+    await put(tenantId, "2026-03-01T10:00:00Z", "ancien");
+    await put(tenantId, "2026-03-03T10:00:00Z", "récent");
+    await put(tenantId, "2026-03-02T10:00:00Z", "milieu");
+    await put(other.tenantId, "2026-03-04T10:00:00Z", "intrus");
+    expect((await propertyAuditTrail(tenantId, p)).map((r) => r.summary)).toEqual(["récent", "milieu", "ancien"]);
+    expect((await propertyAuditTrail(tenantId, p, 2)).map((r) => r.summary)).toEqual(["récent", "milieu"]);
   });
 });

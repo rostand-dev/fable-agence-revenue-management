@@ -28,3 +28,14 @@ export async function deleteUser(id: string): Promise<void> {
   await client.connect();
   try { await client.query("delete from users where id = $1", [id]); } finally { await client.end(); }
 }
+
+/** Inscrit un événement `property.updated` au journal du logement (le journal est en ajout seul : il ne s'efface pas). US-081. */
+export async function seedPropertyEvent(propertyId: string, summary: string): Promise<void> {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const { rows } = await client.query<{ tenant_id: string }>("select tenant_id from properties where id = $1", [propertyId]);
+    if (!rows[0]) throw new Error("logement introuvable");
+    await client.query("insert into audit_events (id, tenant_id, actor, type, entity, entity_id, summary) values ($1, $2, 'system', 'property.updated', 'Property', $3, $4)", [`evt_e2e_${randomBytes(6).toString("hex")}`, rows[0].tenant_id, propertyId, summary]);
+  } finally { await client.end(); }
+}

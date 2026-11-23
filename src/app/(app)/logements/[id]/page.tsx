@@ -33,6 +33,11 @@ import { loadEngineInput } from "@/lib/services/review";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 import { listListings } from "@/lib/services/portfolio";
+import { auditLabel } from "@/lib/audit/types";
+import { propertyAuditTrail } from "@/lib/audit/query";
+import { withTenant } from "@/db/tenant";
+import { can, denyMessage } from "@/lib/rbac";
+import { horizonSummary } from "@/lib/engine/horizon";
 
 async function noChannelRows(propertyId: string, overrides: Record<string, string>) {
   const rows = await db.select().from(schema.reservations).where(eq(schema.reservations.propertyId, propertyId));
@@ -40,7 +45,7 @@ async function noChannelRows(propertyId: string, overrides: Record<string, strin
     .map((r) => ({ externalId: r.externalId, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, choice: overrides[r.externalId] ?? "" }));
 }
 
-const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["annonces", "Annonces"], ["pricelabs", "PriceLabs"], ["superhote", "SuperHote"]] as const;
+const TABS = [["apercu", "Vue d'ensemble"], ["calendrier", "90 jours"], ["strategie", "Stratégie"], ["economie", "Économie"], ["canaux", "Canaux et promotions"], ["donnees", "Qualité des données"], ["historique", "Historique"], ["annonces", "Annonces"], ["pricelabs", "PriceLabs"], ["superhote", "SuperHote"]] as const;
 
 export default async function Logement({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; erreur?: string; erreurSh?: string; canal?: string; jour?: string; lance?: string }> }) {
   const user = await requireUser();
@@ -88,6 +93,10 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const detailDay = sp.jour ? input.days.find((d) => d.date === sp.jour) : undefined;
   const allPromos = await db.select().from(schema.promotions).where(eq(schema.promotions.propertyId, p.id));
   const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
+  const canAudit = can(user.role, "audit.read");
+  const trail = tab === "historique" && canAudit ? await withTenant(user.tenantId, (tx) => propertyAuditTrail(user.tenantId, p.id, 50, tx)) : [];
+  const oppCode = new Map((tab === "historique" && canAudit ? await db.select({ id: schema.opportunities.id, code: schema.opportunities.code }).from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), eq(schema.opportunities.propertyId, p.id))) : []).map((o) => [o.id, o.code]));
+  const hz = tab === "calendrier" ? horizonSummary(input.days.map((d) => ({ date: d.date, state: d.state, priceCents: d.state === "FREE" ? shownCents(d) : d.priceCents })), flagged) : null;
   const listingRows = tab === "annonces" ? await listListings(user.tenantId, p.id) : [];
 
   return (
@@ -165,6 +174,12 @@ export default async function Logement({ params, searchParams }: { params: Promi
 
       {tab === "calendrier" && (hasCal ? (
         <section>
+          <div className="synth" data-testid="horizon-synthese" style={{ marginBottom: 14 }}>
+            <Metric label="Nuits réservées" value={hz!.booked} source={`sur ${hz!.nights} nuits lues (D+0 à D+${Math.max(hz!.nights - 1, 0)})`} />
+            <Metric label="Nuits libres" value={hz!.free} source={hz!.freeUnpriced ? `dont ${hz!.freeUnpriced} sans prix affiché` : "toutes avec un prix affiché"} />
+            <Metric label="Occupation des nuits vendables" value={hz!.occupancy === null ? <Vq>inconnue</Vq> : pct(hz!.occupancy)} source={`${hz!.blocked} nuit${hz!.blocked > 1 ? "s" : ""} bloquée${hz!.blocked > 1 ? "s" : ""}, hors vente`} />
+            <Metric label="Nuits touchées par un dossier" value={hz!.flagged} tone={hz!.vetoed ? "veto" : undefined} source={`${hz!.vetoed} sous veto · dossiers ouverts uniquement`} />
+          </div>
           <div className="legend" style={{ marginBottom: 12 }}>
             <span className="legend-item"><span className="cal-day is-booked" style={{ minHeight: 14, width: 22, padding: 0 }} />réservé</span>
             <span className="legend-item"><span className="cal-day" style={{ minHeight: 14, width: 22, padding: 0 }} />{channel ? `libre · prix publié estimé (${channel.label})` : "libre · prix envoyé à SuperHote"}</span>
@@ -285,6 +300,22 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "pricelabs" && <PriceLabsPanel costsMissing={miss.length} propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={tab === "pricelabs" && !p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={tab === "pricelabs" && !p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} snapshots={tab === "pricelabs" && !p.isDemo && p.pricelabs?.apiKeyEnc ? await getSnapshotState(user.tenantId, p.id, { limit: 5 }) : null} />}
 
       {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} error={sp.erreurSh} webhook={!p.isDemo && p.superhote?.apiKeyEnc ? await webhookStatus(user.tenantId, p.id) : undefined} />}
+
+      {tab === "historique" && (
+        <section className="stack" data-testid="historique-logement">
+          <h2 style={{ fontSize: 18, margin: 0 }}>Chronologie du logement</h2>
+          <p className="section-note" style={{ margin: 0 }}>Ce que le journal d'audit a inscrit pour ce logement, ses dossiers et ses actions, du plus récent au plus ancien (50 derniers événements).</p>
+          {!canAudit ? <Banner role="tech" icon="shield" title="Chronologie réservée">{denyMessage(user.role, "audit.read")}</Banner>
+            : trail.length === 0 ? <div className="empty"><h3>Aucun événement</h3><p>Le journal n'a encore rien inscrit pour ce logement. Ce n'est pas une confirmation qu'il ne s'est rien passé avant l'arrivée du journal.</p></div> : (
+              <ul className="timeline">{trail.map((e) => (
+                <li key={e.id}><span className={`tl-dot ${e.type.includes("fail") || e.type.includes("rolled") ? "is-attention" : e.type.startsWith("action") ? "is-sain" : "is-tech"}`}><Icon name={e.type.startsWith("action") ? "check" : "dot"} /></span>
+                  <div><span className="tl-when" title={e.type}>{fmtDateTime(e.createdAt)} · {auditLabel(e.type)}</span><p className="tl-what">{e.summary}</p>
+                    {e.entity === "Opportunity" && oppCode.get(e.entityId) && <p className="tl-who"><Link href={`/dossier/${oppCode.get(e.entityId)}`}>Ouvrir le dossier {oppCode.get(e.entityId)}</Link></p>}</div></li>
+              ))}</ul>
+            )}
+          <p className="foot"><Link href="/historique#journal">Journal d'audit complet</Link></p>
+        </section>
+      )}
 
       {tab === "donnees" && (
         <section className="stack">
