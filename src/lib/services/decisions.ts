@@ -8,7 +8,7 @@ import { executionBlock, providerOfTarget } from "../integrations/capabilities";
 import { flagFor } from "./flags";
 import { recordAudit } from "../audit/log";
 import { agentActor, userActor, type AuditType } from "../audit/types";
-import { preparePriceLabsWrite, readBackPriceLabsWrite, sendPriceLabsWrite, WriteError, writesOfAction, type PreparedWrite, type SafePlan, type WriteOutcome } from "./pricelabs-write";
+import { preparePriceLabsWrite, readBackPriceLabsWrite, sendPriceLabsWrite, WriteError, rollbackContext, rollbackPriceLabsWrite, manualRestoreText, type PreparedWrite, type SafePlan, type WriteOutcome } from "./pricelabs-write";
 import { can, denyMessage, executePermission, PERMISSION_LABEL, ROLE_LABEL, type Permission, type Role } from "../rbac";
 
 const { opportunities, revenueActions, calendarDays, promotions, properties, integrations, agentRuns } = schema;
@@ -303,26 +303,48 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
   const a = await getAction(actor.tenantId, actionId);
   if (!["EXECUTED", "VERIFIED", "MEASURING", "FAILED"].includes(a.status)) throw new DecisionError("Cette action ne peut pas être annulée dans son état actuel.");
   // US-090 : tant que le retour arrière par l'API n'existe pas (US-093), annuler une écriture réelle sans la défaire serait un mensonge : refusé
-  // une écriture partie chez PriceLabs ne se défait pas en changeant seulement l'état local, même si l'action est « échouée » (le mode n'y est alors plus enregistré)
-  const sentWrites = (await writesOfAction(actor.tenantId, a.id)).filter((w) => w.status !== "FAILED" || w.receipt || w.error?.includes("incertaine"));
-  if (a.execution?.mode === "PRICELABS_API" || sentWrites.length) throw new DecisionError("Le retour arrière automatique d'une écriture PriceLabs n'est pas encore disponible : remettez les valeurs précédentes dans PriceLabs (elles figurent dans le journal d'écriture de l'action).");
+  // US-093 : une écriture partie chez PriceLabs se défait chez PriceLabs, jamais seulement dans l'état local (même sur une action « échouée » dont l'écriture est partie)
+  const ctxW = await rollbackContext(actor.tenantId, a.id);
+  const touched = a.execution?.mode === "PRICELABS_API" || (!!ctxW.apply && (ctxW.apply.status !== "FAILED" || !!ctxW.apply.receipt || (ctxW.apply.error ?? "").includes("incertaine")));
+  let remote: Awaited<ReturnType<typeof rollbackPriceLabsWrite>> | null = null;
+  if (touched) {
+    const [p] = await db.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
+    if (!p) throw new DecisionError("Logement introuvable : retour arrière impossible.");
+    const guard = async () => {
+      const [ig] = await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, "pricelabs")));
+      return executionBlock("API_PRICELABS", { actionType: a.type, provider: "pricelabs", isDemo: p.isDemo, killSwitch: !!ig?.killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: p.id, provider: "pricelabs" })).reason });
+    };
+    const manual = ctxW.apply ? ` Valeurs d'avant à remettre à la main dans PriceLabs : ${manualRestoreText(ctxW.apply)}.` : "";
+    const first = await guard();
+    if (first) throw new DecisionError(`Retour arrière automatique impossible : ${first}${manual}`);
+    try {
+      remote = await rollbackPriceLabsWrite(p, actor.tenantId, a.id, { recheck: async () => { const again = await guard(); if (again) throw new WriteError(again); } });
+    } catch (e) {
+      const m = e instanceof WriteError ? e.message : "erreur technique pendant le retour arrière";
+      await audit(db, actor.tenantId, userActor(actor.id), "action.rollback_failed", "RevenueAction", a.id, `Retour arrière de « ${a.label} » en échec : ${m}`, { actionType: a.type, code: e instanceof WriteError ? e.code : "TECH" }).catch(() => {});
+      throw e instanceof WriteError ? new DecisionError(m) : e;
+    }
+  }
   await db.transaction(async (tx) => {
-    if (a.execution?.mode === "DEMO_SIMULATED") {
-      for (const d of a.execution.before ?? []) await tx.update(calendarDays).set({ priceCents: d.priceCents, minStay: d.minStay, rule: d.rule }).where(and(eq(calendarDays.propertyId, a.propertyId), eq(calendarDays.date, d.date)));
-      if (a.type === "BASE_PRICE_CHANGE" && a.execution.previousBasePriceCents) {
+    if (a.execution?.mode === "DEMO_SIMULATED" || a.execution?.mode === "PRICELABS_API") {
+      if (a.execution.mode === "DEMO_SIMULATED") for (const d of (Array.isArray(a.execution.before) ? a.execution.before : [])) await tx.update(calendarDays).set({ priceCents: d.priceCents, minStay: d.minStay, rule: d.rule }).where(and(eq(calendarDays.propertyId, a.propertyId), eq(calendarDays.date, d.date)));
+      // la stratégie locale s'aligne sur la valeur réellement remise chez PriceLabs (à défaut, celle consignée à l'exécution) ; sur un logement réel, une valeur
+      // modifiée localement depuis l'action n'est pas écrasée
+      const prevBase = remote?.restoredLimits.baseCents ?? a.execution.previousBasePriceCents, prevMin = remote?.restoredLimits.minCents ?? a.execution.previousMinPriceCents;
+      if (a.type === "BASE_PRICE_CHANGE" && typeof prevBase === "number" && prevBase > 0) {
         const [p] = await tx.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
-        await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, basePriceCents: a.execution.previousBasePriceCents }), source: "ACTION_ROLLBACK", createdBy: actor.id });
+        await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => (remote && s.basePriceCents !== a.parameters.basePriceCents ? s : { ...s, basePriceCents: prevBase }), source: "ACTION_ROLLBACK", createdBy: actor.id });
       }
-      if (a.type === "MIN_PRICE_CHANGE" && a.execution.previousMinPriceCents) {
+      if (a.type === "MIN_PRICE_CHANGE" && typeof prevMin === "number" && prevMin > 0) {
         const [p] = await tx.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
-        await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => ({ ...s, minPriceCents: a.execution.previousMinPriceCents }), source: "ACTION_ROLLBACK", createdBy: actor.id });
+        await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => (remote && s.minPriceCents !== a.parameters.minPriceCents ? s : { ...s, minPriceCents: prevMin }), source: "ACTION_ROLLBACK", createdBy: actor.id });
       }
     } else if (a.execution?.mode === "MANUAL_DECLARED") {
       if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED" }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));
       if (a.type === "PROMO_REMOVAL") await tx.update(promotions).set({ status: "ACTIVE" }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
     }
-    await move(tx, a.id, actor.tenantId, a.status as ActionState, "ROLLED_BACK", { execution: { ...a.execution, rollback: { at: new Date().toISOString(), reason: reason.trim() || null, manual: a.execution?.mode === "MANUAL_DECLARED" } } });
-    await audit(tx, actor.tenantId, userActor(actor.id), "action.rolled_back", "RevenueAction", a.id, `Retour arrière sur « ${a.label} »${reason ? " — " + reason.trim() : ""}. Plan : ${a.rollbackPlan}`, { actionType: a.type, fromStatus: a.status, reason: reason.trim() || null, rollbackPlan: a.rollbackPlan });
+    await move(tx, a.id, actor.tenantId, a.status as ActionState, "ROLLED_BACK", { execution: { ...a.execution, rollback: { at: new Date().toISOString(), reason: reason.trim() || null, manual: a.execution?.mode === "MANUAL_DECLARED", ...(remote ? { writeIds: remote.writeIds, noop: remote.noop, adapter: remote.adapter } : {}) } } });
+    await audit(tx, actor.tenantId, userActor(actor.id), "action.rolled_back", "RevenueAction", a.id, `Retour arrière sur « ${a.label} »${reason ? " — " + reason.trim() : ""}. Plan : ${a.rollbackPlan}`, { actionType: a.type, fromStatus: a.status, reason: reason.trim() || null, rollbackPlan: a.rollbackPlan, ...(remote ? { writeIds: remote.writeIds, remoteNoop: remote.noop } : {}) });
   });
 }
 
