@@ -163,7 +163,7 @@ describe("agents : les sorties fautives sont refusées, avec une seule correctio
     ["audit.independent_review", "APPROVE", audit, { concern: false, reason: "", evidence: [] }],
   ] as const)("témoin : %s (%s), sortie valide acceptée en un appel", async (prompt, verdict, ctx, output) => {
     const c = ctx(fixture(verdict));
-    const { r, calls } = await ask(prompt as PromptId, c.user, c.schema, () => JSON.stringify(output));
+    const { r, calls } = await ask(prompt as PromptId, c.user, c.schema as never, () => JSON.stringify(output));
     expect(r.ok, r.ok ? "" : r.message).toBe(true);
     expect(calls).toBe(1);
   });
