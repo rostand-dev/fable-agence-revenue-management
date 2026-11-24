@@ -114,6 +114,9 @@ describe("confirmation de l'opérateur (US-103)", () => {
     const cal = await approveManual("INVESTIGATION", { channel: "BOOKING", subject: "CALENDAR", dates: ["2026-12-10"] });
     await D.execute(as("OWNER"), cal, { ...OK, externalRef: "CAL-1" });
     expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).toBeNull();
+    const ls = await approveManual("INVESTIGATION", { channel: "BOOKING", subject: "LONG_STAY" });
+    await D.execute(as("OWNER"), ls, { ...OK, externalRef: "LS-1" });
+    expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).toBeNull();
     const reg = await approveManual("INVESTIGATION", { channel: "BOOKING" });
     await D.execute(as("OWNER"), reg, { ...OK, externalRef: "REG-1" });
     expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).not.toBeNull();

@@ -3,6 +3,7 @@ import { addDays, type ISODate } from "../dates";
 import { capabilityFlags } from "../integrations/capabilities";
 import { approvalRequirement } from "./approval";
 import { buildDemo } from "./demo";
+import { conformOpportunity } from "./candidates";
 import { reviewProperty, type EngineInput } from "./detect";
 import { PLAYBOOKS, threshold } from "./playbooks";
 import type { Channel, Day, Promo } from "./types";
@@ -87,6 +88,42 @@ describe("PB-09 · séjours longs en basse saison", () => {
     expect(o.candidates.find((c) => c.type === "CHANNEL_PROMO")!.audit.verdict).toBe("REJECT");
     expect(o.candidates[o.selected].audit.verdict).not.toBe("REJECT");
     expect(o.candidates[o.selected].type).not.toBe("CHANNEL_PROMO");
+  });
+  it("clé de dédoublonnage stable d'un jour à l'autre : le repos de 14 jours ne peut pas être contourné par le glissement du début du trou", () => {
+    // trou réel de J+3 à J+20 : le début passe sous J+8 puis glisse chaque jour ; la fin reste la même
+    const at = (offset: number) => {
+      const today = addDays(TODAY, offset), i = lowSeason({ market: 0.1 });
+      i.today = today; i.now = new Date(today + "T07:00:00Z");
+      i.days = i.days.map((d) => ({ ...d, state: (d.date >= addDays(TODAY, 3) && d.date <= addDays(TODAY, 20) ? "FREE" : d.state) as Day["state"] })).filter((d) => d.date >= today);
+      return pb09(i).map((o) => o.dedupe);
+    };
+    const keys = [0, 1, 5].map(at);
+    expect(keys[0].length).toBeGreaterThan(0);
+    expect(keys[1][0]).toBe(keys[0][0]); expect(keys[2][0]).toBe(keys[0][0]);
+    expect(keys[0][0]).toBe(addDays(TODAY, 20));
+  });
+  it("bornes du délai : un trou qui commence à J+8 est retenu, à J+7 il est écarté, au-delà de J+90 rien", () => {
+    // marché creux, logement au niveau du marché (30 % réservé) : ni PB-01 ni PB-02 ne s'en mêlent ; seul le trou testé est forcé libre
+    const at = (from: number, to: number) => { const i = lowSeason({ market: 0.1 }); i.days = i.days.map((d) => ({ ...d, state: (d.date >= addDays(TODAY, from) && d.date <= addDays(TODAY, to) ? "FREE" : d.state) as Day["state"] })); return pb09(i); };
+    expect(at(8, 20).some((o) => o.stayFrom === addDays(TODAY, 8))).toBe(true);
+    expect(at(7, 13).some((o) => o.stayFrom === addDays(TODAY, 7))).toBe(false); // J+7 : avant le délai minimal
+    expect(at(7, 20).some((o) => o.stayFrom === addDays(TODAY, 8))).toBe(true);
+  });
+  it("remise de durée de séjour à 15 % pile : aucun commentaire de ce fait ; 15,5 % en exige un", () => {
+    const c = (pct: number) => ({ type: "CHANNEL_PROMO", risk: "LOW", audit: { verdict: "APPROVE", rules: [] }, parameters: { kind: "LOS", discountPct: pct, minLos: 28 } }) as never;
+    expect(approvalRequirement(c(15), "PB-09").commentRequired).toBe(false);
+    expect(approvalRequirement(c(15.5), "PB-09").commentRequired).toBe(true);
+  });
+  it("une remise de durée de séjour sans séjour minimal est refusée par le contrat des candidats", () => {
+    const o = pb09(lowSeason())[0];
+    const bad = { ...o, candidates: [{ ...o.candidates[0], parameters: { ...o.candidates[0].parameters, minLos: undefined } }, o.candidates[2]], selected: 1 };
+    const r = conformOpportunity(bad);
+    expect(r.issues[0].issues.join(" ")).toContain("minLos");
+    expect(r.opportunity!.candidates.map((x) => x.type)).toEqual(["NO_ACTION"]);
+  });
+  it("Airbnb seul avec une offre de durée de séjour déjà active : aucun dossier réduit à l'inaction", () => {
+    const promo = { id: "p", channel: "AIRBNB", kind: "LOS", label: "Semaine", discountPct: 8, stayFrom: null, stayTo: null, verifiedAt: NOW } as unknown as Promo;
+    expect(pb09(lowSeason({ channels: ["AIRBNB"], promos: [promo] }))).toHaveLength(0);
   });
   it("nuits traitées par PB-09 marquées : le catalogue annonce PB-09 actif avec son approbateur", () => {
     expect(PLAYBOOKS["PB-09"].status).toBe("IMPLEMENTED");

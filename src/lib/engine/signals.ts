@@ -268,7 +268,7 @@ export function detectChannelGap(ctx: Ctx, stats: WindowStat[]): Signal<ChannelG
 }
 
 /* ------------------------------------------------------------------ PB-09 */
-export type LongStayPayload = { dates: ISODate[]; marketOccupancy: number; leadDays: number };
+export type LongStayPayload = { dates: ISODate[]; gapNights: number; marketOccupancy: number; leadDays: number };
 /**
  * PB-09 : un trou libre long sur une période de marché peu occupé. La basse saison est établie par la donnée (occupation du marché sur le trou),
  * jamais par un libellé : une nuit sans donnée de marché écarte tout le trou (inconnu ≠ zéro). Les fenêtres où le logement est déjà en retard sur son marché
@@ -288,15 +288,19 @@ export function detectLongStay(ctx: Ctx, stats: WindowStat[]): Signal<LongStayPa
     const avgOcc = (occ as number[]).reduce((a, b) => a + b, 0) / occ.length;
     if (avgOcc > low) continue;
     const target = run.slice(0, threshold("PB-09", "maxTargetNights"));
+    // clé stable d'un jour à l'autre : la fin du trou réel dans le calendrier (le début glisse avec la date et avec les nuits retirées en amont) ;
+    // un trou qui va jusqu'à la fin de l'horizon lu n'a pas de fin connue : clé « open » (un seul trou peut l'être)
+    const rawEnd = (() => { let d = run[0]; const free = new Set(ctx.days.filter((x) => x.state === "FREE").map((x) => x.date)); while (free.has(addDays(d, 1))) d = addDays(d, 1); return d; })();
+    const key = rawEnd < addDays(ctx.today, 90) ? rawEnd : "open";
     target.forEach((d) => ctx.claimed.add(d));
     out.push({
-      playbook: "PB-09", trigger: "LONG_GAP_LOW_SEASON", dedupe: target[0], channel: null, from: target[0], to: addDays(target[target.length - 1], 1), dates: target,
+      playbook: "PB-09", trigger: "LONG_GAP_LOW_SEASON", dedupe: key, channel: null, from: target[0], to: addDays(target[target.length - 1], 1), dates: target,
       measures: [
         m("gapNights", "Nuits libres consécutives", run.length, minGap, ">=", "nuits"),
         m("marketOccupancy", "Occupation moyenne du marché sur le trou", round2(avgOcc), low, "<=", "ratio"),
         m("leadDays", "Délai avant la première nuit", diffDays(target[0], ctx.today), minLead, ">=", "jours"),
       ],
-      payload: { dates: target, marketOccupancy: avgOcc, leadDays: diffDays(target[0], ctx.today) },
+      payload: { dates: target, gapNights: run.length, marketOccupancy: avgOcc, leadDays: diffDays(target[0], ctx.today) },
     });
   }
   return out;

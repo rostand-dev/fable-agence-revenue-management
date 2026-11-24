@@ -32,6 +32,10 @@ describe("guide pas-à-pas (US-102)", () => {
     expect(cal.map((x) => x.id)).toEqual(["calendar", "price", "promos", "notes"]);
     expect(cal.some((x) => /promotions, sans|rubrique promotions/.test(x.title) && x.title.includes("rubrique"))).toBe(false);
     expect(cal[3].title).toContain("pas daté comme vérifié");
+    const ls = buildRunbook({ ...base, type: "INVESTIGATION", channel: "BOOKING", parameters: { subject: "LONG_STAY", stayFrom: "2026-12-01", stayTo: "2026-12-20" } });
+    expect(ls.map((x) => x.id)).toEqual(["open", "los", "gaps", "notes"]);
+    expect(ls[1].detail).toContain("1 déc.");
+    expect(ls[3].title).toContain("pas daté comme vérifié");
     expect(buildRunbook({ ...base, type: "LISTING_AUDIT" })).toHaveLength(4);
     expect(buildRunbook({ ...base, type: "MIN_STAY_OVERRIDE", channel: null })[0].title).toContain("PriceLabs");
   });

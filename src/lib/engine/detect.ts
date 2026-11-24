@@ -600,7 +600,7 @@ function longStay(ctx: Ctx, signals: Signal<LongStayPayload>[]): DetectedOpportu
   const tiers = [{ n: 7, pct: threshold("PB-09", "discount7Pct") }, { n: 14, pct: threshold("PB-09", "discount14Pct") }, { n: 28, pct: threshold("PB-09", "discount28Pct") }];
   const hasAirbnb = ctx.channels.includes("AIRBNB"), hasBooking = ctx.channels.includes("BOOKING");
   for (const sig of signals) {
-    const { dates, marketOccupancy, leadDays } = sig.payload;
+    const { dates, marketOccupancy, leadDays, gapNights } = sig.payload;
     const from = sig.from, to = sig.to, a = avgDay(ctx, dates);
     if (a.price === null) continue;
     const promos = hasAirbnb ? refPromos(ctx, "AIRBNB", dates) : [];
@@ -628,15 +628,16 @@ function longStay(ctx: Ctx, signals: Signal<LongStayPayload>[]): DetectedOpportu
       hypothesis: "Non chiffrable : aucune promotion équivalente n'est connue du registre.", rollbackPlan: "Aucune écriture externe : rien à annuler.", executionMode: "MANUAL_RUNBOOK", risk: "LOW", measurementWindowDays: 0,
     }, from, to));
     const cur0 = hasAirbnb ? stack(ctx, "AIRBNB", 7, a.price, promos) : null;
+    if (!cands.length) continue; // rien d'actionnable (offre déjà active, aucun autre canal) : pas de dossier réduit à l'inaction
     cands.push(noAction(ctx, from, to, cur0, "Attendre une revue supplémentaire : le trou peut encore se remplir sans offre.", 7));
     const promoOk = cands.some((c) => c.type === "CHANNEL_PROMO" && c.audit.verdict !== "REJECT");
     const selected = pick(cands, { forceType: !promoOk && hasBooking && !hasAirbnb ? "INVESTIGATION" : undefined });
     const nPromo = cands.filter((c) => c.type === "CHANNEL_PROMO").length;
     out.push({
       playbook: "PB-09", signal: summarize(sig, ctx.today), dedupe: sig.dedupe ?? undefined, reasonCode: "LONG_GAP_LOW_SEASON",
-      title: `Trou libre de ${plural(dates.length, "nuit")} en basse saison, du ${fmtDay(from)} au ${fmtDay(to)}`,
+      title: `Trou libre en basse saison : ${plural(gapNights, "nuit")} libres${gapNights > dates.length ? `, ${dates.length} ciblées` : ""}, à partir du ${fmtDay(from)}`,
       stayFrom: from, stayTo: to,
-      signalText: `${plural(dates.length, "nuit")} libres consécutives, marché occupé à ${pct(marketOccupancy)} en moyenne (seuil : ${pct(threshold("PB-09", "lowMarketOccupancy"))})`, signalSource: "Calendrier et marché",
+      signalText: `${plural(gapNights, "nuit")} libres consécutives${gapNights > dates.length ? ` (${dates.length} ciblées)` : ""}, marché occupé à ${pct(marketOccupancy)} en moyenne (seuil : ${pct(threshold("PB-09", "lowMarketOccupancy"))})`, signalSource: "Calendrier et marché",
       hypothesisText: "La période est creuse sur tout le marché : un séjour long peut remplir un trou que des séjours courts ne remplissent pas.",
       signals: { nights: dates.length, marketOccupancy: Math.round(marketOccupancy * 1000) / 1000, leadDays, airbnbOffers: nPromo, longStayPromoActive: losActive },
       diagnosis: {
@@ -650,7 +651,7 @@ function longStay(ctx: Ctx, signals: Signal<LongStayPayload>[]): DetectedOpportu
         tree: [
           { question: "La période est-elle en basse saison (marché peu occupé) ?", answer: `Oui : ${pct(marketOccupancy)} d'occupation moyenne du marché sur le trou.`, verdict: "oui" },
           { question: "Le trou est-il assez long pour une offre de durée de séjour ?", answer: `Oui : ${plural(dates.length, "nuit")} consécutives.`, verdict: "oui" },
-          { question: "Une promotion de durée de séjour est-elle déjà active sur Airbnb ?", answer: !hasAirbnb ? "Sans objet : Airbnb n'est pas un canal du logement." : losActive ? "Oui : une seconde remise du même type n'est pas proposée." : "Non.", verdict: !hasAirbnb ? "inconnu" : losActive ? "oui" : "non" },
+          { question: "Une promotion de durée de séjour est-elle déjà active sur Airbnb ?", answer: !hasAirbnb ? "Sans objet : Airbnb n'est pas un canal du logement." : losActive ? "Oui : une seconde remise du même type n'est pas proposée." : ctx.stale.includes("AIRBNB") ? "Inconnu : le registre des promotions Airbnb n'a pas été vérifié depuis plus de 7 jours." : "Non.", verdict: !hasAirbnb ? "inconnu" : losActive ? "oui" : ctx.stale.includes("AIRBNB") ? "inconnu" : "non" },
           { question: "Booking a-t-il un type de promotion équivalent ?", answer: "Non : aucun type de durée de séjour au registre de cumul ; seule une vérification manuelle est proposée.", verdict: "non" },
         ],
         evidence: [

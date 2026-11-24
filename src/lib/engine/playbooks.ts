@@ -203,7 +203,7 @@ export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
       commentOverPct: t(15, "%", "Remise de durée de séjour au-delà de laquelle l'approbation exige un commentaire (§11.2)"),
     },
     requiredData: ["AVAILABILITY", "MARKET", "PRICING", "ECONOMICS"], cooldownDays: 14, candidates: ["CHANNEL_PROMO", "INVESTIGATION", "NO_ACTION"],
-    exclusions: ["Marché inconnu ou périmé : aucune basse saison ne peut être affirmée", "Net du séjour long sous le plancher (une offre dont le prix vendu passe sous le plancher est rejetée par l'auditeur)", "Booking n'a pas de type de promotion de durée de séjour dans le registre : seule une vérification manuelle est proposée, aucune remise inventée", "Nuits déjà traitées par un autre playbook"],
+    exclusions: ["Marché inconnu (ou lu depuis plus de 48 h, donc traité comme inconnu au chargement) : aucune basse saison ne peut être affirmée", "Net du séjour long sous le plancher (une offre dont le prix vendu passe sous le plancher est rejetée par l'auditeur)", "Booking n'a pas de type de promotion de durée de séjour dans le registre : seule une vérification manuelle est proposée, aucune remise inventée", "Nuits déjà traitées par un autre playbook"],
     vetoRules: ["HARD_FLOOR", "DISCOUNT_STACK", "STACK_RULES", "CONFLICT"], approver: "REVENUE_MANAGER",
     verification: "Relire l'offre de durée de séjour dans l'extranet du canal, puis comparer le rythme de réservation des 28 jours suivants.", measurementHorizonDays: 28,
   },
