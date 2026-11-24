@@ -104,3 +104,30 @@ export function paceComparison(resas: Resa[], today: ISODate, recentDays: number
     channelShift,
   };
 }
+
+/** Observation datée de l'écart d'occupation au marché d'une fenêtre (une ligne de `market_gap_history`). `gap` null = marché inconnu ce jour-là. */
+export type GapObservation = { day: ISODate; windowKey: string; gap: number | null };
+
+/**
+ * Début du retard en cours, lu sur l'historique daté : un jour est « en retard » si une fenêtre (hors J+0 à J+7, comme PB-01) a un écart ≤ `gapThreshold`,
+ * « normal » si des écarts sont connus et aucun ne passe le seuil, « inconnu » si aucun écart n'est connu (le jour est ignoré : inconnu ≠ zéro).
+ * On remonte depuis le dernier jour connu, qui doit être en retard et dater d'au plus `toleranceDays` ; un jour normal coupe la série ; deux jours en retard
+ * séparés de plus de `toleranceDays` aussi (collecte interrompue). Retourne null s'il n'y a pas de retard en cours.
+ */
+export function lagRunStart(obs: GapObservation[], today: ISODate, gapThreshold: number, toleranceDays: number): ISODate | null {
+  const byDay = new Map<ISODate, "LAG" | "OK">();
+  for (const o of obs) {
+    if (o.windowKey === "D0_7" || o.gap === null) continue;
+    if (o.gap <= gapThreshold) byDay.set(o.day, "LAG");
+    else if (!byDay.has(o.day)) byDay.set(o.day, "OK");
+  }
+  const days = [...byDay.keys()].sort().reverse();
+  if (days.length === 0 || byDay.get(days[0]) !== "LAG" || diffDays(today, days[0]) > toleranceDays) return null;
+  let start = days[0];
+  for (const d of days.slice(1)) {
+    if (byDay.get(d) === "OK") break;
+    if (diffDays(start, d) > toleranceDays) break;
+    start = d;
+  }
+  return start;
+}

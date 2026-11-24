@@ -503,6 +503,27 @@ export const reviewRuns = pgTable("review_runs", {
   stats: jsonb("stats").$type<Record<string, any>>().notNull().default({}),
 }, (t) => [index("reviews_tenant").on(t.tenantId, t.startedAt)]);
 
+/**
+ * Historique daté de l'écart d'occupation au marché, une ligne par logement, jour et fenêtre (J+0…J+90). Écrite à chaque revue (la dernière du jour fait foi).
+ * Sert à PB-12 : un retard « qui dure » se lit sur des jours observés, pas sur l'âge d'un dossier. `gap` null = marché inconnu ce jour-là (jamais zéro).
+ */
+export const marketGapHistory = pgTable("market_gap_history", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  day: date("day", { mode: "string" }).notNull(),
+  windowKey: text("window_key").notNull(),
+  gap: real("gap"),
+  occupancy: real("occupancy"),
+  marketOccupancy: real("market_occupancy"),
+  avgPercentile: real("avg_percentile"),
+  freeNights: integer("free_nights").notNull().default(0),
+  observedAt: ts("observed_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("market_gap_history_day").on(t.propertyId, t.day, t.windowKey),
+  index("market_gap_history_tenant").on(t.tenantId, t.propertyId, t.day),
+]);
+
 export const chatMessages = pgTable("chat_messages", {
   id: id(),
   tenantId: text("tenant_id").notNull(),

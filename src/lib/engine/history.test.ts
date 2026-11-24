@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addDays, type ISODate } from "../dates";
 import { cancelledFromChanges } from "../reservations/cancellations";
-import { cancellationStats, paceComparison, type Cancellation } from "./history";
+import { cancellationStats, lagRunStart, paceComparison, type Cancellation } from "./history";
 import type { Resa } from "./types";
 
 const TODAY = "2026-11-12";
@@ -83,5 +83,39 @@ describe("paceComparison", () => {
   it("référence vide : rapport inconnu (pas de division par zéro), durée inconnue sous 3 réservations", () => {
     const p = paceComparison([resa("AIRBNB", 2)], TODAY, 14, 14, addDays(TODAY, -90))!;
     expect(p.bookingRatio).toBeNull(); expect(p.losShift).toBeNull(); expect(p.channelShift).toBeNull();
+  });
+});
+
+describe("lagRunStart · début du retard lu sur l'historique daté", () => {
+  const T = "2026-11-24";
+  const lag = (day: string, gap = -0.3, windowKey = "D15_30") => ({ day, windowKey, gap });
+  const ok = (day: string, gap = 0.05, windowKey = "D15_30") => ({ day, windowKey, gap });
+  it("retard observé chaque jour depuis 25 jours : début = premier jour de la série", () => {
+    const obs = Array.from({ length: 26 }, (_, i) => lag(addDays(T, -i)));
+    expect(lagRunStart(obs, T, -0.2, 14)).toBe(addDays(T, -25));
+  });
+  it("un jour normal coupe la série : le retard repart du lendemain", () => {
+    const obs = [lag(T), lag(addDays(T, -1)), lag(addDays(T, -2)), ok(addDays(T, -3)), lag(addDays(T, -4)), lag(addDays(T, -5))];
+    expect(lagRunStart(obs, T, -0.2, 14)).toBe(addDays(T, -2));
+  });
+  it("collecte interrompue moins que la tolérance : la série continue ; au-delà, elle s'arrête", () => {
+    expect(lagRunStart([lag(T), lag(addDays(T, -10)), lag(addDays(T, -11))], T, -0.2, 14)).toBe(addDays(T, -11));
+    expect(lagRunStart([lag(T), lag(addDays(T, -20)), lag(addDays(T, -21))], T, -0.2, 14)).toBe(T);
+  });
+  it("dernier jour connu trop ancien ou normal : aucun retard en cours", () => {
+    expect(lagRunStart([lag(addDays(T, -20))], T, -0.2, 14)).toBeNull();
+    expect(lagRunStart([ok(T), lag(addDays(T, -1))], T, -0.2, 14)).toBeNull();
+  });
+  it("marché inconnu (gap null) : le jour est ignoré, jamais compté comme retard ni comme normal ; J+0 à J+7 ne compte pas", () => {
+    expect(lagRunStart([{ day: T, windowKey: "D15_30", gap: null }], T, -0.2, 14)).toBeNull();
+    expect(lagRunStart([lag(T, -0.5, "D0_7")], T, -0.2, 14)).toBeNull();
+    expect(lagRunStart([lag(T), { day: addDays(T, -1), windowKey: "D15_30", gap: null }, lag(addDays(T, -2))], T, -0.2, 14)).toBe(addDays(T, -2));
+  });
+  it("une fenêtre en retard suffit même si une autre est normale le même jour", () => {
+    expect(lagRunStart([lag(T, -0.3, "D31_60"), ok(T, 0.1, "D15_30")], T, -0.2, 14)).toBe(T);
+  });
+  it("seuil exact : un écart égal au seuil est en retard", () => {
+    expect(lagRunStart([lag(T, -0.2)], T, -0.2, 14)).toBe(T);
+    expect(lagRunStart([lag(T, -0.19)], T, -0.2, 14)).toBeNull();
   });
 });

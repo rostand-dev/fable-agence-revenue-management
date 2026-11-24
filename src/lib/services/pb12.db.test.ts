@@ -14,7 +14,6 @@ beforeAll(async () => {
   await seedDemo(t.tenantId);
   propId = (await db.select().from(properties).where(eq(properties.tenantId, t.tenantId)))[0].id;
   // aucun dossier de rythme n'existe au départ pour ce test
-  await db.delete(opportunities).where(and(eq(opportunities.tenantId, t.tenantId), eq(opportunities.propertyId, propId)));
 }, 120_000);
 
 const day = (n: number) => addDays(todayISO(new Date()), n);
@@ -23,12 +22,14 @@ const row = (playbook: string, status: string, createdAt: Date, o: { signals?: R
     id: newId("opp"), tenantId: t.tenantId, propertyId: propId, code: newId("c"), playbook, reasonCode: o.reasonCode ?? (playbook === "PB-01" ? "PACE_BELOW_MARKET" : "PACE_BELOW_MARKET_PERSISTENT"), title: "t", stayFrom: "2026-12-01", stayTo: "2026-12-05", dedupeKey: newId("k"),
     signals: o.signals ?? {}, diagnosis: {}, candidates: [], status, createdAt, expiresAt: o.expiresAt ?? day(7),
   } as any);
-const clear = () => db.delete(opportunities).where(and(eq(opportunities.tenantId, t.tenantId), eq(opportunities.propertyId, propId)));
+// la revue du jeu de démonstration a pu écrire l'historique daté : ce fichier teste la lecture des DOSSIERS seuls
+const clear = async () => { await db.delete(opportunities).where(and(eq(opportunities.tenantId, t.tenantId), eq(opportunities.propertyId, propId))); await db.delete(schema.marketGapHistory).where(eq(schema.marketGapHistory.propertyId, propId)); };
 const lag = async () => (await loadEngineInput(t.tenantId, propId, todayISO(new Date())))!.lagSince;
 const ago = (n: number) => new Date(Date.now() - n * 86400000);
 
 describe("PB-12 · ancienneté du retard lue en base", () => {
   it("aucun dossier de rythme : durée inconnue (null), jamais zéro", async () => {
+    await clear();
     expect(await lag()).toBeNull();
   });
   it("le plus ancien dossier PB-01 suivi donne la date", async () => {
