@@ -28,6 +28,7 @@ import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilitie
 import { flagFor } from "@/lib/services/flags";
 import { WriteProof } from "@/components/WriteProof";
 import { ExperimentPanel } from "@/components/ExperimentPanel";
+import { OUTCOME_LABEL, OUTCOME_REASON_LABEL, OUTCOME_ROLE, type Outcome, type OutcomeReason } from "@/lib/experiments/outcome";
 import { getExperimentOfAction } from "@/lib/services/experiments";
 import { writesOfAction } from "@/lib/services/pricelabs-write";
 import { listAlerts } from "@/lib/services/execution-alerts";
@@ -494,11 +495,15 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               <header><span className="st-no">4</span><h3>Résultat observé</h3><span className="badge badge-verif" style={{ marginLeft: "auto" }}><Icon name="search" />Mesure</span></header>
               <div className="stratum-body">
                 {meas ? (
+                  <>
+                  <p style={{ margin: "0 0 12px" }} data-testid="resultat-mesure" data-outcome={meas.outcome}><State role={OUTCOME_ROLE[meas.outcome as Outcome] ?? "neutre"}>{OUTCOME_LABEL[meas.outcome as Outcome] ?? meas.outcome}</State>{meas.outcome === "POSITIVE" && <span className="muted"> · corrélation, pas causalité</span>}</p>
+                  {Array.isArray(meas.reasons) && meas.reasons.length > 0 && !meas.reasons.includes("LEGACY") && <ul className="muted" style={{ margin: "0 0 12px", paddingLeft: 18 }} data-testid="motifs-mesure">{meas.reasons.map((r: string) => <li key={r}>{OUTCOME_REASON_LABEL[r as OutcomeReason] ?? r}</li>)}</ul>}
                   <div className="result3">
                     <div className="r-obs"><h4>Observation</h4><p>{meas.observed}</p></div>
                     <div className="r-int"><h4>Interprétation</h4><p>{meas.interpretation} <span className="talk-mark">Lecture de {agentName("reporting", names)} · confiance {meas.confidence}</span></p></div>
                     <div className="r-eff"><h4><Term id="effet-incremental">Effet incrémental</Term></h4><p><span className="r-val">{meas.incrementalCents === null || meas.incrementalCents === undefined ? <Vq>Inconnu</Vq> : signedEuro(meas.incrementalCents)}</span> Aucune période témoin comparable : aucun gain n'est attribué à l'action.</p></div>
                   </div>
+                  </>
                 ) : <p className="muted" style={{ margin: 0 }}>{action.status === "MEASURING" ? `Fenêtre d'observation en cours ; mesure le ${action.measureDueAt ? fmtDate(action.measureDueAt) : "—"}.` : action.status === "ROLLED_BACK" ? "Action annulée : aucune mesure." : "La mesure commence après la vérification."}</p>}
                 {experiment && <ExperimentPanel experiment={experiment} />}
               </div>

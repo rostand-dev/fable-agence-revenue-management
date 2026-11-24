@@ -3,7 +3,8 @@ import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { validateDeclaration, validateMismatch } from "@/lib/promotions/confirmation";
 import { canVerifyManual, cooldownFor, cooldownText, ROLLBACK_REASON } from "@/lib/promotions/lifecycle";
 import { getRunbook } from "./runbook";
-import { cancelExperiment, captureBaseline, createExperiment, markMeasured, startObservation } from "./experiments";
+import { cancelExperiment, captureBaseline, createExperiment, markMeasured, measureExperiment, startObservation } from "./experiments";
+import { OUTCOME_LABEL, type Outcome } from "../experiments/outcome";
 import { effectiveDateOf } from "../experiments/windows";
 import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
@@ -482,18 +483,17 @@ export async function measureDueActions(tenantId: string, today: ISODate): Promi
     const [o] = await db.select().from(opportunities).where(eq(opportunities.id, a.opportunityId));
     const after = await bookedCount(a.propertyId, o.stayFrom, o.stayTo);
     const before = a.execution?.baseline ?? null;
-    const gained = before ? after.bookedNights - before.bookedNights : null;
-    const measurement = {
-      outcome: gained === null ? "INCONCLUSIVE" : gained > 0 ? "POSITIVE" : "NEUTRAL",
-      observed: gained === null ? "Référence avant action inconnue." : `${after.bookedNights} nuits réservées sur la période contre ${before.bookedNights} avant l'action.`,
-      interpretation: gained !== null && gained > 0 ? "Des nuits se sont vendues après l'action. Sans période témoin, ce résultat reste une corrélation." : "Aucune nuit supplémentaire vendue pendant la fenêtre d'observation.",
-      incrementalCents: null, confidence: "faible", measuredAt: new Date().toISOString(), baseline: before, after,
-    };
     await db.transaction(async (tx) => {
+      // US-111 : la mesure compare le rythme observé à la référence figée avant l'action ; elle est écrite dans la même transaction que la clôture
+      const m = await measureExperiment(tx, a, { from: o.stayFrom, to: o.stayTo });
+      const measurement = {
+        outcome: m.result.outcome, observed: m.result.summary, interpretation: m.result.interpretation, reasons: m.result.reasons,
+        incrementalCents: null, confidence: m.result.confidence, measuredAt: new Date().toISOString(), baseline: before, after, experimentId: m.experimentId,
+      };
       await move(tx, a.id, tenantId, "MEASURING", "CLOSED", { measurement });
       await markMeasured(tx, tenantId, a.id);
       await tx.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "reporting", opportunityId: o.id, operation: "measure", mode: "DETERMINISTIC", summary: `Mesure de « ${a.label} » (${o.code}) : ${measurement.observed} Effet incrémental inconnu.` });
-      await audit(tx, tenantId, agentActor("reporting"), "experiment.measured", "RevenueAction", a.id, `Mesure de « ${a.label} » : résultat ${measurement.outcome === "POSITIVE" ? "positif (corrélation)" : measurement.outcome === "NEUTRAL" ? "neutre" : "non concluant"}.`, { code: o.code, outcome: measurement.outcome, observed: measurement.observed });
+      await audit(tx, tenantId, agentActor("reporting"), "experiment.measured", "RevenueAction", a.id, `Mesure de « ${a.label} » : résultat ${OUTCOME_LABEL[measurement.outcome as Outcome].toLowerCase()}${measurement.outcome === "POSITIVE" ? " (corrélation, pas causalité)" : ""}.`, { code: o.code, outcome: measurement.outcome, reasons: measurement.reasons, observed: measurement.observed, experimentId: measurement.experimentId });
     });
     done++;
   } catch (e) { console.error("[mesure] action ignorée", a.id, (e as Error).message); }

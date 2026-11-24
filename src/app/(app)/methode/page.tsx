@@ -10,6 +10,8 @@ import { PLAYBOOK_CODES, PLAYBOOKS } from "@/lib/engine/playbooks";
 import { POLICY_RULES, POLICY_CODES } from "@/lib/engine/policy";
 import { formatValue } from "@/lib/engine/signal-format";
 import { CHANNEL_LABEL } from "@/lib/engine/types";
+import { BASELINE_DAYS } from "@/lib/experiments/windows";
+import { DILUTION_THRESHOLD, MIN_DELTA_NIGHTS, MIN_OBSERVATION_DAYS, MIN_RELATIVE_CHANGE, OUTCOME_LABEL, OUTCOMES } from "@/lib/experiments/outcome";
 import { RULES_CHECKED_AT, STACK_STATUS, groupedRules } from "@/lib/stacking/rules";
 
 export const metadata = { title: "Méthode de travail" };
@@ -147,6 +149,16 @@ export default async function Methode() {
             </ul>
           </div>
         ))}
+      </section>
+      <section className="section" aria-labelledby="mesure-h" data-testid="methode-mesure">
+        <h2 id="mesure-h">Comment une action est mesurée</h2>
+        <p className="section-note">Avant l'exécution, la <Term id="baseline">référence</Term> est figée : combien de nuits des dates visées se réservaient par jour pendant les {BASELINE_DAYS} jours précédents. Après la fenêtre d'observation, le rythme observé est comparé à ce que cette référence laissait attendre. Quatre résultats existent : {OUTCOMES.map((o) => OUTCOME_LABEL[o].toLowerCase()).join(", ")}.</p>
+        <ul className="muted" style={{ paddingLeft: 18, display: "grid", gap: 6 }}>
+          <li><strong>Positif</strong> ou <strong>négatif</strong> : au moins {MIN_DELTA_NIGHTS} nuits d'écart avec l'attendu et au moins {Math.round(MIN_RELATIVE_CHANGE * 100)} % d'écart relatif. Sinon, <strong>neutre</strong>.</li>
+          <li><strong>Dilution</strong> : si les nuits en plus se vendent à un net par nuit plus bas de plus de {Math.round(DILUTION_THRESHOLD * 100)} %, le résultat reste neutre.</li>
+          <li><strong>Non concluant</strong> (jamais deviné) : référence insuffisante ou absente, observation de moins de {MIN_OBSERVATION_DAYS} jours, réservations non synchronisées récemment, ou autre action sur les mêmes séjours observée en même temps.</li>
+          <li>Aucune période témoin : un résultat positif décrit ce qui s'est passé après l'action, pas ce qu'elle a causé. L'<Term id="effet-incremental">effet incrémental</Term> reste inconnu.</li>
+        </ul>
       </section>
       <p className="foot">Aucune automatisation de navigateur n'est utilisée sur Airbnb ou Booking.com : les promotions passent par une procédure manuelle guidée tant que les accès partenaires officiels ne sont pas obtenus.</p>
     </Page>
