@@ -20,14 +20,14 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 ## US-060 — Règles de signaux PB-01 à PB-06
 
 **Ce qui change**
-- **Catalogue `src/lib/engine/playbooks.ts`** : les 13 playbooks du blueprint (PB-01 à PB-13) avec seuils nommés, données requises, période de repos, candidats, exclusions, règles de veto, approbateur, vérification et horizon de mesure. Seuls PB-01 à PB-06, PB-07, PB-10 et PB-13 sont codés ; les autres sont décrits et marqués « pas encore actif ».
+- **Catalogue `src/lib/engine/playbooks.ts`** : les 13 playbooks du blueprint (PB-01 à PB-13) avec seuils nommés, données requises, période de repos, candidats, exclusions, règles de veto, approbateur, vérification et horizon de mesure. Seuls PB-01 à PB-08, PB-10 et PB-13 sont codés ; les autres sont décrits et marqués « pas encore actif ».
 - **Signaux `src/lib/engine/signals.ts`** : la détection est séparée de la construction de l'action. Chaque signal porte son playbook, son déclencheur, sa clé de déduplication, ses dates et ses mesures (observé face au seuil). L'ordre de priorité des playbooks est explicite (`SIGNAL_ORDER`).
 - **Nouveau PB-04 (écart par canal)** : un canal en retard sur son poids historique alors que le logement tient son rythme global. Il ne se déclenche qu'avec au moins deux canaux, 12 séjours confirmés sur 12 mois, au plus 20 % de canal inconnu et 10 nuits déjà réservées ; sinon il se tait (inconnu ≠ zéro). Il ne se déclenche pas sur les logements de démo.
 - **Dossier d'opportunité** : encart « Signal » avec le tableau Mesure / Observé / Seuil et la source (playbook, fenêtre). Les mesures sont stockées dans le champ JSON `signals` existant.
 - **Page Méthode** : section « Les playbooks de l'agence », un bloc dépliable par playbook (seuils, données, repos, approbation), lisible sur mobile.
 - **Staging (Coolify)** : aucune migration, aucune variable d'environnement nouvelle.
 
-**Limites connues** : PB-08, PB-09, PB-11 et PB-12 ne sont que décrits ; le seuil de PB-04 sera recalibré avec les premières données réelles.
+**Limites connues** : PB-09, PB-11 et PB-12 ne sont que décrits ; le seuil de PB-04 sera recalibré avec les premières données réelles.
 
 **Tests** : unitaires (`signals.test.ts`, 36 cas : un seuil franchi / un seuil juste en dessous par playbook, données manquantes, ordre), non-régression (`review-golden.test.ts`), E2E navigateur (`e2e/playbooks.spec.ts` : page Méthode et dossier, bureau, mobile 390 et 360 px, sans débordement horizontal).
 
@@ -106,3 +106,7 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 
 `src/lib/engine/history.ts` (module pur) expose `cancellationStats` (annulations d'une fenêtre : nombre, nuits, taux, canaux, nuits rouvertes à venir) et `paceComparison` (prises de réservation, durée médiane de séjour et mix de canaux : fenêtre récente contre fenêtre de référence). L'entrée du moteur porte `cancellations`, `cancellationTracking` (début de l'historique) et `firstBookingDate`, chargés par `loadEngineInput` depuis `reservation_changes` (120 derniers jours, par locataire). La détection d'annulation est partagée avec le pacing (`reservations/cancellations.ts`). Principe : l'historique SuperHote ne remonte qu'à sa première lecture ; une fenêtre qui commence avant ce jour est « inconnue », jamais « zéro annulation ». Aucune migration, aucune variable d'environnement.
 Limites assumées : l'historique est connu à partir du lendemain de la première lecture ; une interruption des webhooks au milieu de l'historique n'est pas détectée ; profondeur maximale de 120 jours (`MAX_HISTORY_DAYS`), au-delà la réponse est « inconnu ».
+
+## PB-08 · dates rouvertes par une annulation
+
+Signal : une annulation enregistrée depuis au plus 3 jours rouvre au moins 2 nuits à venir (horizon 60 jours) encore libres au calendrier. Silencieux tant que l'historique des annulations est inconnu ou plus court que la fenêtre. Un dossier par séjour annulé (clé canal + dates), option « relire le calendrier et les promotions » (aucune écriture, aucune remise), inaction retenue quand les nuits sont à plus de 45 jours. Le taux d'annulation sur 14 jours est un indicateur (inconnu sous 4 réservations) qui relève l'urgence, pas l'option. PB-08 ne marque aucune nuit et ne déclenche pas de repos de groupe.

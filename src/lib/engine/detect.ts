@@ -10,8 +10,8 @@ import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
 import { conformOpportunity, type ConformityIssue } from "./candidates";
 import { strategyFloorOver } from "./seasons";
 import {
-  detectChannelGap, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
-  type ChannelGapPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
+  detectCancellation, detectChannelGap, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
+  type CancellationPayload, type ChannelGapPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
 } from "./signals";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
 import type { Candidate, Channel, DetectedOpportunity, Diagnosis, DiagnosisStep, Evidence, Promo, StackResult } from "./types";
@@ -589,6 +589,58 @@ function channelGap(ctx: Ctx, signals: Signal<ChannelGapPayload>[]): DetectedOpp
   }
   return out;
 }
+/* ------------------------------------------------------------------ PB-08 */
+/**
+ * PB-08 · une annulation rouvre des nuits. Le dossier demande une relecture (calendrier, prix publié, promotions du canal) et n'engage ni remise ni baisse de prix :
+ * la nuit rouverte retrouve sa chance de se vendre au prix courant, et la baisser dans la foulée serait une réaction, pas un diagnostic (§9.5).
+ * L'inaction reste proposée ; elle est retenue quand les nuits sont lointaines.
+ */
+function cancellation(ctx: Ctx, signals: Signal<CancellationPayload>[]): DetectedOpportunity[] {
+  return signals.map((sig) => {
+    const { channel, checkIn, checkOut, cancelledAt, stayNights, reopened, cancelled14, rate14 } = sig.payload;
+    const from = sig.from, to = sig.to, name = (CHANNEL_LABEL as Record<string, string>)[channel] ?? channel;
+    const alert = threshold("PB-08", "alertRate"), series = rate14 !== null && rate14 >= alert;
+    const lead = diffDays(from, ctx.today);
+    const cands: Candidate[] = [
+      finalize(ctx, {
+        type: "INVESTIGATION", label: `Relire le calendrier et les promotions des ${plural(reopened.length, "nuit")} rouverte${reopened.length > 1 ? "s" : ""}`,
+        detail: `Contrôler que les nuits du ${fmtDay(from)} au ${fmtDay(to)} sont bien ouvertes sur tous les canaux, que leur prix et leurs restrictions sont cohérents, et quelles promotions les couvrent. Aucun prix ni aucune remise n'est modifié.`, agent: "distribution",
+        target: { system: "INTERNAL" }, parameters: { channel, checkIn, checkOut, nights: reopened.length }, nightsTouched: 0, priceChangePct: null, current: null, proposed: null, expectedDeltaCents: null,
+        hypothesis: "Non chiffrable : il s'agit de vérifier que les nuits rouvertes sont bien proposées, pas de produire un revenu.",
+        rollbackPlan: "Aucune écriture externe : rien à annuler.", executionMode: "MANUAL_RUNBOOK", risk: "LOW", measurementWindowDays: threshold("PB-08", "windowDays") + 4,
+      }, from, to),
+      noAction(ctx, from, to, null, "Les nuits rouvertes retrouvent leur chance de se vendre au prix courant : attendre avant toute réaction, la fenêtre est encore lointaine.", 3),
+    ];
+    return {
+      playbook: "PB-08", signal: summarize(sig, ctx.today), dedupe: sig.dedupe ?? undefined, reasonCode: "DATES_REOPENED",
+      title: `Annulation ${name} : ${plural(reopened.length, "nuit")} rouverte${reopened.length > 1 ? "s" : ""} du ${fmtDay(from)} au ${fmtDay(to)}`,
+      stayFrom: from, stayTo: to,
+      signalText: `Séjour du ${fmtDay(checkIn)} au ${fmtDay(checkOut)} annulé le ${fmtDay(cancelledAt)} : ${plural(reopened.length, "nuit")} encore libre${reopened.length > 1 ? "s" : ""}`, signalSource: "Historique des réservations SuperHote",
+      hypothesisText: "Une annulation ponctuelle rouvre des dates ; sans série d'annulations, elle ne dit rien du prix.",
+      signals: { channel, checkIn, checkOut, cancelledAt, reopenedNights: reopened.length, cancelledStays14d: cancelled14, cancellationRate14d: rate14 === null ? null : Math.round(rate14 * 1000) / 1000 },
+      diagnosis: {
+        primary: "CANCELLATION", primaryLabel: "Annulation qui rouvre des dates",
+        alternatives: [
+          { cause: "DEMAND_WEAK", label: "Demande faible à cet horizon", why: "Non établie : une seule annulation ne mesure pas la demande ; les playbooks de rythme (PB-01, PB-02) traitent la demande." },
+          { cause: "PRICE_HIGH", label: "Prix trop haut à l'origine de l'annulation", why: "Non vérifiable : le motif de l'annulation n'est pas connu." },
+        ],
+        confidence: confidence([[reopened.length >= 3, 0.06], [lead <= 30, 0.06], [rate14 !== null, 0.04]], 0.5),
+        confidenceNote: "Constat d'une annulation enregistrée par SuperHote ; son motif n'est pas connu.",
+        tree: [
+          { question: "Des nuits à venir sont-elles rouvertes et encore libres ?", answer: `Oui : ${plural(reopened.length, "nuit")} sur ${plural(stayNights, "nuit")} du séjour annulé.`, verdict: "oui" },
+          { question: "S'agit-il d'une série d'annulations ?", answer: rate14 === null ? "Inconnu : historique des annulations trop court pour 14 jours." : `${series ? "Oui" : "Non"} : ${plural(cancelled14 ?? 0, "annulation")} sur 14 jours, soit ${pct(rate14)} des réservations (alerte à ${pct(alert)}).`, verdict: rate14 === null ? "inconnu" : series ? "oui" : "non" },
+          { question: "Le motif de l'annulation est-il connu ?", answer: "Non : SuperHote ne le transmet pas.", verdict: "inconnu" },
+        ],
+        evidence: [
+          { kind: "fait", label: `Séjour annulé (${name})`, value: `${fmtDay(checkIn)} → ${fmtDay(checkOut)}, annulé le ${fmtDay(cancelledAt)}`, source: "Historique des réservations SuperHote" },
+          { kind: "fait", label: "Nuits rouvertes encore libres", value: `${fmtDay(from)} → ${fmtDay(to)} (${plural(reopened.length, "nuit")})`, source: srcCal(ctx) },
+          ...(rate14 !== null ? [{ kind: "comparaison" as const, label: "Taux d'annulation sur 14 jours", value: `${pct(rate14)} (${plural(cancelled14 ?? 0, "annulation")})`, source: "Historique des réservations SuperHote" }] : []),
+        ],
+      },
+      candidates: cands, selected: pick(cands, { forceType: lead > 45 ? "NO_ACTION" : "INVESTIGATION" }), veto: false, urgency: 0.8 + (series ? 0.4 : 0) + Math.max(0, 14 - lead) / 40, expiresAt: addDays(ctx.today, threshold("PB-08", "windowDays") + 4),
+    } satisfies DetectedOpportunity;
+  });
+}
 /* ------------------------------------------------------------------ PB-10 */
 function dataDrift(ctx: Ctx, signals: Signal<DataDriftPayload>[]): DetectedOpportunity[] {
   return signals.map((sig) => {
@@ -662,6 +714,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
     ...step(detectPaceHigh(ctx, stats), (s) => paceHigh(ctx, s)),
     ...step(detectPaceLow(ctx, stats), (s) => paceLow(ctx, s)),
     ...step(detectChannelGap(ctx, stats), (s) => channelGap(ctx, s)),
+    ...step(detectCancellation(ctx), (s) => cancellation(ctx, s)),
     ...step(detectDataDrift(ctx), (s) => dataDrift(ctx, s)),
   ];
   // chaque candidate respecte le contrat de son type et les actions permises par son playbook ; sinon elle est retirée (jamais proposée) et signalée
