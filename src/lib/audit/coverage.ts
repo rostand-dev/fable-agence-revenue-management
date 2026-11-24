@@ -25,6 +25,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   updatePromotionAction: { events: ["promotion.updated", "access.denied"] },
   endPromotionAction: { events: ["promotion.ended", "access.denied"] },
   verifyPromotionAction: { events: ["promotion.verified", "access.denied"] },
+  toggleRunbookStepAction: { events: ["runbook.step_checked", "runbook.step_unchecked", "access.denied"] },
   // actions/seasons.ts
   saveSeasonsAction: { events: ["property.economics_versioned"] },
   // actions/decisions.ts
