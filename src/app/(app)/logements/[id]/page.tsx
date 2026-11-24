@@ -8,6 +8,8 @@ import { CadencePanel } from "@/components/CadencePanel";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { ListingsPanel } from "@/components/ListingsPanel";
+import { PromotionRegistry } from "@/components/PromotionRegistry";
+import { listPromotions } from "@/lib/services/promotion-registry";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
 import { SuperhotePanel } from "@/components/SuperhotePanel";
 import { badgeHref, pricelabsBadge, superhoteBadge } from "@/lib/integrations/connection-badge";
@@ -91,7 +93,8 @@ export default async function Logement({ params, searchParams }: { params: Promi
   };
   const stateLabel = (st: string) => (st === "BOOKED" ? "réservé" : st === "BLOCKED" ? "bloqué" : "libre");
   const detailDay = sp.jour ? input.days.find((d) => d.date === sp.jour) : undefined;
-  const allPromos = await db.select().from(schema.promotions).where(eq(schema.promotions.propertyId, p.id));
+  const promoRows = tab === "canaux" ? await listPromotions(user.tenantId, p.id) : [];
+  const promoListings = tab === "canaux" ? await listListings(user.tenantId, p.id) : [];
   const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
   const canAudit = can(user.role, "audit.read");
   const trail = tab === "historique" && canAudit ? await withTenant(user.tenantId, (tx) => propertyAuditTrail(user.tenantId, p.id, 50, tx)) : [];
@@ -280,18 +283,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "canaux" && (
         <section className="stack">
           <div className="synth">{Object.entries(share).map(([c, s]) => <Metric key={c} label={`Part ${CHANNEL_LABEL[c] ?? c}`} value={pct(s)} source="Nuits vendues · historique" />)}{Object.keys(share).length === 0 && <Metric label="Mix de canaux" value={<Vq>inconnu</Vq>} source="Aucune réservation importée" />}</div>
-          <h2 style={{ fontSize: 18, margin: "14px 0 0" }}>Registre des promotions</h2>
-          <p className="section-note" style={{ margin: 0 }}>Tenu à la main tant que les accès partenaires officiels ne sont pas obtenus. Au-delà de 7 jours sans vérification, une promotion est considérée comme incertaine.</p>
-          {allPromos.length === 0 ? <p className="muted">Aucune promotion déclarée.</p> : (
-            <div className="table-wrap"><table className="econ">
-              <thead><tr><th scope="col">Promotion</th><th scope="col">Canal</th><th scope="col" className="num">Remise</th><th scope="col">Séjours</th><th scope="col">État</th><th scope="col">Dernière vérification</th></tr></thead>
-              <tbody>{allPromos.map((x) => {
-                const age = x.verifiedAt ? Math.floor((+now - +x.verifiedAt) / 86400000) : null;
-                return <tr key={x.id}><th scope="row">{x.label}</th><td>{CHANNEL_LABEL[x.channel]}</td><td className="num">−{x.discountPct} %</td><td>{x.stayFrom ? `${fmtDay(x.stayFrom)} → ${fmtDay(x.stayTo!)}` : "permanente"}</td>
-                  <td>{x.status === "ACTIVE" ? <State role="sain">active</State> : <State role="neutre">terminée</State>}</td>
-                  <td>{age === null ? <Vq>jamais</Vq> : age > 7 && x.status === "ACTIVE" ? <Vq kind="obsolete">il y a {age} j</Vq> : `il y a ${age} j`}</td></tr>;
-              })}</tbody></table></div>
-          )}
+          <PromotionRegistry propertyId={p.id} promotions={promoRows} listings={promoListings} canManage={can(user.role, "promotion.manage")} canVerify={can(user.role, "action.verify")} manageDenied={denyMessage(user.role, "promotion.manage")} />
           <p><Byline agent="distribution" names={names} what="tient ce registre" /></p>
         </section>
       )}

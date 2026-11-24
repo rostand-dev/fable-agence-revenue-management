@@ -20,6 +20,11 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   resetPasswordAction: { events: ["account.password_changed"] },
   // actions/costs.ts
   saveCostsAction: { events: ["property.costs_validated", "property.economics_versioned"] },
+  // actions/promotions.ts (US-100)
+  declarePromotionAction: { events: ["promotion.declared", "access.denied"] },
+  updatePromotionAction: { events: ["promotion.updated", "access.denied"] },
+  endPromotionAction: { events: ["promotion.ended", "access.denied"] },
+  verifyPromotionAction: { events: ["promotion.verified", "access.denied"] },
   // actions/seasons.ts
   saveSeasonsAction: { events: ["property.economics_versioned"] },
   // actions/decisions.ts

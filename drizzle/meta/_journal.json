@@ -197,6 +197,13 @@
       "when": 1795462667653,
       "tag": "0027_us_094_execution_alerts",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1795502824175,
+      "tag": "0028_us_100_registre_promotions",
+      "breakpoints": true
     }
   ]
 }

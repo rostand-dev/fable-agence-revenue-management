@@ -1,3 +1,4 @@
+import { audienceOfKind } from "@/lib/promotions/registry";
 import { and, eq } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
@@ -42,7 +43,7 @@ export async function seedDemo(tenantId: string): Promise<void> {
     await insertReservations(db, tenantId, id, p.reservations.map((r) => ({ ...r, status: "CONFIRMED" as const, commissionEstimated: false })), "DEMO");
     await db.insert(s.calendarDays).values(p.days.map((d) => ({ propertyId: id, tenantId, date: d.date, priceCents: d.priceCents, sentPriceCents: d.state === "FREE" ? d.priceCents : null, minStay: d.minStay, state: d.state, rule: d.rule, observedAt: now })));
     await db.insert(s.marketDays).values(p.days.map((d) => ({ propertyId: id, tenantId, date: d.date, marketOccupancy: d.marketOccupancy, marketAdrCents: d.marketAdrCents, pricePercentile: d.pricePercentile, event: d.event, observedAt: now })));
-    await db.insert(s.promotions).values(p.promos.map((x) => ({ id: newId("promo"), tenantId, propertyId: id, channel: x.channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.fromOffset === null ? null : addDays(today, x.fromOffset), stayTo: x.toOffset === null ? null : addDays(today, x.toOffset), status: "ACTIVE", source: "DEMO", verifiedAt: new Date(+now - x.verifiedDaysAgo * 86400000) })));
+    await db.insert(s.promotions).values(p.promos.map((x) => ({ id: newId("promo"), tenantId, propertyId: id, channel: x.channel, kind: x.kind, audience: audienceOfKind(x.kind), label: x.label, discountPct: x.discountPct, stayFrom: x.fromOffset === null ? null : addDays(today, x.fromOffset), stayTo: x.toOffset === null ? null : addDays(today, x.toOffset), status: "ACTIVE", source: "DEMO", verifiedAt: new Date(+now - x.verifiedDaysAgo * 86400000) })));
   }
 
   // Historique de démonstration : quatre dossiers déjà traités, produits par le même moteur un mois plus tôt.

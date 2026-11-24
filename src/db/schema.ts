@@ -307,6 +307,24 @@ export const promotions = pgTable("promotions", {
   source: text("source").notNull().default("MANUAL"),
   verifiedAt: ts("verified_at"),
   createdAt: created(),
+  /** US-100 : annonce du canal visée (null = toutes les annonces du canal pour ce logement). Référence souple : l'annonce peut être archivée sans effacer l'historique. */
+  listingId: text("listing_id"),
+  /** US-100 : fenêtre de réservation (dates auxquelles le voyageur doit réserver), bornes incluses ; null = toujours */
+  bookFrom: date("book_from", { mode: "string" }),
+  bookTo: date("book_to", { mode: "string" }),
+  /** US-100 : durée de séjour minimale exigée par la promotion, en nuits (null = aucune) */
+  minLos: integer("min_los"),
+  /** US-100 : ALL | MOBILE | MEMBERS | COUNTRY (déduit du type de promotion) */
+  audience: text("audience").notNull().default("ALL"),
+  /** US-100 : identifiant de la promotion relevé dans l'extranet du canal */
+  externalRef: text("external_ref"),
+  /** US-100 : qui a déclaré la promotion, qui l'a vérifiée en dernier */
+  createdBy: text("created_by"),
+  verifiedBy: text("verified_by"),
+  /** US-100 : fin de la promotion (quand elle est terminée) et pourquoi */
+  endedAt: ts("ended_at"),
+  endReason: text("end_reason"),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [index("promotions_prop").on(t.tenantId, t.propertyId)]);
 
 export const opportunities = pgTable("opportunities", {

@@ -20,7 +20,7 @@ Construit à partir du *Blueprint produit et technique V1* et du Design System N
 |---|---|
 | Données | Deux logements de **démonstration** (données synthétiques). Un logement réel lit **PriceLabs** dès que sa clé API est renseignée : grille J+0 à J+90, marché, réglages de prix et réservations relayées par le PMS. SuperHote se branche en lecture seule par jeton API (voir plus bas) ; les réservations et les prix restent lus via PriceLabs. |
 | Écriture PriceLabs | **Simulée** sur les logements de démonstration ; **lecture seule** sur les logements réels (procédure manuelle guidée pour appliquer une décision). |
-| Promotions et événements | Non fournis par PriceLabs : le registre des promotions reste manuel, les événements ne sont pas détectés sur les logements réels. |
+| Promotions et événements | Non fournis par PriceLabs : le registre des promotions reste manuel (voir `docs/epic-10-promotion-manager.md` : déclarer, modifier, vérifier, terminer ; cumul inconnu signalé), les événements ne sont pas détectés sur les logements réels. |
 | Promotions Airbnb / Booking.com | Procédure manuelle guidée avec preuve. Aucune automatisation de navigateur. |
 | Modèle de vente | Heuristique simple et affichée comme telle ; chaque montant est une simulation, pas une prévision. |
 | LLM | Facultatif. Chaque propriétaire saisit sa clé Anthropic (Intégrations, chiffrée) et choisit un modèle par agent (Réglages ou fiche agent) dans une liste alimentée par les modèles que sa clé peut utiliser. `ANTHROPIC_API_KEY` reste un repli serveur ; sans aucune clé, synthèses et réponses sont composées par règles. Les calculs et garde-fous n'utilisent jamais de LLM. |

@@ -1,3 +1,4 @@
+import { audienceOfKind } from "@/lib/promotions/registry";
 import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
@@ -235,12 +236,12 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
         const ch = a.target.channel ?? a.parameters.channel;
         if (a.type === "CHANNEL_PROMO") {
           const pid = newId("promo");
-          await tx.insert(promotions).values({ id: pid, tenantId: actor.tenantId, propertyId: p.id, channel: ch, kind: a.parameters.kind, label: a.parameters.label ?? a.label, discountPct: a.parameters.discountPct, stayFrom: a.parameters.stayFrom, stayTo: a.parameters.stayTo, status: "ACTIVE", source: "DECLARED", verifiedAt: new Date() });
+          await tx.insert(promotions).values({ id: pid, tenantId: actor.tenantId, propertyId: p.id, channel: ch, kind: a.parameters.kind, audience: audienceOfKind(a.parameters.kind), createdBy: actor.id, verifiedBy: actor.id, label: a.parameters.label ?? a.label, discountPct: a.parameters.discountPct, stayFrom: a.parameters.stayFrom, stayTo: a.parameters.stayTo, status: "ACTIVE", source: "DECLARED", verifiedAt: new Date() });
           execution = { createdPromotionId: pid };
         } else if (a.type === "PROMO_REMOVAL") {
-          await tx.update(promotions).set({ status: "ENDED" }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
+          await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(), endReason: "Retirée par une action approuvée", updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
         } else if (a.type === "INVESTIGATION" && ch) {
-          await tx.update(promotions).set({ verifiedAt: new Date() }).where(and(eq(promotions.propertyId, p.id), eq(promotions.channel, ch), eq(promotions.status, "ACTIVE")));
+          await tx.update(promotions).set({ verifiedAt: new Date(), verifiedBy: actor.id, updatedAt: new Date() }).where(and(eq(promotions.propertyId, p.id), eq(promotions.channel, ch), eq(promotions.status, "ACTIVE")));
         }
         execution = { ...execution, mode: "MANUAL_DECLARED", declaredScope: decl!.scope, declaredDate: decl!.date, proof: decl!.proof || null, baseline };
       } else {
@@ -362,8 +363,8 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
         await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => (remote && s.minPriceCents !== a.parameters.minPriceCents ? s : { ...s, minPriceCents: prevMin }), source: "ACTION_ROLLBACK", createdBy: actor.id });
       }
     } else if (a.execution?.mode === "MANUAL_DECLARED") {
-      if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED" }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));
-      if (a.type === "PROMO_REMOVAL") await tx.update(promotions).set({ status: "ACTIVE" }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
+      if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(), endReason: "Retour arrière de l'action", updatedAt: new Date() }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));
+      if (a.type === "PROMO_REMOVAL") await tx.update(promotions).set({ status: "ACTIVE", endedAt: null, endReason: null, updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
     }
     await move(tx, a.id, actor.tenantId, a.status as ActionState, "ROLLED_BACK", { execution: { ...a.execution, rollback: { at: new Date().toISOString(), reason: reason.trim() || null, manual: a.execution?.mode === "MANUAL_DECLARED", ...(remote ? { writeIds: remote.writeIds, noop: remote.noop, adapter: remote.adapter } : {}) } } });
     // une ligne restée « en préparation » (arrêt brutal) n'a jamais eu d'issue connue : elle passe en « envoyée, non confirmée », l'état réel ayant été remis par le retour arrière
