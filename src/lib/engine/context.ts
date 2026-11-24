@@ -7,6 +7,7 @@ import { percentileAfter, sellProbability } from "./demand";
 import { cumulativeDiscountPct, simulateStack, UnknownEconomics } from "./economics";
 import { leadTimes } from "./metrics";
 import type { AuditContext } from "./audit";
+import type { Cancellation, CancellationTracking } from "./history";
 import type { BaseChange, StructuralHold } from "./structural";
 import type { Channel, Day, EconomicModel, Promo, Resa, StackResult, Strategy } from "./types";
 import { CHANNEL_LABEL } from "./types";
@@ -35,6 +36,12 @@ export type EngineInput = {
   recentBaseChanges?: BaseChange[];
   /** Une modification du prix de base est déjà approuvée, écrite ou en observation (verrou structurant, §6.4). */
   structuralHold?: StructuralHold | null;
+  /** Annulations connues (historique des changements SuperHote). Absent = historique inconnu : PB-08 reste silencieux, jamais « zéro annulation ». */
+  cancellations?: Cancellation[];
+  /** Début de l'historique des annulations du logement ; absent ou null = jamais lu depuis SuperHote. */
+  cancellationTracking?: CancellationTracking | null;
+  /** Première réservation connue du logement (borne de l'historique de prise de réservations). */
+  firstBookingDate?: ISODate | null;
 };
 
 export type Ctx = EngineInput & {

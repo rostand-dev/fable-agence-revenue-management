@@ -1,0 +1,99 @@
+/**
+ * Historique de réservations lu par les playbooks de la famille « demande » (PB-08, PB-09, PB-11, PB-12) : annulations récentes, rythme de prise de
+ * réservations, durée de séjour et mix de canaux, toujours en comparant une fenêtre récente à une fenêtre de référence de même longueur.
+ * Module pur. Principe : une donnée absente reste inconnue (`null`), jamais un zéro. Les annulations ne sont connues que depuis le début de
+ * l'historique SuperHote (`CancellationTracking.since`) : une fenêtre qui commence avant ce jour n'est pas évaluable.
+ */
+import { addDays, type ISODate } from "../dates";
+import type { Resa } from "./types";
+
+/** Profondeur chargée par `loadEngineInput` : une fenêtre plus longue n'est pas évaluable (réponse « inconnu », jamais une réponse partielle). */
+export const MAX_HISTORY_DAYS = 120;
+export type Cancellation = { channel: string; checkIn: ISODate; checkOut: ISODate; nights: number; grossRoomCents: number; cancelledAt: ISODate };
+/** Début de l'historique des annulations de ce logement (premier changement de réservation enregistré). */
+export type CancellationTracking = { since: ISODate };
+
+const inWin = (d: ISODate, from: ISODate, to: ISODate) => d >= from && d < to; // [from, to[
+const confirmed = (resas: Resa[]) => resas.filter((r) => r.status === "CONFIRMED");
+
+export type CancellationStats = {
+  windowDays: number; from: ISODate; to: ISODate;
+  /** réservations annulées dans la fenêtre (jour d'annulation) */
+  cancelled: number; cancelledNights: number;
+  /** réservations confirmées prises (jour de réservation) dans la fenêtre, annulations déjà retirées de ce compte */
+  booked: number;
+  /** annulées ÷ (annulées + prises) : part des réservations de la fenêtre qui ont été annulées ; null si aucune réservation ni annulation */
+  rate: number | null;
+  /** annulations par canal */
+  byChannel: Record<string, number>;
+  /** nuits annulées dont l'arrivée est encore à venir : ce sont des dates rouvertes à la vente */
+  reopenedNights: number;
+};
+
+/**
+ * Annulations de la fenêtre [today − windowDays + 1, today + 1[. Renvoie null quand elles ne sont pas évaluables : historique absent
+ * (`tracking` null/undefined, logement jamais relu depuis SuperHote) ou commençant après le début de la fenêtre.
+ */
+export function cancellationStats(cancellations: Cancellation[] | undefined, tracking: CancellationTracking | null | undefined, resas: Resa[], today: ISODate, windowDays: number): CancellationStats | null {
+  if (!cancellations || !tracking) return null;
+  const from = addDays(today, -windowDays + 1), to = addDays(today, 1);
+  // `since` est le jour du premier changement enregistré, dont le début de journée est peut-être manqué : la fenêtre doit commencer strictement après
+  if (windowDays > MAX_HISTORY_DAYS || tracking.since >= from) return null;
+  const inW = cancellations.filter((c) => inWin(c.cancelledAt, from, to));
+  const booked = confirmed(resas).filter((r) => inWin(r.bookedAt, from, to)).length;
+  const byChannel: Record<string, number> = {};
+  for (const c of inW) byChannel[c.channel] = (byChannel[c.channel] ?? 0) + 1;
+  const reopenedNights = inW.reduce((n, c) => { let k = 0; for (let i = 0; i < c.nights; i++) if (addDays(c.checkIn, i) >= today) k++; return n + k; }, 0);
+  const total = inW.length + booked;
+  return { windowDays, from, to, cancelled: inW.length, cancelledNights: inW.reduce((n, c) => n + c.nights, 0), booked, rate: total > 0 ? inW.length / total : null, byChannel, reopenedNights };
+}
+
+export type PeriodStat = { bookings: number; nights: number; medianLos: number | null; channelShare: Record<string, number> };
+export type PaceComparison = {
+  recentDays: number; refDays: number;
+  recent: PeriodStat; reference: PeriodStat;
+  /** prises récentes ÷ prises de référence, ramenées à la même longueur ; null si la référence est vide */
+  bookingRatio: number | null;
+  /** écart de durée médiane de séjour (récent − référence), en nuits ; null si un des deux échantillons est trop petit */
+  losShift: number | null;
+  /** plus grand déplacement de part de nuits entre les deux périodes, avec son canal (points de part, 0..1) ; null si un échantillon est vide */
+  channelShift: { channel: string; delta: number } | null;
+};
+
+const MIN_LOS_SAMPLE = 3;
+function period(rs: Resa[]): PeriodStat {
+  const nights = rs.reduce((n, r) => n + r.nights, 0);
+  const los = rs.map((r) => r.nights).sort((a, b) => a - b);
+  const share: Record<string, number> = {};
+  for (const r of rs) share[r.channel] = (share[r.channel] ?? 0) + r.nights;
+  for (const k of Object.keys(share)) share[k] /= nights || 1;
+  return { bookings: rs.length, nights, medianLos: los.length >= MIN_LOS_SAMPLE ? los[Math.floor(los.length / 2)] : null, channelShare: share };
+}
+
+/**
+ * Rythme de prise de réservations : fenêtre récente (les `recentDays` derniers jours, aujourd'hui inclus) contre fenêtre de référence
+ * (les `refDays` jours qui précèdent), selon le jour de réservation. Calculable dès que la première réservation connue précède la référence ; sinon null.
+ * `firstBookingDate` : première réservation confirmée encore connue du logement. Elle ne prouve pas que la référence est réellement vide (un logement peut
+ * n'avoir rien vendu depuis) : une référence à zéro donne un rapport inconnu, jamais un rythme « infini ». La durée médiane est la médiane haute (entière).
+ */
+export function paceComparison(resas: Resa[], today: ISODate, recentDays: number, refDays: number, firstBookingDate: ISODate | null): PaceComparison | null {
+  const rFrom = addDays(today, -recentDays + 1), rTo = addDays(today, 1), pFrom = addDays(rFrom, -refDays), pTo = rFrom;
+  if (!firstBookingDate || firstBookingDate > pFrom) return null;
+  const ok = confirmed(resas);
+  const recent = period(ok.filter((r) => inWin(r.bookedAt, rFrom, rTo)));
+  const reference = period(ok.filter((r) => inWin(r.bookedAt, pFrom, pTo)));
+  const scale = recentDays / refDays;
+  let channelShift: PaceComparison["channelShift"] = null;
+  if (recent.nights > 0 && reference.nights > 0) {
+    for (const ch of new Set([...Object.keys(recent.channelShare), ...Object.keys(reference.channelShare)])) {
+      const d = (recent.channelShare[ch] ?? 0) - (reference.channelShare[ch] ?? 0);
+      if (!channelShift || Math.abs(d) > Math.abs(channelShift.delta)) channelShift = { channel: ch, delta: d };
+    }
+  }
+  return {
+    recentDays, refDays, recent, reference,
+    bookingRatio: reference.bookings > 0 ? recent.bookings / (reference.bookings * scale) : null,
+    losShift: recent.medianLos !== null && reference.medianLos !== null ? recent.medianLos - reference.medianLos : null,
+    channelShift,
+  };
+}

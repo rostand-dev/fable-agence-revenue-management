@@ -1,7 +1,9 @@
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
-import { addDays, todayISO, type ISODate } from "../dates";
+import { addDays, diffDays, todayISO, type ISODate } from "../dates";
+import { MAX_HISTORY_DAYS, type Cancellation } from "../engine/history";
+import { cancelledFromChanges } from "../reservations/cancellations";
 import { reviewProperty, type EngineInput } from "../engine/detect";
 import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
 import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
@@ -24,7 +26,7 @@ import { deterministicNarrative, writeNarrative } from "./narrative";
 import { measureDueActions } from "./decisions";
 import { syncIfStale } from "./pricelabs-sync";
 
-const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, integrations, reviewRuns, tenants } = schema;
+const { properties, calendarDays, marketDays, reservations, promotions, opportunities, revenueActions, agentRuns, integrations, reviewRuns, tenants, reservationChanges } = schema;
 const ACTIVE_ACTION = ["APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURING"];
 
 /**
@@ -41,7 +43,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   const [p] = await db.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.tenantId, tenantId)));
   if (!p) return null;
   const to = addDays(today, 90);
-  const [cal, mkt, resas, promos, ints, acts, baseActs] = await Promise.all([
+  const [cal, mkt, resas, promos, ints, acts, baseActs, changes] = await Promise.all([
     db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), gte(calendarDays.date, today), lte(calendarDays.date, to))),
     db.select().from(marketDays).where(and(eq(marketDays.propertyId, p.id), gte(marketDays.date, today), lte(marketDays.date, to))),
     db.select().from(reservations).where(eq(reservations.propertyId, p.id)),
@@ -53,7 +55,13 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     // prix de base : verrou structurant et plafond cumulé sur 7 jours (blueprint §6.4, §11.3)
     db.select({ type: revenueActions.type, status: revenueActions.status, approvedAt: revenueActions.approvedAt, createdAt: revenueActions.createdAt, parameters: revenueActions.parameters }).from(revenueActions)
       .where(and(eq(revenueActions.propertyId, p.id), eq(revenueActions.type, "BASE_PRICE_CHANGE"), inArray(revenueActions.status, [...STRUCTURAL_COUNTED_STATUSES]))),
+    // annulations : historique des changements de réservation (borné à MAX_HISTORY_DAYS ; la borne UTC écarte au plus 2 h de marge sur le jour de Paris, sans effet car les fenêtres lues restent plus courtes)
+    db.select({ externalId: reservationChanges.externalId, kind: reservationChanges.kind, before: reservationChanges.before, after: reservationChanges.after, createdAt: reservationChanges.createdAt }).from(reservationChanges)
+      .where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId), gte(reservationChanges.createdAt, new Date(addDays(today, -MAX_HISTORY_DAYS) + "T00:00:00Z")))).orderBy(reservationChanges.createdAt),
   ]);
+  const [trk] = await db.select({ since: sql<Date | null>`min(${reservationChanges.createdAt})` }).from(reservationChanges).where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId)));
+  const cancellations: Cancellation[] = cancelledFromChanges(changes).filter(({ before }) => typeof before.channel === "string" && before.checkIn && before.checkOut && before.checkOut > before.checkIn && Number.isFinite(before.grossRoomCents)).map(({ before, at }) => ({ channel: before.channel, checkIn: before.checkIn, checkOut: before.checkOut, nights: diffDays(before.checkOut, before.checkIn), grossRoomCents: before.grossRoomCents, cancelledAt: at }));
+  const firstBooking = resas.filter((r) => r.status === "CONFIRMED").map((r) => r.bookedAt).sort()[0] ?? null;
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
     // Blueprint §7.4 : un marché lu depuis plus de 48 h n'est plus une preuve. Il devient « inconnu » pour le moteur (aucune opportunité fondée dessus),
@@ -76,6 +84,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),
     promos: promos.map((x) => ({ id: x.id, channel: x.channel as Channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.stayFrom, stayTo: x.stayTo, verifiedAt: x.verifiedAt }) satisfies Promo),
     capabilities,
+    cancellations, cancellationTracking: trk?.since ? { since: todayISO(new Date(trk.since)) } : null, firstBookingDate: firstBooking,
     recentBaseChanges: recentBaseChanges(baseActs, today),
     structuralHold: structuralHold(baseActs),
     activeRanges: acts.filter((a) => a.type !== "MIN_PRICE_CHANGE").map((a) => { const ds: string[] | undefined = a.params?.dates; return ds?.length ? { from: ds[0], to: addDays(ds[ds.length - 1], 1) } : { from: a.from, to: a.to }; }),
