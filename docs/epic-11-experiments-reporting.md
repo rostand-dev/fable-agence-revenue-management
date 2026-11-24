@@ -87,11 +87,18 @@ Chaque US est livrée par sa propre PR, fusionnée seulement quand la CI est ver
 
 ## US-113 — Export CSV/PDF et historique
 
-*Plan.*
-1. **CSV** (`;` et BOM UTF-8 pour Excel en français, cellules protégées contre l'injection de formules) du rapport certifié et de l'historique des mesures ; **PDF** du rapport généré sans dépendance (module pur).
-2. **Historique** : liste des rapports par logement et par mois (toutes les versions) et des mesures d'expériences, filtres, depuis `/rapports`.
-3. Les exports sont des lectures authentifiées, isolées par propriétaire d'espace, tracées au journal d'audit (`report.exported`) ; un brouillon ne s'exporte pas comme certifié.
-4. Tests unitaires (CSV, PDF), base de données, E2E sur trois largeurs (téléchargements compris).
+**Ce qui change.** Un rapport certifié s'exporte en **PDF** et en **CSV** ; l'écran `/rapports` devient un **historique** filtrable des rapports (toutes les versions) et des mesures d'expériences, exportable en CSV.
+
+- **CSV** (`src/lib/reports/csv.ts`, module pur) : séparateur « ; », fins de ligne CRLF, BOM UTF-8 (ouverture directe dans Excel en français), nombres à virgule décimale. Toute cellule commençant par `=`, `+`, `-`, `@` ou une tabulation est préfixée d'une apostrophe (pas d'injection de formule) ; les retours à la ligne sont remplacés ; une valeur inconnue s'exporte « inconnu », jamais 0.
+- **PDF** (`src/lib/reports/pdf.ts` et `document.ts`) : généré sans dépendance (Helvetica, A4, accents et €, pagination automatique, pied de page). Mêmes chiffres que l'écran, rien de recalculé ; contrôlé avec `qpdf --check` et rendu visuel.
+- **Routes** (lectures authentifiées, espace pris dans la session, jamais dans un paramètre ; `Cache-Control: no-store`) :
+  - `GET /api/rapports/[id]/export?format=csv|pdf` — rapport **certifié** uniquement (brouillon : 409, format inconnu : 400, introuvable ou d'un autre espace : 404, sans session : 401) ;
+  - `GET /api/rapports/historique?logement=<id>&type=rapports|mesures` avec les filtres de l'écran.
+- **Filtres** (`src/lib/reports/filters.ts`) : `etat` (certifiés / brouillons), `annee`, `resultat` (positif, neutre, négatif, non concluant) ; une valeur invalide est ignorée sans erreur ; compteur « n rapports sur N », réinitialisation, exports avec les mêmes filtres.
+- **Droits** : lecture pour tous les rôles connectés (un export ne modifie rien) ; chaque export est tracé au journal (`report.exported`, entité, format, nombre de lignes).
+- **Mesures** : l'historique des mesures reprend les résultats de l'US-111 tels quels (les mesures antérieures à l'épic sont signalées).
+- **Migration** : aucune. **Aucune variable d'environnement.**
+- **Tests** : unitaires (CSV, PDF, filtres : 34 avec ceux de l'US-112), base de données (export, historique, isolation), navigateur sur bureau / 390 / 360 px (téléchargements réels, 401/400/404/409, filtres, absence de débordement).
 
 ## Déploiement (staging Coolify)
 

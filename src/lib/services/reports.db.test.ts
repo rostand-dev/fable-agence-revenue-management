@@ -6,7 +6,7 @@ import { lastMonths } from "@/lib/engine/metrics";
 import type { Role } from "@/lib/rbac";
 import { draftNarrative } from "@/lib/reports/monthly";
 import { makeTenant } from "@/test/db";
-import { certifyReport, draftReport, getReport, listReports, loadSnapshot, ReportError, reportHash, saveReport } from "./reports";
+import { certifyReport, draftReport, getCertifiedReport, getReport, listMeasures, listReportHistory, listReports, loadSnapshot, propertyName, recordExport, ReportError, reportHash, saveReport } from "./reports";
 import { seedDemo } from "./seed";
 
 type T = Awaited<ReturnType<typeof makeTenant>>;
@@ -180,4 +180,38 @@ describe("rapport mensuel certifié (US-112)", () => {
     const rows = await db.select().from(schema.monthlyReports).where(and(eq(schema.monthlyReports.tenantId, other.tenantId)));
     expect(rows).toEqual([]);
   });
+
+  it("export (US-113) : seul un rapport certifié s'exporte, l'espace voisin ne le voit pas, l'export est tracé", async () => {
+    const m = lastMonths(todayISO(), 8)[0];
+    const d = await draftReport(as("OWNER"), propertyId, m);
+    await refused(getCertifiedReport(t.tenantId, d.id), "CONFLICT", /pas certifié/);
+    const c = await certifyReport(as("OWNER"), d.id);
+    expect((await getCertifiedReport(t.tenantId, c.id)).certifiedHash).toBe(c.certifiedHash);
+    await refused(getCertifiedReport(other.tenantId, c.id), "NOT_FOUND");
+    await recordExport(as("ANALYST"), "MonthlyReport", c.id, "Export de test.", { format: "pdf" });
+    const a = await audits("report.exported");
+    expect(a).toHaveLength(1);
+    expect(a[0].entity_id).toBe(c.id);
+    expect(await propertyName(t.tenantId, propertyId)).toBeTruthy();
+    await expect(propertyName(other.tenantId, propertyId)).rejects.toBeInstanceOf(ReportError);
+  });
+
+  it("historique (US-113) : filtres état et année sur les rapports, résultat sur les mesures, isolation par espace", async () => {
+    const none = { etat: null, annee: null, resultat: null } as const;
+    const all = await listReportHistory(t.tenantId, propertyId, none);
+    expect(all.length).toBeGreaterThanOrEqual(4);
+    const cert = await listReportHistory(t.tenantId, propertyId, { ...none, etat: "CERTIFIED" });
+    expect(cert.every((r) => r.status === "CERTIFIED")).toBe(true);
+    expect(cert.length).toBeLessThan(all.length + 1);
+    const y = all[0].month.slice(0, 4);
+    expect((await listReportHistory(t.tenantId, propertyId, { ...none, annee: y })).every((r) => r.month.startsWith(y))).toBe(true);
+    expect(await listReportHistory(t.tenantId, propertyId, { ...none, annee: "1999" })).toEqual([]);
+    expect(await listReportHistory(other.tenantId, propertyId, none)).toEqual([]);
+    const ms = await listMeasures(t.tenantId, propertyId, none);
+    expect(ms.length).toBeGreaterThan(0);
+    const out = ms[0].outcome;
+    expect((await listMeasures(t.tenantId, propertyId, { ...none, resultat: out })).every((x) => x.outcome === out)).toBe(true);
+    expect(await listMeasures(other.tenantId, propertyId, none)).toEqual([]);
+  });
 });
+

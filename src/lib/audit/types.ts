@@ -67,6 +67,7 @@ export const AUDIT_TYPES = {
   "report.edited": { category: "EXECUTION", label: "Texte du rapport mensuel retouché" },
   "report.certified": { category: "APPROVAL", label: "Rapport mensuel certifié" },
   "report.reopened": { category: "EXECUTION", label: "Nouvelle version du rapport mensuel ouverte" },
+  "report.exported": { category: "EXECUTION", label: "Rapport ou historique exporté" },
   "promotion.declared": { category: "CONFIGURATION", label: "Promotion déclarée au registre" },
   "promotion.updated": { category: "CONFIGURATION", label: "Promotion modifiée au registre" },
   "promotion.ended": { category: "CONFIGURATION", label: "Promotion terminée" },

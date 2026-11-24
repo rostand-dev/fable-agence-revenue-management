@@ -31,6 +31,7 @@ export default async function Rapport({ params }: { params: Promise<{ id: string
         {certified && <p className="muted" data-testid="rapport-empreinte">Empreinte du contenu certifié : <code>{(r.certifiedHash ?? "").slice(0, 16)}</code></p>}
       </div>
       {s.property.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 12 }}>Ce rapport porte sur des données de démonstration : il ne décrit pas un vrai logement.</Banner>}
+      {certified && <p className="btn-row" data-testid="rapport-exports"><a className="btn btn-secondary btn-sm" href={`/api/rapports/${r.id}/export?format=pdf`} download>Exporter en PDF</a> <a className="btn btn-secondary btn-sm" href={`/api/rapports/${r.id}/export?format=csv`} download>Exporter en CSV</a></p>}
       {!certified && <Banner role="attention" title="Brouillon : rien n'est certifié">Relisez les chiffres et le texte, puis certifiez. Les chiffres ci-dessous ont été lus le {fmtDate(todayISO(new Date(s.generatedAt)))}.</Banner>}
       {k.nights > 0 && k.netIncomplete && <Banner role="attention" title="Revenu net partiel" style={{ marginTop: 12 }}>La commission est inconnue sur certaines nuits vendues : leur revenu net n'est pas compté et les chiffres nets sont sous-évalués. Ils ne sont pas complétés par un zéro.</Banner>}
       <div className="synth" style={{ marginTop: 16 }} data-testid="rapport-metriques">

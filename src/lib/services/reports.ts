@@ -8,6 +8,8 @@ import { lastMonths, monthlyKpis } from "@/lib/engine/metrics";
 import { can, denyMessage, PERMISSION_LABEL, ROLE_LABEL, type Permission, type Role } from "@/lib/rbac";
 import { buildSnapshot, checkNarrative, draftNarrative, isReportableMonth, type ReportAction, type ReportSnapshot } from "@/lib/reports/monthly";
 import { OUTCOMES, type Outcome } from "@/lib/experiments/outcome";
+import type { MeasureRow } from "@/lib/reports/csv";
+import type { HistoryFilters } from "@/lib/reports/filters";
 import { fmtMonth } from "@/lib/dates";
 
 /**
@@ -169,4 +171,39 @@ export async function certifyReport(actor: ReportActor, reportId: string, text?:
     await recordAudit(tx, { tenantId: actor.tenantId, actor: userActor(actor.id), type: "report.certified", entity: "MonthlyReport", entityId: r.id, summary: `${actor.name} a certifié le rapport de ${fmtMonth(r.month)} (${snap.property.name}), version ${r.version}.`, payload: { month: r.month, version: r.version, hash, generatedAt: snap.generatedAt } });
     return view(u);
   });
+}
+
+/** Rapport certifié prêt à exporter : un brouillon n'est jamais exporté comme un rapport certifié. */
+export async function getCertifiedReport(tenantId: string, id: string): Promise<ReportView> {
+  const r = await getReport(tenantId, id);
+  if (!r) throw new ReportError("NOT_FOUND", "Rapport introuvable.");
+  if (r.status !== "CERTIFIED") throw new ReportError("CONFLICT", "Ce rapport n'est pas certifié : seul un rapport certifié s'exporte.");
+  return r;
+}
+
+/** Rapports d'un logement avec filtres de l'historique (état, année du mois). */
+export async function listReportHistory(tenantId: string, propertyId: string, f: HistoryFilters): Promise<ReportView[]> {
+  return (await listReports(tenantId, propertyId)).filter((r) => (!f.etat || r.status === f.etat) && (!f.annee || r.month.startsWith(f.annee + "-")));
+}
+
+/** Mesures d'expériences d'un logement (résultats US-111), les plus récentes d'abord, avec filtres (résultat, année de la mesure). */
+export async function listMeasures(tenantId: string, propertyId: string, f: HistoryFilters): Promise<MeasureRow[]> {
+  const rows = await db.select({ m: experimentMeasurements, label: revenueActions.label, code: opportunities.code })
+    .from(experimentMeasurements)
+    .innerJoin(revenueActions, eq(revenueActions.id, experimentMeasurements.actionId))
+    .innerJoin(opportunities, eq(opportunities.id, revenueActions.opportunityId))
+    .where(and(eq(experimentMeasurements.tenantId, tenantId), eq(experimentMeasurements.propertyId, propertyId)))
+    .orderBy(desc(experimentMeasurements.measuredAt));
+  return rows
+    .map((r): MeasureRow => ({ id: r.m.id, code: r.code, label: r.label, outcome: isOutcome(r.m.outcome) ? r.m.outcome : "INCONCLUSIVE", reasons: r.m.reasons ?? [], observeFrom: r.m.observeFrom, observeTo: r.m.observeTo, summary: r.m.summary, interpretation: r.m.interpretation, confidence: r.m.confidence, legacy: r.m.legacy, measuredAt: r.m.measuredAt }))
+    .filter((m) => (!f.resultat || m.outcome === f.resultat) && (!f.annee || todayISO(m.measuredAt).startsWith(f.annee + "-")));
+}
+
+/** Un export est une lecture, mais il sort des données de l'espace : il est tracé au journal. */
+export async function recordExport(actor: ReportActor, entity: "MonthlyReport" | "Property", entityId: string, summary: string, payload: Record<string, unknown>): Promise<void> {
+  await recordAudit(db, { tenantId: actor.tenantId, actor: userActor(actor.id), type: "report.exported", entity, entityId: entityId.slice(0, 64), summary, payload });
+}
+
+export async function propertyName(tenantId: string, propertyId: string): Promise<string> {
+  return (await propertyOf(tenantId, propertyId)).name;
 }
