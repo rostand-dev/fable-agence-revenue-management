@@ -32,6 +32,9 @@ describe("cancellationStats", () => {
     expect(cancellationStats(undefined, null, resas, TODAY, 14)).toBeNull();
     expect(cancellationStats([], null, resas, TODAY, 14)).toBeNull();
     expect(cancellationStats([], { since: addDays(TODAY, -5) }, resas, TODAY, 14)).toBeNull();
+    expect(cancellationStats([], { since: addDays(TODAY, -13) }, resas, TODAY, 14)).toBeNull(); // le premier jour d'historique est peut-être partiel
+    expect(cancellationStats([], { since: addDays(TODAY, -14) }, resas, TODAY, 14)).not.toBeNull();
+    expect(cancellationStats([], { since: addDays(TODAY, -400) }, resas, TODAY, 121)).toBeNull(); // au-delà de la profondeur chargée
   });
   it("historique suffisant sans annulation : zéro, taux nul", () => {
     expect(cancellationStats([], { since: addDays(TODAY, -60) }, resas, TODAY, 14)).toMatchObject({ cancelled: 0, booked: 3, rate: 0 });
@@ -44,6 +47,15 @@ describe("cancellationStats", () => {
   });
   it("aucune réservation ni annulation dans la fenêtre : taux inconnu", () => {
     expect(cancellationStats([], { since: addDays(TODAY, -90) }, [], TODAY, 14)!.rate).toBeNull();
+  });
+});
+
+describe("annulation à la borne de fenêtre", () => {
+  it("une annulation enregistrée à 23 h 30 UTC compte au jour de Paris, donc dans la fenêtre du lendemain", () => {
+    const [c] = cancelledFromChanges([{ externalId: "e", kind: "CANCELLED", before: { status: "CONFIRMED", channel: "AIRBNB", checkIn: "2026-12-01", checkOut: "2026-12-03", grossRoomCents: 1 }, after: { status: "CANCELLED" }, createdAt: new Date("2026-11-11T23:30:00Z") }]);
+    expect(c.at).toBe("2026-11-12");
+    const s = cancellationStats([{ channel: "AIRBNB", checkIn: "2026-12-01", checkOut: "2026-12-03", nights: 2, grossRoomCents: 1, cancelledAt: c.at }], { since: "2026-01-01" }, [], "2026-11-12", 1)!;
+    expect(s.cancelled).toBe(1);
   });
 });
 
@@ -60,7 +72,7 @@ describe("paceComparison", () => {
     expect(p.recent.bookings).toBe(3); expect(p.reference.bookings).toBe(6);
     expect(p.bookingRatio).toBeCloseTo(0.5);
     expect(p.losShift).toBe(-2);
-    expect(p.channelShift!.delta === 1 || p.channelShift!.delta === -1).toBe(true);
+    expect(Math.abs(p.channelShift!.delta)).toBe(1); // deux canaux opposés : déplacement total, signe selon le canal retenu
     expect(["AIRBNB", "BOOKING"]).toContain(p.channelShift!.channel);
   });
   it("fenêtres de longueurs différentes : le rapport est ramené à la même longueur", () => {

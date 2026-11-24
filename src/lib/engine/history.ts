@@ -7,6 +7,8 @@
 import { addDays, type ISODate } from "../dates";
 import type { Resa } from "./types";
 
+/** Profondeur chargée par `loadEngineInput` : une fenêtre plus longue n'est pas évaluable (réponse « inconnu », jamais une réponse partielle). */
+export const MAX_HISTORY_DAYS = 120;
 export type Cancellation = { channel: string; checkIn: ISODate; checkOut: ISODate; nights: number; grossRoomCents: number; cancelledAt: ISODate };
 /** Début de l'historique des annulations de ce logement (premier changement de réservation enregistré). */
 export type CancellationTracking = { since: ISODate };
@@ -35,7 +37,8 @@ export type CancellationStats = {
 export function cancellationStats(cancellations: Cancellation[] | undefined, tracking: CancellationTracking | null | undefined, resas: Resa[], today: ISODate, windowDays: number): CancellationStats | null {
   if (!cancellations || !tracking) return null;
   const from = addDays(today, -windowDays + 1), to = addDays(today, 1);
-  if (tracking.since > from) return null;
+  // `since` est le jour du premier changement enregistré, dont le début de journée est peut-être manqué : la fenêtre doit commencer strictement après
+  if (windowDays > MAX_HISTORY_DAYS || tracking.since >= from) return null;
   const inW = cancellations.filter((c) => inWin(c.cancelledAt, from, to));
   const booked = confirmed(resas).filter((r) => inWin(r.bookedAt, from, to)).length;
   const byChannel: Record<string, number> = {};
@@ -69,8 +72,9 @@ function period(rs: Resa[]): PeriodStat {
 
 /**
  * Rythme de prise de réservations : fenêtre récente (les `recentDays` derniers jours, aujourd'hui inclus) contre fenêtre de référence
- * (les `refDays` jours qui précèdent), selon le jour de réservation. Calculable dès que l'historique couvre les deux fenêtres ; sinon null.
- * `firstBookingDate` : première réservation connue du logement (sans elle, on ne peut pas savoir si la référence est vide ou simplement absente).
+ * (les `refDays` jours qui précèdent), selon le jour de réservation. Calculable dès que la première réservation connue précède la référence ; sinon null.
+ * `firstBookingDate` : première réservation confirmée encore connue du logement. Elle ne prouve pas que la référence est réellement vide (un logement peut
+ * n'avoir rien vendu depuis) : une référence à zéro donne un rapport inconnu, jamais un rythme « infini ». La durée médiane est la médiane haute (entière).
  */
 export function paceComparison(resas: Resa[], today: ISODate, recentDays: number, refDays: number, firstBookingDate: ISODate | null): PaceComparison | null {
   const rFrom = addDays(today, -recentDays + 1), rTo = addDays(today, 1), pFrom = addDays(rFrom, -refDays), pTo = rFrom;

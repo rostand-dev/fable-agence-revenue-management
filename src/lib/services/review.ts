@@ -2,7 +2,7 @@ import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { recordAudit } from "../audit/log";
 import { addDays, diffDays, todayISO, type ISODate } from "../dates";
-import type { Cancellation } from "../engine/history";
+import { MAX_HISTORY_DAYS, type Cancellation } from "../engine/history";
 import { cancelledFromChanges } from "../reservations/cancellations";
 import { reviewProperty, type EngineInput } from "../engine/detect";
 import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
@@ -55,12 +55,12 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     // prix de base : verrou structurant et plafond cumulé sur 7 jours (blueprint §6.4, §11.3)
     db.select({ type: revenueActions.type, status: revenueActions.status, approvedAt: revenueActions.approvedAt, createdAt: revenueActions.createdAt, parameters: revenueActions.parameters }).from(revenueActions)
       .where(and(eq(revenueActions.propertyId, p.id), eq(revenueActions.type, "BASE_PRICE_CHANGE"), inArray(revenueActions.status, [...STRUCTURAL_COUNTED_STATUSES]))),
-    // annulations : historique des changements de réservation (borné aux 120 derniers jours, la plus longue fenêtre lue par les playbooks)
+    // annulations : historique des changements de réservation (borné à MAX_HISTORY_DAYS ; la borne UTC écarte au plus 2 h de marge sur le jour de Paris, sans effet car les fenêtres lues restent plus courtes)
     db.select({ externalId: reservationChanges.externalId, kind: reservationChanges.kind, before: reservationChanges.before, after: reservationChanges.after, createdAt: reservationChanges.createdAt }).from(reservationChanges)
-      .where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId), gte(reservationChanges.createdAt, new Date(addDays(today, -120) + "T00:00:00Z")))).orderBy(reservationChanges.createdAt),
+      .where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId), gte(reservationChanges.createdAt, new Date(addDays(today, -MAX_HISTORY_DAYS) + "T00:00:00Z")))).orderBy(reservationChanges.createdAt),
   ]);
   const [trk] = await db.select({ since: sql<Date | null>`min(${reservationChanges.createdAt})` }).from(reservationChanges).where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId)));
-  const cancellations: Cancellation[] = cancelledFromChanges(changes).map(({ before, at }) => ({ channel: before.channel, checkIn: before.checkIn, checkOut: before.checkOut, nights: diffDays(before.checkOut, before.checkIn), grossRoomCents: before.grossRoomCents, cancelledAt: at }));
+  const cancellations: Cancellation[] = cancelledFromChanges(changes).filter(({ before }) => typeof before.channel === "string" && before.checkIn && before.checkOut && before.checkOut > before.checkIn && Number.isFinite(before.grossRoomCents)).map(({ before, at }) => ({ channel: before.channel, checkIn: before.checkIn, checkOut: before.checkOut, nights: diffDays(before.checkOut, before.checkIn), grossRoomCents: before.grossRoomCents, cancelledAt: at }));
   const firstBooking = resas.filter((r) => r.status === "CONFIRMED").map((r) => r.bookedAt).sort()[0] ?? null;
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
