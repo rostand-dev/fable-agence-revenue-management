@@ -27,6 +27,11 @@ describe("guide pas-à-pas (US-102)", () => {
     const base = { channel: "AIRBNB", label: "x", soldNightlyCents: null, parameters: { promotionLabel: "Perso", promotions: [1, 2] } };
     expect(buildRunbook({ ...base, type: "PROMO_REMOVAL" }).map((x) => x.id)).toEqual(["open", "find", "disable", "compare-price", "capture", "stop-if-different"]);
     expect(buildRunbook({ ...base, type: "INVESTIGATION" })[1].detail).toContain("2");
+    // PB-08 : relecture du calendrier, pas du registre des promotions
+    const cal = buildRunbook({ ...base, type: "INVESTIGATION", parameters: { subject: "CALENDAR", channel: "AIRBNB" } });
+    expect(cal.map((x) => x.id)).toEqual(["calendar", "price", "promos", "notes"]);
+    expect(cal.some((x) => /promotions, sans|rubrique promotions/.test(x.title) && x.title.includes("rubrique"))).toBe(false);
+    expect(cal[3].title).toContain("pas daté comme vérifié");
     expect(buildRunbook({ ...base, type: "LISTING_AUDIT" })).toHaveLength(4);
     expect(buildRunbook({ ...base, type: "MIN_STAY_OVERRIDE", channel: null })[0].title).toContain("PriceLabs");
   });

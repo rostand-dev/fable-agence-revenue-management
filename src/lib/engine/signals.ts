@@ -15,6 +15,7 @@ import { hardFloorCents } from "./economics";
 import { markupFactor } from "./context";
 import { PLAYBOOKS, threshold, type PlaybookCode } from "./playbooks";
 import { strategyFloorOver } from "./seasons";
+import { cancellationStats } from "./history";
 import { WINDOWS, type WindowStat } from "./metrics";
 import type { Channel, SignalMeasure, SignalSummary, StackResult } from "./types";
 
@@ -266,6 +267,45 @@ export function detectChannelGap(ctx: Ctx, stats: WindowStat[]): Signal<ChannelG
   }];
 }
 
+/* ------------------------------------------------------------------ PB-08 */
+export type CancellationPayload = { channel: string; checkIn: ISODate; checkOut: ISODate; cancelledAt: ISODate; stayNights: number; reopened: ISODate[]; cancelled14: number | null; rate14: number | null };
+/**
+ * PB-08 : une annulation récente rouvre des nuits à venir qui sont encore libres. Silencieux tant que l'historique des annulations est inconnu
+ * (jamais « zéro annulation »). Ne marque aucune nuit : le playbook ne propose pas d'action sur le prix, il demande une relecture.
+ */
+export function detectCancellation(ctx: Ctx): Signal<CancellationPayload>[] {
+  const win = threshold("PB-08", "windowDays"), maxLead = threshold("PB-08", "maxLeadDays"), minNights = threshold("PB-08", "minReopenedNights"), alert = threshold("PB-08", "alertRate");
+  if (!cancellationStats(ctx.cancellations, ctx.cancellationTracking, ctx.resas, ctx.today, win)) return [];
+  const from0 = addDays(ctx.today, -win + 1), horizon = addDays(ctx.today, maxLead + 1);
+  const raw14 = cancellationStats(ctx.cancellations, ctx.cancellationTracking, ctx.resas, ctx.today, threshold("PB-08", "rateWindowDays"));
+  // un taux sur trop peu de réservations n'est pas un taux : il reste inconnu
+  const s14 = raw14 && raw14.cancelled + raw14.booked >= threshold("PB-08", "minRateSample") ? raw14 : null;
+  const out: Signal<CancellationPayload>[] = [];
+  const seen = new Set<string>();
+  for (const c of [...(ctx.cancellations ?? [])].sort((a, b) => a.checkIn.localeCompare(b.checkIn) || a.channel.localeCompare(b.channel))) {
+    if (c.cancelledAt < from0 || c.cancelledAt > ctx.today) continue;
+    const key = `${c.channel}:${c.checkIn}:${c.checkOut}`;
+    if (seen.has(key)) continue;
+    const reopened: ISODate[] = [];
+    for (let i = 0; i < c.nights; i++) {
+      const d = addDays(c.checkIn, i), day = ctx.byDate.get(d);
+      if (d >= ctx.today && d < horizon && day?.state === "FREE") reopened.push(d);
+    }
+    if (reopened.length < minNights) continue;
+    seen.add(key);
+    out.push({
+      playbook: "PB-08", trigger: "DATES_REOPENED", dedupe: key, channel: (ctx.channels as string[]).includes(c.channel) ? (c.channel as Channel) : null,
+      from: reopened[0], to: addDays(reopened[reopened.length - 1], 1), dates: reopened,
+      measures: [
+        m("reopenedNights", "Nuits rouvertes par l'annulation, encore libres", reopened.length, minNights, ">=", "nuits"),
+        m("cancellationRate14", "Taux d'annulation sur 14 jours", s14?.rate ?? null, alert, ">=", "ratio"),
+      ],
+      payload: { channel: c.channel, checkIn: c.checkIn, checkOut: c.checkOut, cancelledAt: c.cancelledAt, stayNights: c.nights, reopened, cancelled14: s14?.cancelled ?? null, rate14: s14?.rate ?? null },
+    });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ PB-10 */
 export type DataDriftPayload = { channel: Channel; ageDays: number | null };
 export function detectDataDrift(ctx: Ctx): Signal<DataDriftPayload>[] {
@@ -282,4 +322,4 @@ export function detectDataDrift(ctx: Ctx): Signal<DataDriftPayload>[] {
 }
 
 /** Ordre d'évaluation fixe : un playbook qui marque des nuits les retire aux suivants (veto d'abord, puis causes structurelles, puis rythme). */
-export const SIGNAL_ORDER: PlaybookCode[] = ["PB-06", "PB-13", "PB-05", "PB-03", "PB-07", "PB-02", "PB-01", "PB-04", "PB-10"];
+export const SIGNAL_ORDER: PlaybookCode[] = ["PB-06", "PB-13", "PB-05", "PB-03", "PB-07", "PB-02", "PB-01", "PB-04", "PB-08", "PB-10"];

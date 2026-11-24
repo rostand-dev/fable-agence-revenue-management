@@ -117,7 +117,7 @@ export type Candidate = {
 
 export type Cause =
   | "PRICE_HIGH" | "DEMAND_WEAK" | "BOOKING_WINDOW_NOT_OPEN" | "RESTRICTION_MISMATCH" | "VISIBILITY_CONVERSION"
-  | "BASE_PRICE_LOW" | "EVENT_NOT_PRICED" | "DISCOUNT_STACK" | "FLOOR_BREACH" | "DATA_STALE";
+  | "BASE_PRICE_LOW" | "EVENT_NOT_PRICED" | "DISCOUNT_STACK" | "FLOOR_BREACH" | "DATA_STALE" | "CANCELLATION";
 
 export type Evidence = { label: string; value: string; source: string; kind: "fait" | "comparaison" | "interpretation" };
 export type DiagnosisStep = { question: string; answer: string; verdict: "oui" | "non" | "inconnu" };
