@@ -31,6 +31,16 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Facultatif : identifiant exact du modèle OpenAI du repli. Le repli n'est actif que si OPENAI_API_KEY et OPENAI_MODEL sont tous deux renseignés.
       - OPENAI_MODEL=${OPENAI_MODEL:-}
+      # Facultatif : adresse de l'API Mistral (tests avec un faux serveur). Défaut : https://api.mistral.ai.
+      - MISTRAL_API_BASE=${MISTRAL_API_BASE:-https://api.mistral.ai}
+      # Facultatif : adresse (https) du fichier de prix open source de LiteLLM, lu chaque jour pour connaître le prix des modèles. Un prix modifié n'est appliqué qu'après validation dans l'application.
+      - LLM_PRICES_URL=${LLM_PRICES_URL:-https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json}
+      # Facultatif : surcharges de prix, JSON {"modèle": {"input": 1, "output": 5}} en USD par million de jetons (modèle absent du fichier LiteLLM, ou prix à forcer). vide = aucune.
+      - LLM_PRICE_OVERRIDES=${LLM_PRICE_OVERRIDES:-}
+      # Facultatif : fréquence du job de mise à jour des prix et de la disponibilité des modèles, en heures (défaut 24, de 1 à 168 ; 0 désactive le job).
+      - LLM_SYNC_INTERVAL_HOURS=${LLM_SYNC_INTERVAL_HOURS:-24}
+      # Facultatif : taux fixe dollar → euro pour exprimer le coût des modèles et le plafond mensuel en euros (défaut 0.92 ; à ajuster à la main).
+      - LLM_USD_EUR_RATE=${LLM_USD_EUR_RATE:-0.92}
       # Facultatif : appels HTTP aux fournisseurs de modèle au plus par revue (défaut 80 ; corrections et replis comptés). Au-delà, les agents passent en repli déterministe pour le reste de la revue. 0 désactive les appels de modèle.
       - AGENT_MAX_CALLS_PER_REVIEW=${AGENT_MAX_CALLS_PER_REVIEW:-80}
       # Facultatif : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300000). Atteint : repli déterministe jusqu'au lendemain. 0 désactive les appels de modèle.

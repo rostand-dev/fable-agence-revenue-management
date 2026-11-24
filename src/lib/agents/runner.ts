@@ -7,6 +7,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { db, newId, schema } from "@/db";
 import { checkBudget, budgetDayStart, budgetLimits, type BudgetState } from "./budget";
+import { costOfTried, getPriceBook, type PriceBook } from "../llm-registry/pricebook";
 import { generateJson, type GatewayFailure, type GatewayMeta, type GatewayTarget } from "./gateway";
 import { resolveTargets } from "./llm-config";
 import { PROMPTS, promptRef, type PromptId } from "./prompts";
@@ -55,10 +56,16 @@ export async function runAgentTask<T>(task: AgentTask<T>): Promise<AgentOutcome<
   let targets = b.targets.get(task.agentId);
   if (!targets) { targets = await resolveTargets(b.tenantId, task.agentId); b.targets.set(task.agentId, targets); }
   const base = { id: newId("run"), tenantId: b.tenantId, agentId: task.agentId, opportunityId: task.opportunityId ?? null, operation: task.operation, promptId: ref.id, promptVersion: ref.version, promptHash: ref.hash, createdAt: new Date() };
+  // livre de prix chargé après l'appel (jamais pour un repli sans appel) ; un livre vide donne un coût inconnu (null), jamais inventé
+  let book: PriceBook = new Map();
+  const costOf = (meta: GatewayMeta | null) => {
+    const c = meta ? costOfTried(meta.tried, book) : { costUsd: null, snapshotId: null };
+    return { costUsd: c.costUsd === null ? null : String(c.costUsd), priceSnapshotId: c.snapshotId };
+  };
   const fallback = (reason: FallbackReason, meta: GatewayMeta | null, detail?: string): AgentOutcome<T> => ({
     data: task.fallback(), mode: "DETERMINISTIC", reason, meta,
     run: { ...base, mode: "DETERMINISTIC", model: meta?.tried[0]?.model ?? null, provider: meta?.tried[0]?.provider ?? null, summary: task.summary({ mode: "DETERMINISTIC", reason }), fallbackReason: reason,
-      attempts: meta?.attempts ?? 0, repaired: meta?.repaired ?? false, inputTokens: meta?.inputTokens || null, outputTokens: meta?.outputTokens || null, durationMs: meta?.durationMs ?? 0, trace: meta ? { tried: meta.tried } : null,
+      attempts: meta?.attempts ?? 0, repaired: meta?.repaired ?? false, inputTokens: meta?.inputTokens || null, outputTokens: meta?.outputTokens || null, durationMs: meta?.durationMs ?? 0, trace: meta ? { tried: meta.tried } : null, ...costOf(meta),
       error: reason === "NO_PROVIDER" || reason.startsWith("BUDGET_") ? null : (detail ?? FALLBACK_LABEL[reason]).slice(0, 200) },
   });
   if (targets.length === 0) return fallback("NO_PROVIDER", null);
@@ -68,12 +75,13 @@ export async function runAgentTask<T>(task: AgentTask<T>): Promise<AgentOutcome<
   if (!verdict.ok) return fallback(verdict.reason, null);
   const r = await generateJson(targets, { task: task.prompt, system: def.system, user: task.user, schema: task.schema, maxTokens: def.maxTokens });
   // le plafond compte les appels réellement faits au fournisseur (corrections et replis compris), pas les tâches
+  book = await getPriceBook();
   b.callsUsed += r.meta.attempts;
   b.tokensUsedToday += r.meta.inputTokens + r.meta.outputTokens;
   if (!r.ok) return fallback(r.kind, r.meta, r.message);
   return {
     data: r.data, mode: "LLM", reason: null, meta: r.meta,
     run: { ...base, mode: "LLM", model: r.meta.model, provider: r.meta.provider, summary: task.summary({ mode: "LLM", reason: null }), fallbackReason: null, attempts: r.meta.attempts, repaired: r.meta.repaired,
-      inputTokens: r.meta.inputTokens, outputTokens: r.meta.outputTokens, durationMs: r.meta.durationMs, trace: { tried: r.meta.tried } },
+      inputTokens: r.meta.inputTokens, outputTokens: r.meta.outputTokens, durationMs: r.meta.durationMs, trace: { tried: r.meta.tried }, ...costOf(r.meta) },
   };
 }

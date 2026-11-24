@@ -135,6 +135,8 @@ jobs:
       # Faux serveur de modèle de langage (scripts/fake-llm-server.ts), lancé par Playwright : les agents l'interrogent comme ils interrogeraient Anthropic. Clé factice, aucun appel externe.
       ANTHROPIC_API_BASE: http://127.0.0.1:4011
       ANTHROPIC_API_KEY: ci-fake-llm-key-0123456789
+      # Le job de mise à jour des prix et modèles LLM va sur Internet (fichier de prix, listes des fournisseurs) : coupé en CI, comme tout appel externe.
+      LLM_SYNC_INTERVAL_HOURS: "0"
       # Identifiants que Playwright saisit pour se connecter : ceux du compte de démo ci-dessus.
       E2E_EMAIL: demo-e2e@example.test
       E2E_PASSWORD: ci-e2e-demo-passw0rd
