@@ -108,11 +108,11 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
       )}
       {tab === "activite" && (
         <div className="stack">
-          <Recap rows={[["Interventions récentes", String(runs.length), true], ["Dont avec modèle de langage", String(runs.filter((r) => r.mode === "LLM").length), true], ["Jetons consommés", tokens ? tokens.toLocaleString("fr-FR") : "aucun", true], ["En erreur", String(runs.filter((r) => r.error).length), true], ["Budget de jetons du jour (tous agents)", limits.dailyTokens === 0 ? "appels de modèle désactivés" : `${usedToday.toLocaleString("fr-FR")} sur ${limits.dailyTokens.toLocaleString("fr-FR")}`, true]]} />
-          <p className="row-wrap" style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: 0 }} data-testid="activite-filtre">
-            <Link className={`btn btn-sm ${onlyLlm ? "btn-ghost" : "btn-secondary"}`} href={`/equipe/${a.id}?tab=activite`} scroll={false} aria-current={onlyLlm ? undefined : "true"}>Toutes les interventions</Link>
-            <Link className={`btn btn-sm ${onlyLlm ? "btn-secondary" : "btn-ghost"}`} href={`/equipe/${a.id}?tab=activite&mode=llm`} scroll={false} aria-current={onlyLlm ? "true" : undefined}>Avec modèle seulement</Link>
-          </p>
+          <Recap rows={[[onlyLlm ? "Interventions récentes (filtre : avec modèle)" : "Interventions récentes", String(runs.length), true], ["Dont avec modèle de langage", String(runs.filter((r) => r.mode === "LLM").length), true], ["Jetons consommés", tokens ? tokens.toLocaleString("fr-FR") : "aucun", true], ["En erreur", String(runs.filter((r) => r.error).length), true], ["Budget de jetons du jour (tous agents)", limits.dailyTokens === 0 ? "appels de modèle désactivés" : `${usedToday.toLocaleString("fr-FR")} sur ${limits.dailyTokens.toLocaleString("fr-FR")}`, true]]} />
+          <nav className="activite-filtre" aria-label="Filtrer les interventions" data-testid="activite-filtre">
+            <Link className={`btn btn-sm ${onlyLlm ? "btn-ghost" : "btn-secondary"}`} href={`/equipe/${a.id}?tab=activite`} scroll={false} aria-current={onlyLlm ? undefined : "page"}>Toutes les interventions</Link>
+            <Link className={`btn btn-sm ${onlyLlm ? "btn-secondary" : "btn-ghost"}`} href={`/equipe/${a.id}?tab=activite&mode=llm`} scroll={false} aria-current={onlyLlm ? "page" : undefined}>Avec modèle seulement</Link>
+          </nav>
           {runs.length === 0 ? <p className="muted">{onlyLlm ? "Aucune intervention avec modèle de langage." : "Aucune intervention enregistrée."}</p> : (
             <ul className="timeline">{runs.map((r) => (
               <li key={r.id}><span className={`tl-dot ${r.error ? "is-attention" : r.mode === "LLM" ? "is-tech" : "is-sain"}`}><Icon name={r.error ? "alert" : "check"} /></span>

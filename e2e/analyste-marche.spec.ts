@@ -54,13 +54,21 @@ test("Revue avec modèle : les constats sont rédigés par l'analyste (faux serv
   await expect(page.getByTestId("trace-prompt").first()).toContainText("marche.market_analysis");
 });
 
-test("Activité d'un agent : le filtre « Avec modèle seulement » ne garde que les interventions du modèle, sans débordement", async ({ page }) => {
+test("Activité d'un agent : le filtre « Avec modèle seulement » ne garde que les interventions du modèle, sans débordement", async ({ page }, info) => {
+  test.skip(!process.env.ANTHROPIC_API_BASE, "faux serveur de modèle absent : aucune intervention avec modèle");
+  if (info.project.name === "bureau") {
+    await page.goto("/");
+    await page.getByRole("button", { name: "Relancer la revue" }).click();
+    await expect(page.getByText("Revue terminée.")).toBeVisible({ timeout: 30_000 });
+  }
   await page.goto("/equipe/marche?tab=activite");
   const filtre = page.getByTestId("activite-filtre");
-  await expect(filtre.getByRole("link", { name: "Toutes les interventions" })).toHaveAttribute("aria-current", "true");
+  await expect(filtre.getByRole("link", { name: "Toutes les interventions" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("ul.timeline li", { hasText: "· règles" }).first()).toBeVisible(); // sans filtre : des lignes de règles existent
   await filtre.getByRole("link", { name: "Avec modèle seulement" }).click();
   await expect(page).toHaveURL(/mode=llm/);
-  await expect(filtre.getByRole("link", { name: "Avec modèle seulement" })).toHaveAttribute("aria-current", "true");
+  await expect(filtre.getByRole("link", { name: "Avec modèle seulement" })).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("ul.timeline li").first()).toBeVisible(); // la boucle ci-dessous ne passe pas à vide
   for (const li of await page.locator("ul.timeline li").all()) await expect(li).not.toContainText("· règles");
   const w = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
   expect(w.s).toBeLessThanOrEqual(w.c + 1);

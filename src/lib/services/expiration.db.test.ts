@@ -22,11 +22,12 @@ describe("expiration des dossiers après une longue interruption des revues", ()
     await db.update(opportunities).set({ expiresAt: past }).where(and(eq(opportunities.tenantId, t.tenantId), eq(opportunities.status, "OPEN")));
     await runDailyReview(t.tenantId, "MANUAL");
     const after = await db.select().from(opportunities).where(eq(opportunities.tenantId, t.tenantId));
+    // chaque dossier encore détecté (même seed, même jour) reste le MÊME dossier, ouvert, avec une échéance repoussée : ni expiré, ni rouvert sous un nouvel id
     for (const o of open) {
       const now = after.find((x) => x.id === o.id)!;
-      // soit le signal a disparu (légitime), soit le dossier est resté ouvert avec une échéance repoussée
-      if (now.status === "OPEN") expect(now.expiresAt >= todayISO(new Date())).toBe(true);
+      expect(now.status, `dossier ${o.code}`).toBe("OPEN");
+      expect(now.expiresAt >= todayISO(new Date())).toBe(true);
     }
-    expect(after.filter((x) => x.status === "OPEN" && x.expiresAt === past)).toHaveLength(0);
+    expect(after.filter((x) => x.status === "OPEN")).toHaveLength(open.length);
   });
 });

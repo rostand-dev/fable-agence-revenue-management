@@ -97,6 +97,14 @@ describe("expiration d'un dossier ouvert", () => {
   it("signal toujours là, échéance dépassée, non rafraîchi (repos ou différé) : expire", () => {
     expect(shouldExpire(e(), new Set(["k"]), new Set(), "2026-11-20")).toBe(true);
   });
+  it("frontière : une échéance égale à aujourd'hui n'expire pas ; un dossier différé ou déjà expiré n'est pas touché", () => {
+    expect(shouldExpire(e({ expiresAt: "2026-11-20" }), new Set(["k"]), new Set(), "2026-11-20")).toBe(false);
+    expect(shouldExpire(e({ status: "DEFERRED" }), new Set(), new Set(), "2026-11-20")).toBe(false);
+    expect(shouldExpire(e({ status: "EXPIRED" }), new Set(), new Set(), "2026-11-20")).toBe(false);
+  });
+  it("signal disparu : expire même si l'id figure parmi les dossiers rafraîchis (cas théorique)", () => {
+    expect(shouldExpire(e(), new Set(), new Set(["a"]), "2026-11-20")).toBe(true);
+  });
   it("échéance future : n'expire pas ; un dossier tranché n'expire jamais ici", () => {
     expect(shouldExpire(e({ expiresAt: "2026-12-01" }), new Set(["k"]), new Set(), "2026-11-20")).toBe(false);
     expect(shouldExpire(e({ status: "DECIDED" }), new Set(), new Set(), "2026-11-20")).toBe(false);

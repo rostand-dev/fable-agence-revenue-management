@@ -19,7 +19,6 @@ export type OpeningDecision =
   | { action: "REFRESH" }
   | { action: "SKIP"; reason: "COOLDOWN" | "DEFERRED"; until: ISODate | null };
 
-/** Jours de repos d'un playbook ; un code inconnu retombe sur 14 jours (jamais 0 : un doute ne rouvre pas un dossier tranché). */
 /**
  * Un dossier ouvert expire quand le signal a disparu, ou quand son échéance est dépassée SANS qu'il vienne d'être rafraîchi : la lecture de l'échéance se
  * fait sur l'état d'avant la revue, un dossier rafraîchi (échéance repoussée) ne doit donc pas expirer à tort après une longue interruption des revues.
@@ -30,6 +29,7 @@ export function shouldExpire(e: { id: string; status: string; dedupeKey: string;
   return e.expiresAt < today && !renewed.has(e.id);
 }
 
+/** Jours de repos d'un playbook ; un code inconnu retombe sur 14 jours (jamais 0 : un doute ne rouvre pas un dossier tranché). */
 export function cooldownDaysOf(playbook: string): number {
   return playbookOf(playbook)?.cooldownDays ?? 14;
 }

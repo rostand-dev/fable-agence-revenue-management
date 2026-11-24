@@ -1936,4 +1936,6 @@ table.cascade .delta-neu { color: var(--quiet); }
 [data-testid="rapports-filtres"] { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
 [data-testid="rapports-filtres"] .field { min-width: 140px; flex: 1 1 140px; }
 [data-testid="rapports-filtres"] select { width: 100%; }
-.inbox-filters .btn-sm, [data-testid="rapport-exports"] .btn-sm, [data-testid="rapports-liste"] > p .btn-sm, [data-testid="mesures-liste"] > p .btn-sm { min-height: 44px; display: inline-flex; align-items: center; }
+.inbox-filters .btn-sm, .activite-filtre .btn-sm, [data-testid="rapport-exports"] .btn-sm, [data-testid="rapports-liste"] > p .btn-sm, [data-testid="mesures-liste"] > p .btn-sm { min-height: 44px; display: inline-flex; align-items: center; }
+/* Activité d'un agent : filtre des interventions, retour à la ligne sur mobile */
+.activite-filtre { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; }
