@@ -51,9 +51,9 @@ describe("catalogue des playbooks", () => {
       expect(p.requiredData.length).toBeGreaterThan(0);
     }
   });
-  it("PB-01 à PB-10 et PB-13 sont actifs ; les autres sont annoncés « pas encore actifs »", () => {
-    expect(IMPLEMENTED_PLAYBOOKS).toEqual(["PB-01", "PB-02", "PB-03", "PB-04", "PB-05", "PB-06", "PB-07", "PB-08", "PB-09", "PB-10", "PB-13"]);
-    expect(PLAYBOOKS["PB-11"].status).toBe("PLANNED");
+  it("PB-01 à PB-11 et PB-13 sont actifs ; les autres sont annoncés « pas encore actifs »", () => {
+    expect(IMPLEMENTED_PLAYBOOKS).toEqual(["PB-01", "PB-02", "PB-03", "PB-04", "PB-05", "PB-06", "PB-07", "PB-08", "PB-09", "PB-10", "PB-11", "PB-13"]);
+    expect(PLAYBOOKS["PB-12"].status).toBe("PLANNED");
   });
   it("threshold lit le catalogue et refuse une clé inconnue", () => {
     expect(threshold("PB-01", "paceGap")).toBe(-0.18);

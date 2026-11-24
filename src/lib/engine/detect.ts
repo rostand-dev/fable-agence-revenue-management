@@ -10,8 +10,8 @@ import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
 import { conformOpportunity, type ConformityIssue } from "./candidates";
 import { strategyFloorOver } from "./seasons";
 import {
-  detectCancellation, detectChannelGap, detectLongStay, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
-  type CancellationPayload, type ChannelGapPayload, type LongStayPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
+  detectBaseLow, detectCancellation, detectChannelGap, detectLongStay, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
+  type BaseLowPayload, type CancellationPayload, type ChannelGapPayload, type LongStayPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
 } from "./signals";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
 import type { Candidate, Channel, DetectedOpportunity, Diagnosis, DiagnosisStep, Evidence, Promo, StackResult } from "./types";
@@ -515,6 +515,71 @@ function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportu
   return out;
 }
 
+/* ------------------------------------------------------------------ PB-11 */
+/**
+ * PB-11 · prix de base trop bas, lu dans le logement lui-même : les réservations arrivent bien plus tôt qu'avant et ne ralentissent pas. L'option est un
+ * palier de hausse du prix de base (soumis au verrou structurant, au plafond de 7 jours et à l'approbation du propriétaire) ; sans donnée de marché, son gain
+ * n'est pas chiffré et la hausse reste proposée avec cette réserve. L'inaction est retenue quand le gain chiffré est négatif.
+ */
+function baseLow(ctx: Ctx, signals: Signal<BaseLowPayload>[]): DetectedOpportunity[] {
+  const out: DetectedOpportunity[] = [];
+  for (const sig of signals) {
+    const { cmp, free } = sig.payload;
+    const step = threshold("PB-11", "stepPct"), factor = 1 + step / 100;
+    const channel = ctx.refChannel, los = Math.max(ctx.refLos, ctx.strategy.minStay ?? 1, 1), a = avgDay(ctx, free);
+    if (a.price === null) continue;
+    const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d), promos = refPromos(ctx, channel, free), cur = stack(ctx, channel, los, a.price, promos);
+    const df = Math.min(1.5, 1 + (cmp.leadGrowth ?? 0) / 2);
+    const b0 = expected(ctx, free, channel, 1, promoFn, los, df), b1 = expected(ctx, free, channel, factor, promoFn, los, df);
+    const delta = b0 !== null && b1 !== null ? b1 - b0 : null;
+    const to = sig.to, from = sig.from;
+    const cands: Candidate[] = [
+      finalize(ctx, {
+        type: "BASE_PRICE_CHANGE", label: `Relever le prix de base de ${step} %`,
+        detail: `S'applique aux ${plural(free.length, "nuit")} encore libre${free.length > 1 ? "s" : ""} à partir du ${fmtDay(from)} ; les réservations acquises ne changent pas.`, agent: "pricing",
+        target: { system: "PRICELABS" }, parameters: { changePct: step, basePriceCents: ctx.strategy.basePriceCents ? Math.round(ctx.strategy.basePriceCents * factor) : null, previousBasePriceCents: ctx.strategy.basePriceCents ?? null, dates: free }, nightsTouched: free.length, priceChangePct: step,
+        current: cur, proposed: stack(ctx, channel, los, a.price * factor, promos), expectedDeltaCents: delta,
+        hypothesis: `${DEMAND_MODEL_NOTE} ${delta === null ? "Sans donnée de marché sur ces nuits, le gain n'est pas chiffré : la décision repose sur l'évolution du délai de réservation du logement." : "La demande propre au logement est estimée par l'allongement de son délai de réservation."}`,
+        rollbackPlan: "Rétablir le prix de base précédent ; fenêtre d'observation minimale de 14 jours.", executionMode: ctx.property.isDemo || ctx.strategy.basePriceCents ? plExec(ctx, "BASE_PRICE_CHANGE") : "MANUAL_RUNBOOK", risk: "HIGH", measurementWindowDays: PLAYBOOKS["PB-11"].measurementHorizonDays,
+      }, from, to),
+      noAction(ctx, from, to, cur, "Conserver le prix de base et revérifier le délai de réservation à la prochaine revue hebdomadaire."),
+    ];
+    const first = cands[0];
+    const selected = first.audit.verdict !== "REJECT" && (delta === null || delta >= 0) ? 0 : pick(cands, { preferNoAction: true });
+    const lead = (x: number | null) => (x === null ? "inconnu" : `${x} jours`);
+    out.push({
+      playbook: "PB-11", signal: summarize(sig, ctx.today), dedupe: "base", reasonCode: "LEAD_TIME_LENGTHENS",
+      title: `Les réservations arrivent ${lead(cmp.leadShift)} plus tôt qu'avant`,
+      stayFrom: from, stayTo: to,
+      signalText: `Délai médian de réservation ${lead(cmp.recent.medianLead)} sur ${cmp.recentDays} jours contre ${lead(cmp.reference.medianLead)} avant, à rythme ${cmp.bookingRatio !== null && cmp.bookingRatio >= 1 ? "soutenu" : "inférieur"}`, signalSource: "Historique des réservations",
+      hypothesisText: "Le logement se remplit de plus en plus en avance sans ralentir : son prix de base est probablement trop bas.",
+      signals: { recentMedianLeadDays: cmp.recent.medianLead, referenceMedianLeadDays: cmp.reference.medianLead, leadGrowth: cmp.leadGrowth === null ? null : Math.round(cmp.leadGrowth * 100) / 100, bookingRatio: cmp.bookingRatio === null ? null : Math.round(cmp.bookingRatio * 100) / 100, recentBookings: cmp.recent.bookings, referenceBookings: cmp.reference.bookings, freeNights: free.length },
+      diagnosis: {
+        primary: "BASE_PRICE_LOW", primaryLabel: "Prix de base trop bas : les voyageurs réservent de plus en plus tôt",
+        alternatives: [
+          { cause: "EVENT_NOT_PRICED", label: "Événement mal capturé", why: "Un événement ou une période précise peut concentrer les réservations anticipées : à revérifier dans le calendrier du marché." },
+          { cause: "DEMAND_WEAK", label: "Mix de canaux ou durées de séjour modifiés", why: cmp.channelShift ? `Déplacement maximal de part de canal : ${Math.round(Math.abs(cmp.channelShift.delta) * 100)} points (seuil ${Math.round(threshold("PB-11", "maxChannelShift") * 100)}) : écarté.` : "Parts de canal non comparables : non vérifié." },
+        ],
+        confidence: confidence([[cmp.recent.bookings >= 10, 0.08], [cmp.reference.bookings >= 12, 0.06], [(cmp.bookingRatio ?? 0) >= 1.2, 0.06]], 0.45),
+        confidenceNote: "Comparaison du logement à lui-même sans donnée de marché : le délai de réservation peut aussi s'allonger pour une saison ou une durée de séjour différente.",
+        tree: [
+          { question: "Le délai de réservation s'allonge-t-il nettement ?", answer: `Oui : ${lead(cmp.recent.medianLead)} contre ${lead(cmp.reference.medianLead)} (+${Math.round((cmp.leadGrowth ?? 0) * 100)} %).`, verdict: "oui" },
+          { question: "Le rythme de prises ralentit-il ?", answer: `Non : ${cmp.bookingRatio === null ? "inconnu" : Math.round(cmp.bookingRatio * 100) + " % du rythme de référence"}.`, verdict: "non" },
+          { question: "Le mix de canaux a-t-il changé ?", answer: cmp.channelShift ? `Non : déplacement maximal de ${Math.round(Math.abs(cmp.channelShift.delta) * 100)} points.` : "Inconnu.", verdict: cmp.channelShift ? "non" : "inconnu" },
+          { question: "L'avance sur le marché (PB-02) explique-t-elle déjà le signal ?", answer: "Non : PB-02 ne s'est pas déclenché.", verdict: "non" },
+        ],
+        evidence: [
+          { kind: "comparaison", label: `Délai médian de réservation (${cmp.recentDays} derniers jours)`, value: `${lead(cmp.recent.medianLead)} (${plural(cmp.recent.bookings, "séjour")})`, source: "Historique des réservations" },
+          { kind: "comparaison", label: `Délai médian de la période de référence (${cmp.refDays} jours précédents)`, value: `${lead(cmp.reference.medianLead)} (${plural(cmp.reference.bookings, "séjour")})`, source: "Historique des réservations" },
+          { kind: "fait", label: "Prix de base en vigueur", value: euro(ctx.strategy.basePriceCents), source: "Stratégie" },
+        ],
+      },
+      candidates: cands, selected, veto: false, urgency: 1, expiresAt: addDays(ctx.today, 14),
+    });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ PB-04 */
 /**
  * PB-04 · un canal sous-performe. Le logement suit son marché dans son ensemble, mais un canal pèse nettement moins dans les nuits déjà réservées
@@ -789,6 +854,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
     ...step(detectOrphanGap(ctx), (s) => orphanGaps(ctx, s)),
     ...step(detectEventUplift(ctx), (s) => eventUplift(ctx, s)),
     ...step(detectPaceHigh(ctx, stats), (s) => paceHigh(ctx, s)),
+    ...step(detectBaseLow(ctx, signals.some((x) => x.playbook === "PB-02")), (s) => baseLow(ctx, s)),
     ...step(detectPaceLow(ctx, stats), (s) => paceLow(ctx, s)),
     ...step(detectChannelGap(ctx, stats), (s) => channelGap(ctx, s)),
     ...step(detectLongStay(ctx, stats), (s) => longStay(ctx, s)),
