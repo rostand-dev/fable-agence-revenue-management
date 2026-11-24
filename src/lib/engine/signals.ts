@@ -208,11 +208,12 @@ export function detectBaseLow(ctx: Ctx, paceHighFired: boolean): Signal<BaseLowP
   const th = (k: string) => threshold("PB-11", k);
   const cmp = paceComparison(ctx.resas, ctx.today, th("recentDays"), th("refDays"), ctx.firstBookingDate ?? null);
   if (!cmp || cmp.leadGrowth === null || cmp.leadShift === null || cmp.bookingRatio === null) return [];
-  if (cmp.recent.bookings < th("minRecentBookings") || cmp.reference.bookings < th("minRefBookings")) return [];
+  if (cmp.recent.leadSample < th("minRecentBookings") || cmp.reference.leadSample < th("minRefBookings")) return [];
   if (cmp.leadGrowth < th("leadGrowth") || cmp.leadShift < th("minLeadShiftDays") || cmp.bookingRatio < th("minBookingRatio")) return [];
-  const shift = Math.abs(cmp.channelShift?.delta ?? 0);
+  if (!cmp.channelShift) return []; // parts de canal non comparables : inconnu, on se tait
+  const shift = Math.abs(cmp.channelShift.delta);
   if (shift > th("maxChannelShift")) return [];
-  const from = addDays(ctx.today, 14), to = addDays(ctx.today, 91);
+  const from = addDays(ctx.today, th("startOffsetDays")), to = addDays(ctx.today, th("horizonDays") + 1);
   const free = ctx.days.filter((d) => d.state === "FREE" && d.priceCents !== null && d.date >= from && d.date < to && !ctx.claimed.has(d.date)).map((d) => d.date);
   if (free.length < th("minFreeNights")) return [];
   free.forEach((d) => ctx.claimed.add(d));

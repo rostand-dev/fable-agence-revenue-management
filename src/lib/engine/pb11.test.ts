@@ -90,4 +90,30 @@ describe("PB-11 · prix de base trop bas, lu dans le logement lui-même", () => 
     expect(PLAYBOOKS["PB-11"].approver).toBe("REVENUE_MANAGER_AND_OWNER");
     expect(PLAYBOOKS["PB-11"].vetoRules).toEqual(expect.arrayContaining(["STRUCTURAL_LOCK", "MAX_VARIATION_7D"]));
   });
+
+  it("délais incohérents (réservation postérieure à l'arrivée) : écartés de l'échantillon, silence sous le seuil", () => {
+    const i = scenario();
+    i.resas = i.resas.map((r, k) => (k % 2 === 0 ? { ...r, bookedAt: addDays(r.checkIn, 3) } : r));
+    expect(pb11(i)).toHaveLength(0);
+  });
+
+  it("parts de canal non comparables (aucune nuit dans une fenêtre) : inconnu, silence", () => {
+    const i = scenario();
+    i.resas = i.resas.map((r) => (r.bookedAt >= addDays(TODAY, -27) ? { ...r, nights: 0 } : r));
+    expect(pb11(i)).toHaveLength(0);
+  });
+
+  it("bornes exactes : +13 jours (+87 %) reste silencieux, +14 jours se déclenche ; +47 % reste silencieux", () => {
+    expect(pb11(scenario({ recent: batch(8, 0, 27, 28) }))).toHaveLength(0); // 28 j contre 15 j : +13 j
+    expect(pb11(scenario({ recent: batch(8, 0, 27, 29) }))).toHaveLength(1); // +14 j
+    expect(pb11(scenario({ reference: batch(8, 30, 83, 30), recent: batch(8, 0, 27, 44) }))).toHaveLength(0); // +14 j mais +47 %
+  });
+
+  it("PB-11 prime sur PB-01 : pas de baisse proposée sur les nuits que PB-11 a prises", () => {
+    const o = reviewProperty(scenario({ market: 0.9 })).opportunities.filter((x) => ["PB-01", "PB-11"].includes(x.playbook));
+    const pb11o = o.find((x) => x.playbook === "PB-11")!;
+    // PB-01 ne garde que les nuits avant J+14 : jamais une nuit du périmètre de PB-11
+    for (const x of o.filter((y) => y.playbook === "PB-01")) expect(x.signals.freeNights as number).toBeLessThanOrEqual(6);
+    expect(pb11o.stayFrom).toBe(addDays(TODAY, 14));
+  });
 });

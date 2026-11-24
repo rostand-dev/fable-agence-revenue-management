@@ -48,7 +48,7 @@ export function cancellationStats(cancellations: Cancellation[] | undefined, tra
   return { windowDays, from, to, cancelled: inW.length, cancelledNights: inW.reduce((n, c) => n + c.nights, 0), booked, rate: total > 0 ? inW.length / total : null, byChannel, reopenedNights };
 }
 
-export type PeriodStat = { bookings: number; nights: number; medianLos: number | null; /** délai médian entre la réservation et l'arrivée, en jours ; null sous 3 réservations */ medianLead: number | null; channelShare: Record<string, number> };
+export type PeriodStat = { bookings: number; nights: number; medianLos: number | null; /** délai médian entre la réservation et l'arrivée, en jours ; null sous 3 réservations */ medianLead: number | null; /** réservations au délai valide (arrivée non antérieure à la réservation) */ leadSample: number; channelShare: Record<string, number> };
 export type PaceComparison = {
   recentDays: number; refDays: number;
   recent: PeriodStat; reference: PeriodStat;
@@ -72,14 +72,14 @@ function period(rs: Resa[]): PeriodStat {
   for (const r of rs) share[r.channel] = (share[r.channel] ?? 0) + r.nights;
   for (const k of Object.keys(share)) share[k] /= nights || 1;
   const lead = rs.map((r) => diffDays(r.checkIn, r.bookedAt)).filter((x) => x >= 0).sort((a, b) => a - b);
-  return { bookings: rs.length, nights, medianLos: los.length >= MIN_LOS_SAMPLE ? los[Math.floor(los.length / 2)] : null, medianLead: lead.length >= MIN_LOS_SAMPLE ? lead[Math.floor(lead.length / 2)] : null, channelShare: share };
+  return { bookings: rs.length, nights, medianLos: los.length >= MIN_LOS_SAMPLE ? los[Math.floor(los.length / 2)] : null, medianLead: lead.length >= MIN_LOS_SAMPLE ? lead[Math.floor(lead.length / 2)] : null, leadSample: lead.length, channelShare: share };
 }
 
 /**
  * Rythme de prise de réservations : fenêtre récente (les `recentDays` derniers jours, aujourd'hui inclus) contre fenêtre de référence
  * (les `refDays` jours qui précèdent), selon le jour de réservation. Calculable dès que la première réservation connue précède la référence ; sinon null.
  * `firstBookingDate` : première réservation confirmée encore connue du logement. Elle ne prouve pas que la référence est réellement vide (un logement peut
- * n'avoir rien vendu depuis) : une référence à zéro donne un rapport inconnu, jamais un rythme « infini ». La durée médiane est la médiane haute (entière).
+ * n'avoir rien vendu depuis) : une référence à zéro donne un rapport inconnu, jamais un rythme « infini ». Durée et délai médians : médiane haute (entière) ; le délai écarte les dates incohérentes et `leadSample` compte ce qui reste. Les réservations annulées sont exclues des deux fenêtres (les longs délais s'annulant davantage, la référence peut être biaisée vers des délais courts).
  */
 export function paceComparison(resas: Resa[], today: ISODate, recentDays: number, refDays: number, firstBookingDate: ISODate | null): PaceComparison | null {
   const rFrom = addDays(today, -recentDays + 1), rTo = addDays(today, 1), pFrom = addDays(rFrom, -refDays), pTo = rFrom;
