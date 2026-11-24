@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Term } from "@/components/Term";
 import { approveAction, deferAction } from "@/app/actions/decisions";
 import { fmtPeriod } from "@/lib/dates";
+import { approvalRequirement } from "@/lib/engine/approval";
 import type { Candidate } from "@/lib/engine/types";
 import { signedEuro } from "@/lib/format";
 import type { OppWithAction } from "@/lib/queries";
@@ -9,7 +10,7 @@ import { ActionForm, Submit } from "./forms";
 import { Icon } from "./Icon";
 import { Byline, confidenceScale, OppStatus, riskScale, State, Steps, Vq } from "./ui";
 
-export function needsComment(c: Candidate) { return c.audit.verdict === "NEEDS_HUMAN" || c.risk === "HIGH" || c.risk === "CRITICAL"; }
+export function needsComment(c: Candidate, playbook?: string | null) { return approvalRequirement(c, playbook).commentRequired; }
 
 export function SitCard({ o, rank, propertyName, names, provisional, canDecide }: { o: OppWithAction; rank: number | null; propertyName: string; names?: Record<string, string> | null; provisional?: boolean; /** US-084 : sans droit de décision, seuls la lecture et l'ouverture du dossier sont proposées. */ canDecide: boolean }) {
   const c = (o.candidates as Candidate[])[o.selected];
@@ -58,12 +59,12 @@ export function SitCard({ o, rank, propertyName, names, provisional, canDecide }
           {o.veto && o.signals.vetoText && <div className="amount od-fill"><span className="gauge-label">Motif du veto</span><span className="amount-source" style={{ fontSize: 13, color: "var(--quiet)" }}>{o.signals.vetoText}</span></div>}
         </div>
         <div className="sit-actions">
-          {open && canDecide && !needsComment(c) && (
+          {open && canDecide && !needsComment(c, o.playbook) && (
             <ActionForm action={approveAction} hidden={{ opportunityId: o.id, candidate: o.selected, comment: "" }} className="inline">
               <Submit icon={c.type === "NO_ACTION" ? "pause" : "check"}>{c.type === "NO_ACTION" ? "Retenir l'inaction" : "Approuver"}</Submit>
             </ActionForm>
           )}
-          {open && canDecide && needsComment(c) && <Link className="btn btn-primary" href={`/dossier/${o.code}#decision`}><Icon name="folder" />Arbitrer dans le dossier</Link>}
+          {open && canDecide && needsComment(c, o.playbook) && <Link className="btn btn-primary" href={`/dossier/${o.code}#decision`}><Icon name="folder" />Arbitrer dans le dossier</Link>}
           {open && canDecide && !o.veto && (
             <ActionForm action={deferAction} hidden={{ opportunityId: o.id }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="clock">Différer de 3 jours</Submit></ActionForm>
           )}

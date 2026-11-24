@@ -1,0 +1,25 @@
+/**
+ * Exigences d'approbation d'une option (blueprint §11.2, §5.6). Module pur, source unique pour le serveur (refus d'approuver sans commentaire) et pour
+ * l'interface (champ obligatoire, motif affiché).
+ *
+ * Le compte est unique (l'application n'a pas encore de seconde personne qui valide) : « validation du propriétaire » se traduit par un
+ * commentaire d'approbation obligatoire, consigné au journal. Le serveur le refuse s'il manque, quel que soit l'écran ou l'API utilisée.
+ */
+import { CANDIDATE_SPECS } from "./candidates";
+import { playbookOf } from "./playbooks";
+import type { Candidate } from "./types";
+
+export const MIN_COMMENT_LENGTH = 8;
+
+export type ApprovalRequirement = { commentRequired: boolean; reasons: string[] };
+
+export function approvalRequirement(c: Pick<Candidate, "type" | "risk" | "audit">, playbook?: string | null): ApprovalRequirement {
+  const reasons: string[] = [];
+  if (c.audit.verdict === "NEEDS_HUMAN") reasons.push("l'auditeur demande une validation humaine");
+  if (c.risk === "HIGH") reasons.push("action à risque élevé");
+  if (c.risk === "CRITICAL") reasons.push("action à risque critique");
+  // approbation du propriétaire ou du mandat (§11.2) : seulement pour une action qui s'exécute, jamais pour l'inaction ni une simple vérification
+  const pb = playbook ? playbookOf(playbook) : null;
+  if (pb?.approver === "REVENUE_MANAGER_AND_OWNER" && CANDIDATE_SPECS[c.type]?.executable) reasons.push(`le playbook ${pb.code} demande la validation du propriétaire ou du mandat`);
+  return { commentRequired: reasons.length > 0, reasons };
+}

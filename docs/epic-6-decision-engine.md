@@ -97,3 +97,7 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 - **Staging (Coolify)** : la migration 0023 est idempotente et s'applique au démarrage ; aucune variable d'environnement nouvelle.
 
 **Limites connues** : le motif d'une transition n'est pas stocké dans l'historique (il reste au journal d'audit) ; les statuts hors graphe ne sont plus insérables, y compris pour d'éventuels scripts externes.
+
+## Approbation renforcée (playbooks à validation du propriétaire)
+
+`src/lib/engine/approval.ts` est la source unique de l'exigence de commentaire à l'approbation. Un commentaire d'au moins 8 caractères est obligatoire si l'option est à risque élevé ou critique, si l'auditeur demande une validation humaine, ou si le playbook a pour approbateur « responsable et propriétaire » (`REVENUE_MANAGER_AND_OWNER`) et que l'option est exécutable (hors inaction, audit d'annonce et vérification manuelle). Le serveur applique la règle (`decisions.ts`), l'écran n'est qu'un reflet. Un seul compte suffit : le commentaire tient lieu de trace de la validation du propriétaire. Aucune migration, aucune variable d'environnement.
