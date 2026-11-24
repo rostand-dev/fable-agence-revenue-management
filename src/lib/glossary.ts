@@ -430,6 +430,13 @@ export const GLOSSARY: GlossaryEntry[] = [
     related: ["mesure", "pickup", "effet-incremental"],
   },
   {
+    id: "rapport-certifie", term: "Rapport certifié", aka: ["Rapport mensuel", "Certification"], category: "agence",
+    plain: "Le compte rendu d'un mois terminé : les faits marquants et la tendance (croissante, stable ou décroissante), écrits à partir des métriques du mois. Une personne habilitée peut retoucher le texte, mais tout nombre qui ne figure pas dans les métriques fait refuser la certification. Une fois certifié, le rapport ne se modifie plus : une correction ouvre une nouvelle version. Ce que le logement n'a pas permis de mesurer (effet des actions, contribution, objectif) y est dit inconnu, jamais estimé.",
+    example: "Le rapport d'octobre dit que le revenu net est en tendance croissante ; un texte qui annoncerait « +37 % » sans que ce chiffre soit une métrique du mois ne pourrait pas être certifié.",
+    seeIn: { label: "Rapports mensuels", href: "/rapports" },
+    related: ["baseline", "effet-incremental", "revenu-net"],
+  },
+  {
     id: "retour-arriere", term: "Retour arrière", aka: ["Rollback", "Annulation"], category: "agence",
     plain: "La possibilité d'annuler une action et de revenir à la situation précédente. Chaque action doit avoir un plan de retour avant d'être approuvée.",
     example: "Un prix daté à 130 € ne rapporte rien : on le supprime et le prix calculé par PriceLabs reprend la main.",

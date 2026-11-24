@@ -36,6 +36,7 @@ export default async function Bilan({ searchParams }: { searchParams: Promise<{ 
       <div className="page-head">
         <h1>{p.name} — {fmtMonth(m1)}</h1>
         <p>Dernier mois complet. Les faits marquants d'abord, la <Term id="tendance">tendance</Term> nommée ensuite ; le détail reste accessible dans la fiche du logement.</p>
+        <p style={{ marginTop: 10 }}><Link href={`/rapports?logement=${p.id}`} data-testid="lien-rapports">Rapports mensuels certifiés</Link></p>
         <p style={{ marginTop: 10 }}><Byline agent="reporting" names={names} what="a assemblé ce bilan à partir des métriques certifiées, sans modèle de langage" /></p>
       </div>
       {has && cur.netIncomplete && <Banner role="attention" title="Revenu net partiel" style={{ marginBottom: 16 }}>La commission est inconnue sur certaines nuits vendues ce mois-ci : leur revenu net n'est pas compté, et les chiffres nets ci-dessous sont donc sous-évalués. Ils ne sont pas complétés par un zéro.</Banner>}

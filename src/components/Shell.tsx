@@ -19,7 +19,7 @@ const GROUPS: { label: string; items: Item[] }[] = [
     { href: "/methode", icon: "book", label: "Méthode de travail" },
     { href: "/glossaire", icon: "glossary", label: "Glossaire" },
   ] },
-  { label: "Analyse", items: [{ href: "/bilan", icon: "chart", label: "Bilan mensuel" }] },
+  { label: "Analyse", items: [{ href: "/bilan", icon: "chart", label: "Bilan mensuel" }, { href: "/rapports", icon: "book", label: "Rapports mensuels" }] },
   { label: "Configuration", items: [
     { href: "/proprietaires", icon: "team", label: "Propriétaires" },
     { href: "/integrations", icon: "plug", label: "Intégrations" },

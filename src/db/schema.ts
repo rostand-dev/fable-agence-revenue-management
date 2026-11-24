@@ -728,3 +728,31 @@ export const experimentMeasurements = pgTable("experiment_measurements", {
   legacy: boolean("legacy").notNull().default(false),
   measuredAt: ts("measured_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("experiment_measurements_experiment").on(t.experimentId), index("experiment_measurements_tenant").on(t.tenantId, t.measuredAt), index("experiment_measurements_property").on(t.tenantId, t.propertyId, t.measuredAt)]);
+
+/**
+ * Rapport mensuel certifié (US-112, blueprint §6.5). Un rapport = un instantané des métriques du mois + un texte.
+ * Brouillon : le texte se retouche, l'instantané se régénère. Certifié : plus rien ne se modifie (déclencheur en base) ; corriger = ouvrir une nouvelle version.
+ * status : DRAFT · CERTIFIED. `certified_hash` : empreinte de l'instantané et du texte au moment de la certification.
+ */
+export const monthlyReports = pgTable("monthly_reports", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  month: text("month").notNull(),
+  version: integer("version").notNull().default(1),
+  status: text("status").notNull().default("DRAFT"),
+  snapshot: jsonb("snapshot").$type<any>().notNull(),
+  narrative: text("narrative").notNull(),
+  edited: boolean("edited").notNull().default(false),
+  createdBy: text("created_by").notNull(),
+  certifiedBy: text("certified_by"),
+  certifiedByName: text("certified_by_name"),
+  certifiedHash: text("certified_hash"),
+  certifiedAt: ts("certified_at"),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("monthly_reports_version").on(t.tenantId, t.propertyId, t.month, t.version),
+  uniqueIndex("monthly_reports_one_draft").on(t.tenantId, t.propertyId, t.month).where(sql`${t.status} = 'DRAFT'`),
+  index("monthly_reports_tenant").on(t.tenantId, t.month),
+]);

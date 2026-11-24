@@ -29,7 +29,7 @@ export const ROLE_SUMMARY: Record<Role, string> = {
   AUDITOR: "Lit les dossiers et le journal d'audit, sans pouvoir rien modifier.",
 };
 
-export const PERMISSIONS = ["decision.decide", "action.execute.api", "action.execute.manual", "action.verify", "action.rollback", "audit.read", "promotion.manage"] as const;
+export const PERMISSIONS = ["decision.decide", "action.execute.api", "action.execute.manual", "action.verify", "action.rollback", "audit.read", "promotion.manage", "report.certify"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const PERMISSION_LABEL: Record<Permission, string> = {
@@ -40,6 +40,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "action.rollback": "Lancer un retour arrière",
   "audit.read": "Lire le journal d'audit",
   "promotion.manage": "Tenir le registre des promotions (déclarer, modifier, terminer)",
+  "report.certify": "Préparer, retoucher et certifier le rapport mensuel",
 };
 /** Verbe de refus, à la forme infinitive : « votre rôle ne permet pas de … ». */
 const DENY_VERB: Record<Permission, string> = {
@@ -50,6 +51,7 @@ const DENY_VERB: Record<Permission, string> = {
   "action.rollback": "lancer un retour arrière",
   "audit.read": "lire le journal d'audit",
   "promotion.manage": "tenir le registre des promotions (déclarer, modifier ou terminer une promotion)",
+  "report.certify": "préparer, retoucher ou certifier un rapport mensuel",
 };
 
 const FULL: readonly Permission[] = PERMISSIONS;
