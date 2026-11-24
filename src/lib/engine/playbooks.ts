@@ -78,7 +78,7 @@ export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
     cooldownDays: 21,
     candidates: ["BASE_PRICE_CHANGE", "PRICE_OVERRIDE", "NO_ACTION"],
     exclusions: ["Événement mal capturé : un séjour long unique ou une date précise peut produire le même signal"],
-    vetoRules: ["MAX_VARIATION", "CONFLICT"],
+    vetoRules: ["MAX_VARIATION", "MAX_VARIATION_7D", "STRUCTURAL_LOCK", "CONFLICT"],
     approver: "REVENUE_MANAGER_AND_OWNER",
     verification: "Relire le prix de base dans PriceLabs ; une seule hypothèse structurante à la fois par logement, fenêtre d'observation de 14 jours.",
     measurementHorizonDays: 14,
@@ -200,14 +200,14 @@ export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
     code: "PB-11", key: "BASE_LOW", label: "Prix de base trop bas", status: "PLANNED",
     trigger: "La fenêtre de réservation se referme trop tôt : relever le prix de base par paliers.",
     thresholds: {}, requiredData: ["RESERVATIONS", "PRICING", "STRATEGY"], cooldownDays: 21, candidates: ["BASE_PRICE_CHANGE", "NO_ACTION"],
-    exclusions: ["Mix de canaux modifié"], vetoRules: ["MAX_VARIATION"], approver: "REVENUE_MANAGER_AND_OWNER",
+    exclusions: ["Mix de canaux modifié"], vetoRules: ["MAX_VARIATION", "MAX_VARIATION_7D", "STRUCTURAL_LOCK"], approver: "REVENUE_MANAGER_AND_OWNER",
     verification: "Relire le prix de base dans PriceLabs.", measurementHorizonDays: 14,
   },
   "PB-12": {
     code: "PB-12", key: "BASE_HIGH", label: "Prix de base trop haut", status: "PLANNED",
     trigger: "Sous-performance durable : baisser le prix de base par paliers.",
     thresholds: {}, requiredData: ["RESERVATIONS", "MARKET", "PRICING", "STRATEGY"], cooldownDays: 21, candidates: ["BASE_PRICE_CHANGE", "LISTING_AUDIT", "NO_ACTION"],
-    exclusions: ["Contenu ou visibilité non exclus"], vetoRules: ["HARD_FLOOR", "MAX_VARIATION"], approver: "REVENUE_MANAGER_AND_OWNER",
+    exclusions: ["Contenu ou visibilité non exclus"], vetoRules: ["HARD_FLOOR", "MAX_VARIATION", "MAX_VARIATION_7D", "STRUCTURAL_LOCK"], approver: "REVENUE_MANAGER_AND_OWNER",
     verification: "Relire le prix de base dans PriceLabs.", measurementHorizonDays: 14,
   },
   "PB-13": {
@@ -226,6 +226,15 @@ export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
 };
 
 export const PLAYBOOK_CODES = Object.keys(PLAYBOOKS) as PlaybookCode[];
+
+/**
+ * Groupes de repos (blueprint §6.4 : une seule hypothèse structurante à la fois). Les playbooks d'un groupe agissent sur le même levier,
+ * le prix de base, souvent dans des sens opposés : une décision humaine sur l'un met les autres au repos.
+ */
+export const COOLDOWN_GROUPS: PlaybookCode[][] = [["PB-02", "PB-11", "PB-12"]];
+export function cooldownGroupOf(code: string): PlaybookCode[] | null {
+  return COOLDOWN_GROUPS.find((g) => (g as string[]).includes(code)) ?? null;
+}
 export const IMPLEMENTED_PLAYBOOKS = PLAYBOOK_CODES.filter((c) => PLAYBOOKS[c].status === "IMPLEMENTED");
 
 /** Seuil d'un playbook, lu au catalogue. Un seuil inconnu est une erreur de programmation : elle éclate au premier test. */

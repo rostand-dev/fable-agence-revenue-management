@@ -648,7 +648,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
   const ctx: Ctx = {
     ...input, byDate: new Map(input.days.map((d) => [d.date, d])), channels, refChannel, refLos: medianLos(input.resas) ?? Math.max(input.strategy.minStay ?? 2, 2),
     lead: leadTimes(input.resas), share, claimed: new Set(), stale,
-    audit: { model: input.model, strategy: input.strategy, stalePromoChannels: stale, conflict: false, capabilities: input.capabilities, demo: input.property.isDemo, promos: input.promos, window: { from: input.today, to: input.today } },
+    audit: { model: input.model, strategy: input.strategy, stalePromoChannels: stale, conflict: false, capabilities: input.capabilities, demo: input.property.isDemo, promos: input.promos, window: { from: input.today, to: input.today }, recentBaseChanges: input.recentBaseChanges ?? [], structuralHold: input.structuralHold ?? null },
   };
   // chaque règle observe (signals.ts), puis son constructeur instruit : l'ordre est fixe car une règle retire ses nuits aux suivantes
   const signals: Signal[] = [];
