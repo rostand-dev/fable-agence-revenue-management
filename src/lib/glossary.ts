@@ -419,8 +419,15 @@ export const GLOSSARY: GlossaryEntry[] = [
   {
     id: "mesure", term: "Mesure", aka: ["Fenêtre de mesure", "Période de mesure"], category: "agence",
     plain: "Le temps d'observation qui suit une action, pour juger de son effet. Une action n'est considérée comme réussie qu'une fois mesurée.",
-    example: "Une action sur un week-end de mars est mesurée pendant 14 jours : on compare les nuits vendues à ce que le marché a fait sur les mêmes dates.",
-    related: ["effet-incremental", "retour-arriere"],
+    example: "Une action sur un week-end de mars est mesurée pendant 14 jours : on compare le rythme des réservations de ces nuits à celui des 14 jours d'avant l'action.",
+    related: ["baseline", "effet-incremental", "retour-arriere"],
+  },
+  {
+    id: "baseline", term: "Référence avant action", aka: ["Baseline", "Expérience", "Fenêtre de référence"], category: "agence",
+    plain: "Ce que le logement faisait juste avant une action : combien de nuits des dates visées se réservaient par jour pendant les 14 jours précédents, et la même chose un an plus tôt quand l'historique le permet. Elle est figée au moment de l'exécution et ne se modifie plus : c'est elle qui permet de dire plus tard si quelque chose a changé. Sans historique suffisant, elle est déclarée insuffisante et la mesure reste non concluante, jamais comparée à un faux zéro.",
+    example: "Avant de lancer une promotion sur le week-end du 12, 3 de ses nuits s'étaient réservées en 14 jours (0,2 nuit par jour). Deux semaines après, on compare à ce rythme-là.",
+    seeIn: { label: "Historique", href: "/historique" },
+    related: ["mesure", "pickup", "effet-incremental"],
   },
   {
     id: "retour-arriere", term: "Retour arrière", aka: ["Rollback", "Annulation"], category: "agence",
