@@ -109,14 +109,26 @@ describe("confirmation de l'opérateur (US-103)", () => {
   });
 
   it("relecture du calendrier (PB-08) : confirmée sans dater les promotions du canal comme vérifiées ; la vérification du registre (PB-10) le fait", async () => {
-    const [prop] = await db.select().from(schema.properties).where(eq(schema.properties.tenantId, t.tenantId));
+    // le logement de l'action clonée par approveManual (et non « le premier » du locataire, dont l'ordre n'est pas garanti)
+    const [src] = await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, actionId));
+    const prop = { id: src.propertyId };
     await db.insert(schema.promotions).values({ id: "promo-cal-1", tenantId: t.tenantId, propertyId: prop.id, channel: "BOOKING", kind: "MOBILE", label: "Jamais relue", discountPct: 10, stayFrom: "2026-12-01", stayTo: "2026-12-31", status: "ACTIVE", source: "DECLARED", verifiedAt: null } as any);
     const cal = await approveManual("INVESTIGATION", { channel: "BOOKING", subject: "CALENDAR", dates: ["2026-12-10"] });
     await D.execute(as("OWNER"), cal, { ...OK, externalRef: "CAL-1" });
     expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).toBeNull();
+    const ls = await approveManual("INVESTIGATION", { channel: "BOOKING", subject: "LONG_STAY" });
+    await D.execute(as("OWNER"), ls, { ...OK, externalRef: "LS-1" });
+    expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).toBeNull();
     const reg = await approveManual("INVESTIGATION", { channel: "BOOKING" });
     await D.execute(as("OWNER"), reg, { ...OK, externalRef: "REG-1" });
     expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).not.toBeNull();
+  });
+
+  it("offre de durée de séjour (PB-09) confirmée : une promotion LOS avec son séjour minimal entre au registre", async () => {
+    const id = await approveManual("CHANNEL_PROMO", { kind: "LOS", discountPct: 10, label: "Séjour de 7 nuits et plus", stayFrom: "2027-01-10", stayTo: "2027-02-07", minLos: 7 });
+    await D.execute(as("OWNER"), id, { ...OK, externalRef: "ABB-LOS-1" });
+    const [p] = await db.select().from(schema.promotions).where(eq(schema.promotions.actionId, id));
+    expect(p).toMatchObject({ kind: "LOS", minLos: 7, discountPct: 10, stayFrom: "2027-01-10", stayTo: "2027-02-07", status: "ACTIVE", externalRef: "ABB-LOS-1" });
   });
 
   it("date d'effet antérieure à l'approbation : refusée", async () => {

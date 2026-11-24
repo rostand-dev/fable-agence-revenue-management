@@ -4,7 +4,7 @@
  * Module pur. Principe : une donnée absente reste inconnue (`null`), jamais un zéro. Les annulations ne sont connues que depuis le début de
  * l'historique SuperHote (`CancellationTracking.since`) : une fenêtre qui commence avant ce jour n'est pas évaluable.
  */
-import { addDays, type ISODate } from "../dates";
+import { addDays, diffDays, type ISODate } from "../dates";
 import type { Resa } from "./types";
 
 /** Profondeur chargée par `loadEngineInput` : une fenêtre plus longue n'est pas évaluable (réponse « inconnu », jamais une réponse partielle). */
@@ -48,12 +48,16 @@ export function cancellationStats(cancellations: Cancellation[] | undefined, tra
   return { windowDays, from, to, cancelled: inW.length, cancelledNights: inW.reduce((n, c) => n + c.nights, 0), booked, rate: total > 0 ? inW.length / total : null, byChannel, reopenedNights };
 }
 
-export type PeriodStat = { bookings: number; nights: number; medianLos: number | null; channelShare: Record<string, number> };
+export type PeriodStat = { bookings: number; nights: number; medianLos: number | null; /** délai médian entre la réservation et l'arrivée, en jours ; null sous 3 réservations */ medianLead: number | null; /** réservations au délai valide (arrivée non antérieure à la réservation) */ leadSample: number; channelShare: Record<string, number> };
 export type PaceComparison = {
   recentDays: number; refDays: number;
   recent: PeriodStat; reference: PeriodStat;
   /** prises récentes ÷ prises de référence, ramenées à la même longueur ; null si la référence est vide */
   bookingRatio: number | null;
+  /** écart de délai médian de réservation (récent − référence), en jours ; null si un des deux échantillons est trop petit */
+  leadShift: number | null;
+  /** délai récent ÷ délai de référence − 1 (0,5 = 50 % plus anticipé) ; null si inconnu ou référence nulle */
+  leadGrowth: number | null;
   /** écart de durée médiane de séjour (récent − référence), en nuits ; null si un des deux échantillons est trop petit */
   losShift: number | null;
   /** plus grand déplacement de part de nuits entre les deux périodes, avec son canal (points de part, 0..1) ; null si un échantillon est vide */
@@ -67,14 +71,15 @@ function period(rs: Resa[]): PeriodStat {
   const share: Record<string, number> = {};
   for (const r of rs) share[r.channel] = (share[r.channel] ?? 0) + r.nights;
   for (const k of Object.keys(share)) share[k] /= nights || 1;
-  return { bookings: rs.length, nights, medianLos: los.length >= MIN_LOS_SAMPLE ? los[Math.floor(los.length / 2)] : null, channelShare: share };
+  const lead = rs.map((r) => diffDays(r.checkIn, r.bookedAt)).filter((x) => x >= 0).sort((a, b) => a - b);
+  return { bookings: rs.length, nights, medianLos: los.length >= MIN_LOS_SAMPLE ? los[Math.floor(los.length / 2)] : null, medianLead: lead.length >= MIN_LOS_SAMPLE ? lead[Math.floor(lead.length / 2)] : null, leadSample: lead.length, channelShare: share };
 }
 
 /**
  * Rythme de prise de réservations : fenêtre récente (les `recentDays` derniers jours, aujourd'hui inclus) contre fenêtre de référence
  * (les `refDays` jours qui précèdent), selon le jour de réservation. Calculable dès que la première réservation connue précède la référence ; sinon null.
  * `firstBookingDate` : première réservation confirmée encore connue du logement. Elle ne prouve pas que la référence est réellement vide (un logement peut
- * n'avoir rien vendu depuis) : une référence à zéro donne un rapport inconnu, jamais un rythme « infini ». La durée médiane est la médiane haute (entière).
+ * n'avoir rien vendu depuis) : une référence à zéro donne un rapport inconnu, jamais un rythme « infini ». Durée et délai médians : médiane haute (entière) ; le délai écarte les dates incohérentes et `leadSample` compte ce qui reste. Les réservations annulées sont exclues des deux fenêtres (les longs délais s'annulant davantage, la référence peut être biaisée vers des délais courts).
  */
 export function paceComparison(resas: Resa[], today: ISODate, recentDays: number, refDays: number, firstBookingDate: ISODate | null): PaceComparison | null {
   const rFrom = addDays(today, -recentDays + 1), rTo = addDays(today, 1), pFrom = addDays(rFrom, -refDays), pTo = rFrom;
@@ -93,6 +98,8 @@ export function paceComparison(resas: Resa[], today: ISODate, recentDays: number
   return {
     recentDays, refDays, recent, reference,
     bookingRatio: reference.bookings > 0 ? recent.bookings / (reference.bookings * scale) : null,
+    leadShift: recent.medianLead !== null && reference.medianLead !== null ? recent.medianLead - reference.medianLead : null,
+    leadGrowth: recent.medianLead !== null && reference.medianLead !== null && reference.medianLead > 0 ? recent.medianLead / reference.medianLead - 1 : null,
     losShift: recent.medianLos !== null && reference.medianLos !== null ? recent.medianLos - reference.medianLos : null,
     channelShift,
   };
