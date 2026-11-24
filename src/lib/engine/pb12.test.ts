@@ -89,6 +89,20 @@ describe("PB-12 · prix de base trop haut, retard durable", () => {
 
   it("le catalogue porte les seuils et le statut actif", () => {
     expect(PLAYBOOKS["PB-12"].status).toBe("IMPLEMENTED");
-    expect(Object.keys(PLAYBOOKS["PB-12"].thresholds)).toEqual(["minPersistDays", "paceGap", "priceHighPercentile", "weakMarketOccupancy", "restrictiveMinStay", "minFreeNights", "stepPct"]);
+    expect(Object.keys(PLAYBOOKS["PB-12"].thresholds)).toEqual(["lagGapToleranceDays", "strongPersistDays", "strongPercentile", "minPersistDays", "paceGap", "priceHighPercentile", "weakMarketOccupancy", "restrictiveMinStay", "minFreeNights", "stepPct"]);
+  });
+
+  it("promotion qui démarre en milieu de fenêtre : silence (pas de baisse sur des nuits déjà remisées)", () => {
+    const promo: Promo = { id: "p", channel: "AIRBNB", kind: "LAST_MINUTE", label: "Dernière minute", discountPct: 10, stayFrom: addDays(TODAY, 40), stayTo: addDays(TODAY, 50), verifiedAt: NOW };
+    const o = by(scenario({ promos: [promo] }), "PB-12");
+    const nights = o.flatMap((x) => x.signals.windows as string[]);
+    expect(nights).not.toContain("D31_60");
+  });
+
+  it("le dossier porte l'ancienneté d'origine, et PB-01 l'estampille pour le suivant", () => {
+    const [young] = by(scenario({ lagDays: 10 }), "PB-01");
+    expect(young.signals.lagSince).toBe(addDays(TODAY, -10));
+    const first = scenario({ lagDays: null });
+    expect(by(first, "PB-01")[0].signals.lagSince).toBe(TODAY);
   });
 });

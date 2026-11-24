@@ -246,6 +246,9 @@ export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
     code: "PB-12", key: "BASE_HIGH", label: "Prix de base trop haut", status: "IMPLEMENTED",
     trigger: "Retard de rythme sur le marché qui dure sur plusieurs revues espacées, avec un prix au-dessus du marché et aucune autre cause : audit de l'annonce d'abord, baisse du prix de base par palier ensuite.",
     thresholds: {
+      lagGapToleranceDays: t(14, "jours", "Interruption maximale du suivi du retard (dossier de rythme expiré ou tranché) au-delà de laquelle l'ancienneté du retard repart de zéro"),
+      strongPersistDays: t(42, "jours", "Durée du retard à partir de laquelle la confiance du diagnostic augmente"),
+      strongPercentile: t(80, "percentile", "Position de prix à partir de laquelle la confiance du diagnostic augmente"),
       minPersistDays: t(21, "jours", "Durée minimale pendant laquelle le retard de rythme est suivi par le moteur (dossier de rythme encore vivant) avant de parler de sous-performance durable"),
       paceGap: t(-0.2, "points", "Écart d'occupation au marché à partir duquel la fenêtre est en retard (plus exigeant que PB-01)"),
       priceHighPercentile: t(70, "percentile", "Position de prix à partir de laquelle le prix est jugé au-dessus du marché comparable"),

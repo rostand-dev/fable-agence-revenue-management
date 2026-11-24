@@ -424,7 +424,7 @@ function paceLow(ctx: Ctx, signals: Signal<PaceLowPayload>[]): DetectedOpportuni
       stayFrom: from, stayTo: to,
       signalText: `Occupation ${pct(w.occupancy)} pour un marché à ${pct(w.marketOccupancy)} · ${plural(free.length, "nuit")} libre${free.length > 1 ? "s" : ""}`, signalSource: `${srcCal(ctx)} + ${srcMkt(ctx)}`,
       hypothesisText: labels[primary] + ".",
-      signals: { propertyOccupancy: w.occupancy, marketOccupancy: w.marketOccupancy, paceGapPoints: Math.round(w.gap * 100), pricePercentile: a.pctl, minimumStay: a.minStay, freeNights: free.length, leadTimeP75: ctx.lead?.p75 ?? null },
+      signals: { lagSince: ctx.lagSince ?? ctx.today, propertyOccupancy: w.occupancy, marketOccupancy: w.marketOccupancy, paceGapPoints: Math.round(w.gap * 100), pricePercentile: a.pctl, minimumStay: a.minStay, freeNights: free.length, leadTimeP75: ctx.lead?.p75 ?? null },
       diagnosis: {
         primary, primaryLabel: labels[primary],
         alternatives: (["PRICE_HIGH", "RESTRICTION_MISMATCH", "VISIBILITY_CONVERSION", "DEMAND_WEAK"] as const).filter((c) => c !== primary).slice(0, 3).map((c) => ({
@@ -551,7 +551,7 @@ function baseHigh(ctx: Ctx, signals: Signal<BaseHighPayload>[]): DetectedOpportu
         detail: "Contrôle du titre, des photos, des équipements déclarés, des avis récents et de la conversion par canal : la visibilité n'est pas lisible sans accès partenaire.", agent: "annonce",
         target: { system: "INTERNAL" }, parameters: {}, nightsTouched: 0, priceChangePct: null, current: cur, proposed: null, expectedDeltaCents: null,
         hypothesis: "Effet non chiffrable : aucun taux de conversion n'est disponible sans accès partenaire.", rollbackPlan: "Aucune écriture externe : rien à annuler.",
-        executionMode: "INTERNAL", risk: "LOW", measurementWindowDays: 14,
+        executionMode: "INTERNAL", risk: "LOW", measurementWindowDays: PLAYBOOKS["PB-12"].measurementHorizonDays,
       }, from, to),
       noAction(ctx, from, to, cur, "Attendre une revue supplémentaire : le retard peut se résorber avec la fenêtre de réservation."),
     ];
@@ -562,14 +562,14 @@ function baseHigh(ctx: Ctx, signals: Signal<BaseHighPayload>[]): DetectedOpportu
       stayFrom: from, stayTo: to,
       signalText: `Occupation ${pct(worst.occupancy)} pour un marché à ${pct(worst.marketOccupancy)} sur ${worst.label}, suivi depuis le ${fmtDay(lagSince)} · prix au ${Math.round(avgPercentile)}e percentile`, signalSource: `${srcCal(ctx)} + ${srcMkt(ctx)}`,
       hypothesisText: "Le retard dure et le prix de base est probablement trop haut ; la visibilité de l'annonce n'est pas exclue.",
-      signals: { lagSince, persistDays, paceGapPoints: Math.round(worst.gap * 100), pricePercentile: Math.round(avgPercentile), marketOccupancy: Math.round(avgMarketOccupancy * 100) / 100, windows: windows.map((w) => w.key), freeNights: free.length, lagSinceKnown: true },
+      signals: { lagSince: lagSince, persistDays, paceGapPoints: Math.round(worst.gap * 100), pricePercentile: Math.round(avgPercentile), marketOccupancy: Math.round(avgMarketOccupancy * 100) / 100, windows: windows.map((w) => w.key), freeNights: free.length, lagSinceKnown: true },
       diagnosis: {
         primary: "PRICE_HIGH", primaryLabel: "Prix de base au-dessus du marché, retard qui dure",
         alternatives: [
           { cause: "VISIBILITY_CONVERSION", label: "Visibilité ou contenu de l'annonce", why: "Non exclu : conversion et visibilité par canal sont inconnues sans accès partenaire. D'où l'audit proposé avant la baisse." },
           { cause: "DEMAND_WEAK", label: "Demande du marché faible", why: `Écartée : marché occupé à ${pct(avgMarketOccupancy)} sur les fenêtres retenues.` },
         ],
-        confidence: confidence([[persistDays >= 42, 0.08], [windows.length >= 2, 0.06], [avgPercentile >= 80, 0.06]], 0.4),
+        confidence: confidence([[persistDays >= threshold("PB-12", "strongPersistDays"), 0.08], [windows.length >= 2, 0.06], [avgPercentile >= threshold("PB-12", "strongPercentile"), 0.06]], 0.4),
         confidenceNote: "La durée du retard vient des dossiers de rythme du moteur (pas d'un historique d'occupation daté) ; la visibilité de l'annonce n'est pas mesurable.",
         tree: [
           { question: "Le retard dure-t-il sur plusieurs revues espacées ?", answer: `Oui : suivi depuis le ${fmtDay(lagSince)} (${persistDays} jours).`, verdict: "oui" },

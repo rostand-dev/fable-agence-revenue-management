@@ -54,7 +54,7 @@ export function cumulativeBaseVariation(recent: BaseChange[], changePct: number)
   return recent.reduce((s, c) => s + Math.abs(c.changePct), 0) + Math.abs(changePct);
 }
 
-export type GroupOpportunityRow = { playbook: string; status: string; createdAt: Date; decidedAt?: Date | null; decision?: string | null };
+export type GroupOpportunityRow = { playbook: string; status: string; createdAt: Date; decidedAt?: Date | null; decision?: string | null; /** option retenue du dossier ; absent = inconnue (comptée) */ selectedType?: string | null };
 
 /**
  * Contrôle à l'approbation : le verdict d'audit d'un dossier date de sa détection, or une autre modification du prix de base a pu être approuvée depuis.
@@ -81,6 +81,8 @@ export function groupCooldownUntil(existing: GroupOpportunityRow[], playbook: st
   for (const o of existing) {
     // seule une approbation met le groupe au repos : un refus ou une inaction sur une hausse ne doit pas empêcher d'examiner une baisse
     if (o.status !== "DECIDED" || o.decision !== "APPROVED" || o.playbook === playbook || !(group as string[]).includes(o.playbook)) continue;
+    // approuver un audit ou une inaction ne bouge aucun prix de base : le levier n'est pas en repos
+    if (o.selectedType && o.selectedType !== "BASE_PRICE_CHANGE") continue;
     const end = addDays(todayISO(o.decidedAt ?? o.createdAt), playbookOf(o.playbook)?.cooldownDays ?? 14);
     if (end > today && (!until || end > until)) until = end;
   }

@@ -248,10 +248,10 @@ export function detectBaseHigh(ctx: Ctx, stats: WindowStat[], upwardFired: boole
     const dates = w.freeDates.filter((d) => !ctx.claimed.has(d));
     if (dates.length === 0) continue;
     const a = avgDay(ctx, dates);
-    if (a.pctl === null || a.occ === null || a.pctl < th("priceHighPercentile") || a.occ < th("weakMarketOccupancy")) continue; // prix ou marché inconnu : silence
+    if (a.price === null || a.pctl === null || a.occ === null || a.pctl < th("priceHighPercentile") || a.occ < th("weakMarketOccupancy")) continue; // prix ou marché inconnu : silence
     if (a.minStay === null || (a.minStay >= th("restrictiveMinStay") && a.minStay > ctx.refLos)) continue;
     if (ctx.lead !== null && w.startOffset > ctx.lead.p75) continue; // fenêtre de réservation pas encore ouverte
-    if (ctx.channels.some((c) => promosOn(ctx.promos, c, dates[0]).length > 0) || overlaps(ctx, w.from, w.to)) continue;
+    if (dates.some((d) => ctx.channels.some((c) => promosOn(ctx.promos, c, d).length > 0)) || overlaps(ctx, w.from, w.to)) continue;
     kept.push(known(w)); free.push(...dates);
   }
   if (free.length < th("minFreeNights")) return [];
