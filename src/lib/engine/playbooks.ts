@@ -243,10 +243,19 @@ export const PLAYBOOKS: Record<PlaybookCode, Playbook> = {
     verification: "Relire le prix de base dans PriceLabs ; une seule hypothèse structurante à la fois par logement, observation de 14 jours.", measurementHorizonDays: 14,
   },
   "PB-12": {
-    code: "PB-12", key: "BASE_HIGH", label: "Prix de base trop haut", status: "PLANNED",
-    trigger: "Sous-performance durable : baisser le prix de base par paliers.",
-    thresholds: {}, requiredData: ["RESERVATIONS", "MARKET", "PRICING", "STRATEGY"], cooldownDays: 21, candidates: ["BASE_PRICE_CHANGE", "LISTING_AUDIT", "NO_ACTION"],
-    exclusions: ["Contenu ou visibilité non exclus"], vetoRules: ["HARD_FLOOR", "MAX_VARIATION", "MAX_VARIATION_7D", "STRUCTURAL_LOCK"], approver: "REVENUE_MANAGER_AND_OWNER",
+    code: "PB-12", key: "BASE_HIGH", label: "Prix de base trop haut", status: "IMPLEMENTED",
+    trigger: "Retard de rythme sur le marché qui dure sur plusieurs revues espacées, avec un prix au-dessus du marché et aucune autre cause : audit de l'annonce d'abord, baisse du prix de base par palier ensuite.",
+    thresholds: {
+      minPersistDays: t(21, "jours", "Durée minimale pendant laquelle le retard de rythme est suivi par le moteur (dossier de rythme encore vivant) avant de parler de sous-performance durable"),
+      paceGap: t(-0.2, "points", "Écart d'occupation au marché à partir duquel la fenêtre est en retard (plus exigeant que PB-01)"),
+      priceHighPercentile: t(70, "percentile", "Position de prix à partir de laquelle le prix est jugé au-dessus du marché comparable"),
+      weakMarketOccupancy: t(0.35, "ratio", "Occupation du marché en dessous de laquelle la demande est faible : le prix de base n'est pas en cause"),
+      restrictiveMinStay: t(3, "nuits", "Séjour minimum à partir duquel la restriction peut expliquer le retard"),
+      minFreeNights: t(6, "nuits", "Nuits libres minimales sur les fenêtres en retard pour que la baisse serve"),
+      stepPct: t(4, "%", "Palier de baisse du prix de base proposé (plafonné à 15 % sur 7 jours, une seule hypothèse structurante à la fois)"),
+    },
+    requiredData: ["RESERVATIONS", "MARKET", "PRICING", "STRATEGY"], cooldownDays: 21, candidates: ["BASE_PRICE_CHANGE", "LISTING_AUDIT", "NO_ACTION"],
+    exclusions: ["Contenu ou visibilité non exclus : l'audit de l'annonce est l'option retenue par défaut (conversion et visibilité inconnues sans accès partenaire)", "Marché faible, séjour minimum, fenêtre de réservation pas encore ouverte, promotion active ou action récente : PB-01 traite ces cas", "PB-02 et PB-11 prioritaires : un seul sens à la fois sur le prix de base", "Retard pas encore suivi depuis assez longtemps (ou suivi inconnu) : le playbook reste silencieux", "Prix de base déjà en cours de modification (verrou structurant) ou plafond de 7 jours atteint"], vetoRules: ["HARD_FLOOR", "MAX_VARIATION", "MAX_VARIATION_7D", "STRUCTURAL_LOCK"], approver: "REVENUE_MANAGER_AND_OWNER",
     verification: "Relire le prix de base dans PriceLabs.", measurementHorizonDays: 14,
   },
   "PB-13": {

@@ -20,14 +20,14 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 ## US-060 — Règles de signaux PB-01 à PB-06
 
 **Ce qui change**
-- **Catalogue `src/lib/engine/playbooks.ts`** : les 13 playbooks du blueprint (PB-01 à PB-13) avec seuils nommés, données requises, période de repos, candidats, exclusions, règles de veto, approbateur, vérification et horizon de mesure. Seuls PB-01 à PB-11 et PB-13 sont codés ; les autres sont décrits et marqués « pas encore actif ».
+- **Catalogue `src/lib/engine/playbooks.ts`** : les 13 playbooks du blueprint (PB-01 à PB-13) avec seuils nommés, données requises, période de repos, candidats, exclusions, règles de veto, approbateur, vérification et horizon de mesure. Les 13 playbooks sont codés.
 - **Signaux `src/lib/engine/signals.ts`** : la détection est séparée de la construction de l'action. Chaque signal porte son playbook, son déclencheur, sa clé de déduplication, ses dates et ses mesures (observé face au seuil). L'ordre de priorité des playbooks est explicite (`SIGNAL_ORDER`).
 - **Nouveau PB-04 (écart par canal)** : un canal en retard sur son poids historique alors que le logement tient son rythme global. Il ne se déclenche qu'avec au moins deux canaux, 12 séjours confirmés sur 12 mois, au plus 20 % de canal inconnu et 10 nuits déjà réservées ; sinon il se tait (inconnu ≠ zéro). Il ne se déclenche pas sur les logements de démo.
 - **Dossier d'opportunité** : encart « Signal » avec le tableau Mesure / Observé / Seuil et la source (playbook, fenêtre). Les mesures sont stockées dans le champ JSON `signals` existant.
 - **Page Méthode** : section « Les playbooks de l'agence », un bloc dépliable par playbook (seuils, données, repos, approbation), lisible sur mobile.
 - **Staging (Coolify)** : aucune migration, aucune variable d'environnement nouvelle.
 
-**Limites connues** : PB-12 n'est que décrit ; le seuil de PB-04 sera recalibré avec les premières données réelles.
+**Limites connues** : les seuils de PB-04, PB-08, PB-09, PB-11 et PB-12 sont des hypothèses de départ, à recalibrer avec les premières données réelles.
 
 **Tests** : unitaires (`signals.test.ts`, 36 cas : un seuil franchi / un seuil juste en dessous par playbook, données manquantes, ordre), non-régression (`review-golden.test.ts`), E2E navigateur (`e2e/playbooks.spec.ts` : page Méthode et dossier, bureau, mobile 390 et 360 px, sans débordement horizontal).
 
@@ -122,3 +122,11 @@ Limites assumées de PB-09 : la clé de dédoublonnage est la fin du trou réel 
 Signal : le délai médian de réservation des 28 derniers jours dépasse d'au moins 50 % (et 14 jours) celui des 56 jours précédents, avec au moins 6 réservations dans chaque fenêtre, un rythme de prises récent au moins égal à la référence (à longueur égale) et un mix de canaux stable (déplacement de part ≤ 25 points). Il se compare au logement lui-même : aucune donnée de marché n'est requise (le gain n'est alors pas chiffré, et le dit). Silencieux si l'historique ne couvre pas la référence (première réservation connue) ; PB-02 (avance sur le marché) est prioritaire. Option : un palier de +4 % du prix de base sur les nuits libres de J+14 à J+90, sous le verrou structurant, le plafond de 15 % sur 7 jours et l'approbation du propriétaire (commentaire obligatoire) ; PB-02, PB-11 et PB-12 partagent un repos de groupe. Limite : le délai de réservation peut aussi s'allonger pour une saison ou une durée de séjour différente (dit dans la confiance).
 
 Précisions après relecture : les 6 réservations minimales comptent les délais valides (arrivée non antérieure à la réservation) ; des parts de canal non comparables rendent PB-11 silencieux ; le gain n'est chiffré que si **toutes** les nuits visées ont une donnée de marché, et à demande constante (le délai motive la hausse sans être converti en demande) ; PB-11 prime sur PB-01, PB-04, PB-08 et PB-09 pour les nuits J+14 à J+90 (hausse et baisse ne se superposent pas) ; les réservations annulées sont exclues des fenêtres, ce qui peut gonfler l'allongement. Tests : `pb11.test.ts` (bornes exactes, canal inconnu, délais incohérents, priorité sur PB-01).
+
+## PB-12 · prix de base trop haut (retard qui dure)
+
+Signal : mêmes fenêtres en retard que PB-01 (écart d'occupation au marché ≤ −20 points, J+8 et au-delà), mais le retard est **suivi depuis au moins 21 jours** : le moteur lit l'ancienneté du plus ancien dossier de rythme encore vivant du logement (PB-01 à sa création, PB-12 via `lagSince` qu'il porte, car il remplace PB-01 sans effacer l'ancienneté). Chaque fenêtre retenue a un prix au moins au 70e percentile du marché, un marché occupé à 35 % ou plus, un séjour minimum non restrictif, aucune promotion active et aucune action en observation ; au moins 6 nuits libres au total. Les autres causes de l'arbre de diagnostic restent à PB-01. PB-02 et PB-11 (hausse) sont prioritaires : un seul sens à la fois.
+
+Décision : la visibilité et la conversion de l'annonce ne sont pas lisibles sans accès partenaire (« inconnu »), donc « contenu/visibilité non exclus » : l'**audit de l'annonce est l'option retenue**. La baisse du prix de base (−4 %) est proposée et chiffrée à demande constante, mais jamais présélectionnée ; elle passe par le verrou structurant, le plafond de 15 % sur 7 jours, le plancher et l'approbation du propriétaire (commentaire obligatoire). Observation : 14 jours ; repos de groupe avec PB-02 et PB-11.
+
+Limites : la durée vient des dossiers de rythme du moteur et non d'un historique d'occupation daté ; si aucun dossier n'est vivant, la durée est inconnue et PB-12 se tait ; un retard qui s'interrompt sans être détecté une revue ferme le dossier PB-01 et remet le compteur à zéro. Tests : `pb12.test.ts`.

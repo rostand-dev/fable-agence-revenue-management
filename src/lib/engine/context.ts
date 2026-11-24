@@ -42,6 +42,11 @@ export type EngineInput = {
   cancellationTracking?: CancellationTracking | null;
   /** Première réservation connue du logement (borne de l'historique de prise de réservations). */
   firstBookingDate?: ISODate | null;
+  /**
+   * Depuis quand le retard de rythme est suivi : plus ancien dossier de rythme (PB-01 ou PB-12) encore vivant du logement. Absent ou null = inconnu :
+   * PB-12 reste silencieux (aucune « durée » n'est inventée).
+   */
+  lagSince?: ISODate | null;
 };
 
 export type Ctx = EngineInput & {

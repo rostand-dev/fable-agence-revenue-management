@@ -10,7 +10,7 @@
  * sur les mêmes nuits : l'ordre d'évaluation (`SIGNAL_RULES`) est donc fixé et fait partie du contrat.
  */
 import { addDays, diffDays, type ISODate } from "../dates";
-import { avgDay, promosOn, runs, stack, type Ctx } from "./context";
+import { avgDay, overlaps, promosOn, runs, stack, type Ctx } from "./context";
 import { hardFloorCents } from "./economics";
 import { markupFactor } from "./context";
 import { PLAYBOOKS, threshold, type PlaybookCode } from "./playbooks";
@@ -230,6 +230,47 @@ export function detectBaseLow(ctx: Ctx, paceHighFired: boolean): Signal<BaseLowP
   }];
 }
 
+/* ------------------------------------------------------------------ PB-12 */
+export type BaseHighPayload = { windows: KnownWindow[]; free: ISODate[]; lagSince: ISODate; persistDays: number; avgPercentile: number; avgMarketOccupancy: number };
+/**
+ * PB-12 · prix de base trop haut. Même constat que PB-01 (fenêtres en retard sur le marché), mais qui dure : le retard est suivi depuis assez longtemps
+ * et chaque fenêtre retenue a un prix au-dessus du marché, un marché occupé, un séjour minimum non restrictif, aucune promotion ni action en cours.
+ * Les autres causes de l'arbre de diagnostic restent à PB-01. PB-02 et PB-11 (hausse) sont prioritaires : un seul sens à la fois.
+ */
+export function detectBaseHigh(ctx: Ctx, stats: WindowStat[], upwardFired: boolean): Signal<BaseHighPayload>[] {
+  if (upwardFired || !ctx.lagSince) return [];
+  const th = (k: string) => threshold("PB-12", k);
+  const persistDays = diffDays(ctx.today, ctx.lagSince);
+  if (persistDays < th("minPersistDays")) return [];
+  const kept: KnownWindow[] = [], free: ISODate[] = [];
+  for (const w of stats.slice(1)) {
+    if (w.gap === null || w.gap > th("paceGap")) continue;
+    const dates = w.freeDates.filter((d) => !ctx.claimed.has(d));
+    if (dates.length === 0) continue;
+    const a = avgDay(ctx, dates);
+    if (a.pctl === null || a.occ === null || a.pctl < th("priceHighPercentile") || a.occ < th("weakMarketOccupancy")) continue; // prix ou marché inconnu : silence
+    if (a.minStay === null || (a.minStay >= th("restrictiveMinStay") && a.minStay > ctx.refLos)) continue;
+    if (ctx.lead !== null && w.startOffset > ctx.lead.p75) continue; // fenêtre de réservation pas encore ouverte
+    if (ctx.channels.some((c) => promosOn(ctx.promos, c, dates[0]).length > 0) || overlaps(ctx, w.from, w.to)) continue;
+    kept.push(known(w)); free.push(...dates);
+  }
+  if (free.length < th("minFreeNights")) return [];
+  free.sort();
+  free.forEach((d) => ctx.claimed.add(d));
+  const a = avgDay(ctx, free);
+  const worst = kept.reduce((x, w) => (w.gap < x.gap ? w : x), kept[0]);
+  return [{
+    playbook: "PB-12", trigger: "PACE_BELOW_MARKET_PERSISTENT", dedupe: "base", channel: ctx.refChannel, from: free[0], to: addDays(free[free.length - 1], 1), dates: free,
+    measures: [
+      m("persistDays", "Durée du retard suivi", persistDays, th("minPersistDays"), ">=", "jours"),
+      m("paceGap", "Écart d'occupation au marché (fenêtre la plus en retard)", round2(worst.gap), th("paceGap"), "<=", "points"),
+      m("pricePercentile", "Position de prix sur le marché", Math.round(a.pctl as number), th("priceHighPercentile"), ">=", "percentile"),
+      m("freeNights", "Nuits libres sur les fenêtres en retard", free.length, th("minFreeNights"), ">=", "nuits"),
+    ],
+    payload: { windows: kept, free, lagSince: ctx.lagSince, persistDays, avgPercentile: a.pctl as number, avgMarketOccupancy: a.occ as number },
+  }];
+}
+
 /* ------------------------------------------------------------------ PB-01 */
 export type PaceLowPayload = { window: KnownWindow; free: ISODate[] };
 export function detectPaceLow(ctx: Ctx, stats: WindowStat[]): Signal<PaceLowPayload>[] {
@@ -395,4 +436,4 @@ export function detectDataDrift(ctx: Ctx): Signal<DataDriftPayload>[] {
 }
 
 /** Ordre d'évaluation fixe : un playbook qui marque des nuits les retire aux suivants (veto d'abord, puis causes structurelles, puis rythme). */
-export const SIGNAL_ORDER: PlaybookCode[] = ["PB-06", "PB-13", "PB-05", "PB-03", "PB-07", "PB-02", "PB-11", "PB-01", "PB-04", "PB-09", "PB-08", "PB-10"];
+export const SIGNAL_ORDER: PlaybookCode[] = ["PB-06", "PB-13", "PB-05", "PB-03", "PB-07", "PB-02", "PB-11", "PB-12", "PB-01", "PB-04", "PB-09", "PB-08", "PB-10"];

@@ -61,6 +61,11 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   ]);
   const [trk] = await db.select({ since: sql<Date | null>`min(${reservationChanges.createdAt})` }).from(reservationChanges).where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId)));
   const cancellations: Cancellation[] = cancelledFromChanges(changes).filter(({ before }) => typeof before.channel === "string" && before.checkIn && before.checkOut && before.checkOut > before.checkIn && Number.isFinite(before.grossRoomCents)).map(({ before, at }) => ({ channel: before.channel, checkIn: before.checkIn, checkOut: before.checkOut, nights: diffDays(before.checkOut, before.checkIn), grossRoomCents: before.grossRoomCents, cancelledAt: at }));
+  // PB-12 : depuis quand le retard de rythme est suivi = plus ancien dossier de rythme encore vivant (PB-01 : date de création ; PB-12 : `lagSince` qu'il porte,
+  // car il remplace PB-01 sans effacer l'ancienneté). Aucun dossier vivant : inconnu, PB-12 reste silencieux.
+  const lagRows = await db.select({ playbook: opportunities.playbook, createdAt: opportunities.createdAt, signals: opportunities.signals }).from(opportunities)
+    .where(and(eq(opportunities.tenantId, tenantId), eq(opportunities.propertyId, p.id), inArray(opportunities.playbook, ["PB-01", "PB-12"]), inArray(opportunities.status, ["OPEN", "DEFERRED", "DECIDED"])));
+  const lagSince = lagRows.map((r) => (r.playbook === "PB-12" && typeof r.signals?.lagSince === "string" ? r.signals.lagSince : todayISO(r.createdAt))).sort()[0] ?? null;
   const firstBooking = resas.filter((r) => r.status === "CONFIRMED").map((r) => r.bookedAt).sort()[0] ?? null;
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
@@ -84,7 +89,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),
     promos: promos.map((x) => ({ id: x.id, channel: x.channel as Channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.stayFrom, stayTo: x.stayTo, verifiedAt: x.verifiedAt }) satisfies Promo),
     capabilities,
-    cancellations, cancellationTracking: trk?.since ? { since: todayISO(new Date(trk.since)) } : null, firstBookingDate: firstBooking,
+    lagSince, cancellations, cancellationTracking: trk?.since ? { since: todayISO(new Date(trk.since)) } : null, firstBookingDate: firstBooking,
     recentBaseChanges: recentBaseChanges(baseActs, today),
     structuralHold: structuralHold(baseActs),
     activeRanges: acts.filter((a) => a.type !== "MIN_PRICE_CHANGE").map((a) => { const ds: string[] | undefined = a.params?.dates; return ds?.length ? { from: ds[0], to: addDays(ds[ds.length - 1], 1) } : { from: a.from, to: a.to }; }),

@@ -10,8 +10,8 @@ import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
 import { conformOpportunity, type ConformityIssue } from "./candidates";
 import { strategyFloorOver } from "./seasons";
 import {
-  detectBaseLow, detectCancellation, detectChannelGap, detectLongStay, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
-  type BaseLowPayload, type CancellationPayload, type ChannelGapPayload, type LongStayPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
+  detectBaseHigh, detectBaseLow, detectCancellation, detectChannelGap, detectLongStay, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
+  type BaseHighPayload, type BaseLowPayload, type CancellationPayload, type ChannelGapPayload, type LongStayPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
 } from "./signals";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
 import type { Candidate, Channel, DetectedOpportunity, Diagnosis, DiagnosisStep, Evidence, Promo, StackResult } from "./types";
@@ -521,6 +521,75 @@ function paceHigh(ctx: Ctx, signals: Signal<PaceHighPayload>[]): DetectedOpportu
  * palier de hausse du prix de base (soumis au verrou structurant, au plafond de 7 jours et à l'approbation du propriétaire) ; sans donnée de marché, son gain
  * n'est pas chiffré et la hausse reste proposée avec cette réserve. L'inaction est retenue quand le gain chiffré est négatif.
  */
+/**
+ * PB-12 · prix de base trop haut. Le retard dure et le prix est au-dessus du marché, mais la conversion et la visibilité de l'annonce ne sont pas lisibles
+ * (« inconnu ») : le blueprint dit « contenu/visibilité non exclus ». L'audit de l'annonce est donc l'option retenue ; la baisse du prix de base par palier
+ * reste proposée, chiffrée, mais jamais présélectionnée. L'approbation exige le propriétaire et un commentaire.
+ */
+function baseHigh(ctx: Ctx, signals: Signal<BaseHighPayload>[]): DetectedOpportunity[] {
+  const out: DetectedOpportunity[] = [];
+  for (const sig of signals) {
+    const { windows, free, lagSince, persistDays, avgPercentile, avgMarketOccupancy } = sig.payload;
+    const step = threshold("PB-12", "stepPct"), factor = 1 - step / 100;
+    const channel = ctx.refChannel, los = Math.max(ctx.refLos, ctx.strategy.minStay ?? 1, 1), a = avgDay(ctx, free);
+    if (a.price === null) continue;
+    const promoFn = (d: ISODate) => promosOn(ctx.promos, channel, d), promos = refPromos(ctx, channel, free), cur = stack(ctx, channel, los, a.price, promos);
+    const b0 = expected(ctx, free, channel, 1, promoFn, los), b1 = expected(ctx, free, channel, factor, promoFn, los);
+    const from = sig.from, to = sig.to;
+    const worst = windows.reduce((x, w) => (w.gap < x.gap ? w : x), windows[0]);
+    const cands: Candidate[] = [
+      finalize(ctx, {
+        type: "BASE_PRICE_CHANGE", label: `Baisser le prix de base de ${step} %`,
+        detail: `S'applique aux ${plural(free.length, "nuit")} encore libre${free.length > 1 ? "s" : ""} en retard à partir du ${fmtDay(from)} ; les réservations acquises ne changent pas.`, agent: "pricing",
+        target: { system: "PRICELABS" }, parameters: { changePct: -step, basePriceCents: ctx.strategy.basePriceCents ? Math.round(ctx.strategy.basePriceCents * factor) : null, previousBasePriceCents: ctx.strategy.basePriceCents ?? null, dates: free }, nightsTouched: free.length, priceChangePct: -step,
+        current: cur, proposed: stack(ctx, channel, los, a.price * factor, promos), expectedDeltaCents: b0 !== null && b1 !== null ? b1 - b0 : null,
+        hypothesis: `${DEMAND_MODEL_NOTE} Le gain est chiffré à demande constante pour un prix plus bas ; il ne dit rien d'un défaut de visibilité ou de contenu, qui n'est pas exclu.`,
+        rollbackPlan: `Rétablir le prix de base précédent ; fenêtre d'observation minimale de ${PLAYBOOKS["PB-12"].measurementHorizonDays} jours.`, executionMode: ctx.property.isDemo || ctx.strategy.basePriceCents ? plExec(ctx, "BASE_PRICE_CHANGE") : "MANUAL_RUNBOOK", risk: "HIGH", measurementWindowDays: PLAYBOOKS["PB-12"].measurementHorizonDays,
+      }, from, to),
+      finalize(ctx, {
+        type: "LISTING_AUDIT", label: "Auditer l'annonce avant de baisser le prix de base",
+        detail: "Contrôle du titre, des photos, des équipements déclarés, des avis récents et de la conversion par canal : la visibilité n'est pas lisible sans accès partenaire.", agent: "annonce",
+        target: { system: "INTERNAL" }, parameters: {}, nightsTouched: 0, priceChangePct: null, current: cur, proposed: null, expectedDeltaCents: null,
+        hypothesis: "Effet non chiffrable : aucun taux de conversion n'est disponible sans accès partenaire.", rollbackPlan: "Aucune écriture externe : rien à annuler.",
+        executionMode: "INTERNAL", risk: "LOW", measurementWindowDays: 14,
+      }, from, to),
+      noAction(ctx, from, to, cur, "Attendre une revue supplémentaire : le retard peut se résorber avec la fenêtre de réservation."),
+    ];
+    const selected = pick(cands, { forceType: "LISTING_AUDIT" });
+    out.push({
+      playbook: "PB-12", signal: summarize(sig, ctx.today), dedupe: "base", reasonCode: "PACE_BELOW_MARKET_PERSISTENT",
+      title: `Retard de ${Math.round(-worst.gap * 100)} points sur le marché depuis ${persistDays} jours, prix au-dessus du marché`,
+      stayFrom: from, stayTo: to,
+      signalText: `Occupation ${pct(worst.occupancy)} pour un marché à ${pct(worst.marketOccupancy)} sur ${worst.label}, suivi depuis le ${fmtDay(lagSince)} · prix au ${Math.round(avgPercentile)}e percentile`, signalSource: `${srcCal(ctx)} + ${srcMkt(ctx)}`,
+      hypothesisText: "Le retard dure et le prix de base est probablement trop haut ; la visibilité de l'annonce n'est pas exclue.",
+      signals: { lagSince, persistDays, paceGapPoints: Math.round(worst.gap * 100), pricePercentile: Math.round(avgPercentile), marketOccupancy: Math.round(avgMarketOccupancy * 100) / 100, windows: windows.map((w) => w.key), freeNights: free.length, lagSinceKnown: true },
+      diagnosis: {
+        primary: "PRICE_HIGH", primaryLabel: "Prix de base au-dessus du marché, retard qui dure",
+        alternatives: [
+          { cause: "VISIBILITY_CONVERSION", label: "Visibilité ou contenu de l'annonce", why: "Non exclu : conversion et visibilité par canal sont inconnues sans accès partenaire. D'où l'audit proposé avant la baisse." },
+          { cause: "DEMAND_WEAK", label: "Demande du marché faible", why: `Écartée : marché occupé à ${pct(avgMarketOccupancy)} sur les fenêtres retenues.` },
+        ],
+        confidence: confidence([[persistDays >= 42, 0.08], [windows.length >= 2, 0.06], [avgPercentile >= 80, 0.06]], 0.4),
+        confidenceNote: "La durée du retard vient des dossiers de rythme du moteur (pas d'un historique d'occupation daté) ; la visibilité de l'annonce n'est pas mesurable.",
+        tree: [
+          { question: "Le retard dure-t-il sur plusieurs revues espacées ?", answer: `Oui : suivi depuis le ${fmtDay(lagSince)} (${persistDays} jours).`, verdict: "oui" },
+          { question: "Le prix est-il au-dessus du marché comparable ?", answer: `${Math.round(avgPercentile)}e percentile du marché.`, verdict: "oui" },
+          { question: "La demande du marché est-elle elle-même faible ?", answer: `${pct(avgMarketOccupancy)} d'occupation marché.`, verdict: "non" },
+          { question: "Le séjour minimum, une promotion ou une action récente l'expliquent-ils ?", answer: "Non : aucun des trois sur ces fenêtres.", verdict: "non" },
+          { question: "La visibilité ou le contenu de l'annonce sont-ils en cause ?", answer: "Inconnu : conversion non lisible sans accès partenaire.", verdict: "inconnu" },
+          { question: "Une hausse (PB-02 ou PB-11) est-elle en cours ?", answer: "Non : un seul sens à la fois sur le prix de base.", verdict: "non" },
+        ],
+        evidence: [
+          { kind: "comparaison", label: `Occupation sur ${worst.label}`, value: `${pct(worst.occupancy)} contre ${pct(worst.marketOccupancy)} pour le marché`, source: `${srcCal(ctx)} + ${srcMkt(ctx)}` },
+          { kind: "fait", label: "Prix de base en vigueur", value: euro(ctx.strategy.basePriceCents), source: "Stratégie" },
+        ],
+      },
+      candidates: cands, selected, veto: false, urgency: 1, expiresAt: addDays(ctx.today, PLAYBOOKS["PB-12"].measurementHorizonDays),
+    });
+  }
+  return out;
+}
+
 function baseLow(ctx: Ctx, signals: Signal<BaseLowPayload>[]): DetectedOpportunity[] {
   const out: DetectedOpportunity[] = [];
   for (const sig of signals) {
@@ -854,6 +923,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
     ...step(detectEventUplift(ctx), (s) => eventUplift(ctx, s)),
     ...step(detectPaceHigh(ctx, stats), (s) => paceHigh(ctx, s)),
     ...step(detectBaseLow(ctx, signals.some((x) => x.playbook === "PB-02")), (s) => baseLow(ctx, s)),
+    ...step(detectBaseHigh(ctx, stats, signals.some((x) => x.playbook === "PB-02" || x.playbook === "PB-11")), (s) => baseHigh(ctx, s)),
     ...step(detectPaceLow(ctx, stats), (s) => paceLow(ctx, s)),
     ...step(detectChannelGap(ctx, stats), (s) => channelGap(ctx, s)),
     ...step(detectLongStay(ctx, stats), (s) => longStay(ctx, s)),
