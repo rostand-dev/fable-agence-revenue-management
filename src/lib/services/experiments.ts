@@ -1,10 +1,12 @@
-import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, ne, or, sql } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
+import { freshnessOf } from "../freshness";
 import { todayISO, type ISODate } from "../dates";
 import { computeBaseline, type Baseline, type BaselineInput, type BookedNight } from "../experiments/baseline";
-import { clipStay, COMPARABLE_OFFSET_DAYS, observationWindow, shiftWindow, type DateWindow } from "../experiments/windows";
+import { classifyOutcome, type OutcomeResult } from "../experiments/outcome";
+import { clipStay, COMPARABLE_OFFSET_DAYS, effectiveDateOf, observationWindow, shiftWindow, type DateWindow } from "../experiments/windows";
 
-const { experiments, reservationNights, reservations, calendarDays } = schema;
+const { experiments, experimentMeasurements, reservationNights, reservations, calendarDays } = schema;
 type Exec = Pick<typeof db, "insert" | "update" | "select">;
 export type ExperimentRow = typeof experiments.$inferSelect;
 /** Baseline d'une expérience antérieure à l'épic 11 : l'état des séjours à l'exécution, sans fenêtre ni rythme (jamais reconstitués après coup). */
@@ -100,4 +102,84 @@ export function windowsOf(x: Pick<ExperimentRow, "stayFrom" | "stayTo" | "baseli
 export async function markMeasured(tx: Exec, tenantId: string, actionId: string): Promise<void> {
   await tx.update(experiments).set({ status: "MEASURED", updatedAt: new Date() })
     .where(and(eq(experiments.actionId, actionId), eq(experiments.tenantId, tenantId), inArray(experiments.status, ["AWAITING_VERIFICATION", "OBSERVING"])));
+}
+
+export type MeasurementRow = typeof experimentMeasurements.$inferSelect;
+
+/** Nuits vendues du logement sur une fenêtre de séjours (avec leur date de réservation). */
+export async function loadStayNights(tenantId: string, propertyId: string, stay: DateWindow): Promise<BookedNight[]> {
+  const rows = await db.select({ night: reservationNights.night, bookedAt: reservations.bookedAt, channel: reservationNights.channel, gross: reservationNights.grossRoomCents, commission: reservationNights.commissionCents, fee: reservationNights.paymentFeeCents })
+    .from(reservationNights).innerJoin(reservations, eq(reservations.id, reservationNights.reservationId))
+    .where(and(eq(reservationNights.tenantId, tenantId), eq(reservationNights.propertyId, propertyId), eq(reservationNights.status, "CONFIRMED"), gte(reservationNights.night, stay.from), lt(reservationNights.night, stay.to)));
+  return rows.map((r) => ({ night: r.night, bookedAt: r.bookedAt, channel: r.channel, grossRoomCents: r.gross, commissionCents: r.commission, paymentFeeCents: r.fee }));
+}
+
+/**
+ * La source des réservations est-elle assez récente pour qu'une absence de réservation veuille dire quelque chose ? (blueprint §7.4 : réservations < 24 h)
+ * Démonstration : toujours (données synthétiques). Logement relié à SuperHote (ou, à défaut, à PriceLabs) : dernière lecture réussie et récente. Sans aucune liaison,
+ * aucune date de synchronisation n'existe : rien n'est opposé (saisie manuelle), la limite est dite dans « Méthode » et la documentation.
+ */
+export async function reservationsFreshFor(tenantId: string, propertyId: string, now = new Date()): Promise<boolean> {
+  const [p] = await db.select({ isDemo: schema.properties.isDemo, superhote: schema.properties.superhote, pricelabs: schema.properties.pricelabs }).from(schema.properties).where(and(eq(schema.properties.id, propertyId), eq(schema.properties.tenantId, tenantId)));
+  if (!p || p.isDemo) return true;
+  // SuperHote fait foi pour les réservations ; sans SuperHote, PriceLabs les porte (même règle que le rythme de synchronisation, cadence.ts)
+  const sh = p.superhote as { rentalId?: string; lastSync?: { ok?: boolean; at?: string } } | null;
+  const pl = p.pricelabs as { listingId?: string; lastSync?: { ok?: boolean; at?: string } } | null;
+  const src = sh?.rentalId ? sh.lastSync : pl?.listingId ? pl.lastSync : undefined;
+  if (src === undefined && !sh?.rentalId && !pl?.listingId) return true; // aucune source reliée : saisie manuelle, rien n'est opposé (limite dite dans « Méthode »)
+  if (src?.ok === false) return false;
+  return freshnessOf("RESERVATIONS", src?.at, now).state === "FRESH";
+}
+
+/**
+ * Autres expériences non annulées du même logement dont les séjours se recoupent et qui s'observent en même temps (leurs effets ne se séparent pas).
+ * Une expérience pas encore vérifiée n'a pas de fin d'observation : elle compte dès qu'elle a commencé avant la fin de celle qu'on mesure (choix prudent).
+ */
+export async function countOverlapping(tenantId: string, x: Pick<ExperimentRow, "id" | "propertyId" | "stayFrom" | "stayTo" | "effectiveOn" | "observeFrom" | "observeTo">): Promise<number> {
+  if (!x.stayFrom || !x.stayTo) return 0;
+  const rows = await db.select({ id: experiments.id, stayFrom: experiments.stayFrom, stayTo: experiments.stayTo, effectiveOn: experiments.effectiveOn, observeTo: experiments.observeTo, status: experiments.status })
+    .from(experiments).where(and(eq(experiments.tenantId, tenantId), eq(experiments.propertyId, x.propertyId), ne(experiments.id, x.id), ne(experiments.status, "CANCELLED")));
+  const myFrom = x.observeFrom ?? x.effectiveOn, myTo = x.observeTo ?? "9999-12-31";
+  return rows.filter((o) => {
+    if (!o.stayFrom || !o.stayTo || !(o.stayFrom < x.stayTo! && x.stayFrom! < o.stayTo)) return false;
+    // sans fin connue : une expérience pas encore mesurée reste ouverte ; une expérience déjà mesurée (héritée) s'est arrêtée à son entrée en vigueur
+    const oTo = o.observeTo ?? (o.status === "MEASURED" ? o.effectiveOn : "9999-12-31");
+    return o.effectiveOn < myTo && myFrom < oTo;
+  }).length;
+}
+
+/**
+ * Mesure l'expérience d'une action arrivée au bout de sa fenêtre d'observation (US-111) : lit les nuits vendues, classe le résultat, écrit la mesure
+ * (immuable) dans la transaction fournie. Une action sans expérience (cas d'une base antérieure à l'épic) reçoit une expérience héritée, donc une mesure non concluante.
+ */
+export async function measureExperiment(tx: Exec, a: { id: string; tenantId: string; propertyId: string; opportunityId: string; executedAt: Date | null; createdAt: Date; execution: any }, stay: DateWindow, now = new Date()): Promise<{ result: OutcomeResult; experimentId: string; legacy: boolean }> {
+  let [x] = await tx.select().from(experiments).where(and(eq(experiments.actionId, a.id), eq(experiments.tenantId, a.tenantId)));
+  if (!x) {
+    const eff = effectiveDateOf((a.execution as any)?.declaredDate, a.executedAt ?? a.createdAt);
+    const legacy = { version: 0, legacy: true, sufficient: false, limits: ["LEGACY"], onBooks: (a.execution as any)?.baseline ?? null };
+    await tx.insert(experiments).values({ id: newId("exp"), tenantId: a.tenantId, propertyId: a.propertyId, actionId: a.id, opportunityId: a.opportunityId, status: "OBSERVING", effectiveOn: eff, stayFrom: stay.from, stayTo: stay.to, baselineFrom: eff, baselineTo: eff, baseline: legacy }).onConflictDoNothing({ target: experiments.actionId });
+    [x] = await tx.select().from(experiments).where(and(eq(experiments.actionId, a.id), eq(experiments.tenantId, a.tenantId)));
+  }
+  const legacy = isLegacyBaseline(x.baseline);
+  const baseline = legacy ? null : (x.baseline as Baseline);
+  const observation = windowsOf(x).observation;
+  const bstay = baseline?.stay;
+  const [nights, fresh, overlapping] = await Promise.all([
+    bstay ? loadStayNights(a.tenantId, a.propertyId, { from: bstay.from, to: bstay.to }) : Promise.resolve([] as BookedNight[]),
+    reservationsFreshFor(a.tenantId, a.propertyId, now),
+    countOverlapping(a.tenantId, x),
+  ]);
+  const result = classifyOutcome({ baseline, observation, nights, reservationsFresh: fresh, overlapping });
+  const metrics = { baselinePerDay: baseline?.pickup?.perDay ?? null, baselineWindow: baseline?.window ?? null, stay: bstay ?? null, observedNights: result.observed?.nights ?? null, observedPerDay: result.observed?.perDay ?? null, observationDays: result.observationDays, expectedNights: result.expectedNights, deltaNights: result.deltaNights, relativeChange: result.relativeChange, baseNetPerNight: result.baseNetPerNight, observedNetPerNight: result.observedNetPerNight, comparableYearNights: baseline?.comparable.available ? baseline.comparable.pickupNights : null };
+  await tx.insert(experimentMeasurements).values({
+    id: newId("mes"), tenantId: a.tenantId, propertyId: a.propertyId, experimentId: x.id, actionId: a.id, outcome: result.outcome, reasons: result.reasons, observeFrom: observation?.from ?? null, observeTo: observation?.to ?? null,
+    metrics, summary: result.summary, interpretation: result.interpretation, confidence: result.confidence, legacy, measuredAt: now,
+  }).onConflictDoNothing({ target: experimentMeasurements.experimentId });
+  return { result, experimentId: x.id, legacy };
+}
+
+/** Mesure d'une action (fiche dossier, historique, rapport). */
+export async function getMeasurementOfAction(tenantId: string, actionId: string): Promise<MeasurementRow | null> {
+  const [row] = await db.select().from(experimentMeasurements).where(and(eq(experimentMeasurements.actionId, actionId), eq(experimentMeasurements.tenantId, tenantId)));
+  return row ?? null;
 }

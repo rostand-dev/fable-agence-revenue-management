@@ -45,7 +45,7 @@ export default async function Historique({ searchParams }: { searchParams: Promi
       </div>
       <div className="synth">
         <Metric label="Actions approuvées" value={acts.length} source="Toutes périodes" />
-        <Metric label="Mesurées" value={measured.length} source={`${count("POSITIVE")} positive(s) · ${count("NEUTRAL")} neutre(s) · ${count("INCONCLUSIVE")} non concluante(s)`} />
+        <Metric label="Mesurées" value={measured.length} source={`${count("POSITIVE")} positive(s) · ${count("NEUTRAL")} neutre(s) · ${count("NEGATIVE")} négative(s) · ${count("INCONCLUSIVE")} non concluante(s)`} />
         <Metric label="Inactions retenues" value={opps.filter((o) => o.decision === "NO_ACTION").length} source="Ne rien faire est une décision" />
         <Metric label={<><Term id="effet-incremental">Effet incrémental</Term> attribué</>} value={<Vq>Inconnu</Vq>} source="Aucune période témoin : aucun gain n'est attribué" />
       </div>

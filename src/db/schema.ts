@@ -703,3 +703,28 @@ export const experiments = pgTable("experiments", {
   createdAt: created(),
   updatedAt: ts("updated_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("experiments_action").on(t.actionId), index("experiments_tenant").on(t.tenantId, t.status), index("experiments_property").on(t.tenantId, t.propertyId, t.createdAt)]);
+
+/**
+ * US-111 : la mesure finale d'une expérience (blueprint §12.1 « Experiment 1─* Measurement »). Une seule mesure finale par expérience.
+ * Immuable (déclencheur de la base : aucune modification) : un résultat rendu ne se réécrit pas. `legacy` : mesure des actions refermées avant l'épic 11,
+ * sans référence figée (résultat repris tel quel, jamais recalculé).
+ * outcome : POSITIVE · NEUTRAL · NEGATIVE · INCONCLUSIVE.
+ */
+export const experimentMeasurements = pgTable("experiment_measurements", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  experimentId: text("experiment_id").notNull().references(() => experiments.id, { onDelete: "cascade" }),
+  actionId: text("action_id").notNull().references(() => revenueActions.id, { onDelete: "cascade" }),
+  outcome: text("outcome").notNull(),
+  reasons: jsonb("reasons").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  observeFrom: date("observe_from", { mode: "string" }),
+  observeTo: date("observe_to", { mode: "string" }),
+  /** Chiffres comparés (attendu, observé, net par nuit…) : voir `experiments/outcome.ts`. */
+  metrics: jsonb("metrics").$type<any>().notNull(),
+  summary: text("summary").notNull(),
+  interpretation: text("interpretation").notNull(),
+  confidence: text("confidence").notNull().default("faible"),
+  legacy: boolean("legacy").notNull().default(false),
+  measuredAt: ts("measured_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("experiment_measurements_experiment").on(t.experimentId), index("experiment_measurements_tenant").on(t.tenantId, t.measuredAt), index("experiment_measurements_property").on(t.tenantId, t.propertyId, t.measuredAt)]);
