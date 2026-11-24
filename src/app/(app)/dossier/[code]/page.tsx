@@ -27,6 +27,8 @@ import { euro, signedEuro } from "@/lib/format";
 import { executionBlock, providerOfTarget } from "@/lib/integrations/capabilities";
 import { flagFor } from "@/lib/services/flags";
 import { WriteProof } from "@/components/WriteProof";
+import { ExperimentPanel } from "@/components/ExperimentPanel";
+import { getExperimentOfAction } from "@/lib/services/experiments";
 import { writesOfAction } from "@/lib/services/pricelabs-write";
 import { listAlerts } from "@/lib/services/execution-alerts";
 import { AlertCard } from "@/components/AlertCard";
@@ -87,6 +89,8 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const who = (perm: Parameters<typeof rolesWith>[0]) => rolesWith(perm).map((r) => ROLE_LABEL[r].toLowerCase()).join(", ");
   const exec = action?.execution, meas = action?.measurement;
   const writes = action ? await writesOfAction(user.tenantId, action.id) : [];
+  // US-110 : la référence figée avant l'action et les fenêtres de mesure
+  const experiment = action ? await getExperimentOfAction(user.tenantId, action.id) : null;
   const actionAlerts = action ? (await listAlerts(user.tenantId, { actionId: action.id, resolvedLimit: 5 })).active : [];
   // US-002 : même règle que le serveur (`execute()`), pour ne jamais offrir un bouton qui sera refusé
   const target = providerOfTarget(action?.target?.system);
@@ -496,6 +500,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                     <div className="r-eff"><h4><Term id="effet-incremental">Effet incrémental</Term></h4><p><span className="r-val">{meas.incrementalCents === null || meas.incrementalCents === undefined ? <Vq>Inconnu</Vq> : signedEuro(meas.incrementalCents)}</span> Aucune période témoin comparable : aucun gain n'est attribué à l'action.</p></div>
                   </div>
                 ) : <p className="muted" style={{ margin: 0 }}>{action.status === "MEASURING" ? `Fenêtre d'observation en cours ; mesure le ${action.measureDueAt ? fmtDate(action.measureDueAt) : "—"}.` : action.status === "ROLLED_BACK" ? "Action annulée : aucune mesure." : "La mesure commence après la vérification."}</p>}
+                {experiment && <ExperimentPanel experiment={experiment} />}
               </div>
             </article>
           </div>

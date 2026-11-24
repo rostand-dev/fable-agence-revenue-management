@@ -3,6 +3,8 @@ import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { validateDeclaration, validateMismatch } from "@/lib/promotions/confirmation";
 import { canVerifyManual, cooldownFor, cooldownText, ROLLBACK_REASON } from "@/lib/promotions/lifecycle";
 import { getRunbook } from "./runbook";
+import { cancelExperiment, captureBaseline, createExperiment, markMeasured, startObservation } from "./experiments";
+import { effectiveDateOf } from "../experiments/windows";
 import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
@@ -200,6 +202,9 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
     if (!target) throw new DecisionError("La promotion à retirer est introuvable ou déjà terminée dans le registre : vérifiez le registre du logement avant de confirmer.", "VALIDATION");
   }
   const baseline = await bookedCount(a.propertyId, o.stayFrom, o.stayTo);
+  // US-110 : la baseline de l'expérience est figée AVANT l'effet de l'action (jour d'entrée en vigueur : date déclarée, sinon aujourd'hui)
+  const effectiveOn = effectiveDateOf(decl?.date, new Date());
+  const experimentBaseline = await captureBaseline(actor.tenantId, a.propertyId, o.stayFrom, o.stayTo, effectiveOn);
   // écriture réelle chez PriceLabs (épic 9) : on relit l'état réel et on calcule l'écriture AVANT de quitter « Approuvée » ; un refus ici ne change rien
   const real = mode === "API_PRICELABS" && !p.isDemo;
   let prepared: PreparedWrite | null = null;
@@ -274,6 +279,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
         execution = { mode: "INTERNAL", note: decl?.scope || "Tâche interne lancée.", baseline };
       }
       await move(tx, a.id, actor.tenantId, "EXECUTING", "EXECUTED", { execution, executedAt: new Date() });
+      await createExperiment(tx, { tenantId: actor.tenantId, propertyId: a.propertyId, actionId: a.id, opportunityId: o.id, effectiveOn, baseline: experimentBaseline });
       if (mode === "MANUAL_RUNBOOK") await tx.update(schema.executionAlerts).set({ status: "RESOLVED", resolvedAt: new Date(), resolution: "L'action a finalement été appliquée et confirmée." }).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PROMO_MISMATCH"), ne(schema.executionAlerts.status, "RESOLVED")));
       if (mode === "API_PRICELABS") await tx.update(schema.executionAlerts).set({ status: "RESOLVED", resolvedAt: new Date(), resolution: "L'action a été écrite avec succès." }).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PRECONDITION_FAILED"), ne(schema.executionAlerts.status, "RESOLVED")));
       await audit(tx, actor.tenantId, userActor(actor.id), "action.executed", "RevenueAction", a.id, `« ${a.label} » exécutée (${execution.mode === "PRICELABS_API" ? "écriture PriceLabs confirmée par relecture" : execution.mode === "DEMO_SIMULATED" ? "écriture simulée, démonstration" : execution.mode === "MANUAL_DECLARED" ? "procédure manuelle déclarée" : "tâche interne"}).`,
@@ -370,6 +376,7 @@ export async function verify(actor: Actor, actionId: string) {
   await db.transaction(async (tx) => {
     await move(tx, a.id, actor.tenantId, "EXECUTED", "VERIFIED", { verifiedAt: new Date(), execution: { ...a.execution, verification: check } });
     await move(tx, a.id, actor.tenantId, "VERIFIED", "MEASURING", { measureDueAt: due });
+    await startObservation(tx, actor.tenantId, a.id, due);
     await audit(tx, actor.tenantId, agentActor("audit"), "action.verified", "RevenueAction", a.id, `« ${a.label} » vérifiée ; mesure prévue le ${due.split("-").reverse().join("/")}.`, { actionType: a.type, check: check.mode, reread: check.reread ?? null, measureDueAt: due, requestedBy: userActor(actor.id) });
   });
 }
@@ -425,6 +432,7 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
       if (a.type === "PROMO_REMOVAL") await tx.update(promotions).set({ status: "ACTIVE", endedAt: null, endReason: null, updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
     }
     await move(tx, a.id, actor.tenantId, a.status as ActionState, "ROLLED_BACK", { execution: { ...a.execution, rollback: { at: new Date().toISOString(), reason: reason.trim() || null, manual: a.execution?.mode === "MANUAL_DECLARED", ...(remote ? { writeIds: remote.writeIds, noop: remote.noop, adapter: remote.adapter } : {}) } } });
+    await cancelExperiment(tx, actor.tenantId, a.id);
     // une ligne restée « en préparation » (arrêt brutal) n'a jamais eu d'issue connue : elle passe en « envoyée, non confirmée », l'état réel ayant été remis par le retour arrière
     await tx.update(schema.externalWrites).set({ status: "SENT", error: "Issue inconnue (arrêt du serveur) : état remis par le retour arrière.", updatedAt: new Date() }).where(and(eq(schema.externalWrites.actionId, a.id), eq(schema.externalWrites.tenantId, actor.tenantId), eq(schema.externalWrites.status, "PENDING")));
     await audit(tx, actor.tenantId, userActor(actor.id), "action.rolled_back", "RevenueAction", a.id, `Retour arrière sur « ${a.label} »${reason ? " — " + reason.trim() : ""}. Plan : ${a.rollbackPlan}`, { actionType: a.type, fromStatus: a.status, reason: reason.trim() || null, rollbackPlan: a.rollbackPlan, ...(remote ? { writeIds: remote.writeIds, remoteNoop: remote.noop } : {}) });
@@ -483,6 +491,7 @@ export async function measureDueActions(tenantId: string, today: ISODate): Promi
     };
     await db.transaction(async (tx) => {
       await move(tx, a.id, tenantId, "MEASURING", "CLOSED", { measurement });
+      await markMeasured(tx, tenantId, a.id);
       await tx.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "reporting", opportunityId: o.id, operation: "measure", mode: "DETERMINISTIC", summary: `Mesure de « ${a.label} » (${o.code}) : ${measurement.observed} Effet incrémental inconnu.` });
       await audit(tx, tenantId, agentActor("reporting"), "experiment.measured", "RevenueAction", a.id, `Mesure de « ${a.label} » : résultat ${measurement.outcome === "POSITIVE" ? "positif (corrélation)" : measurement.outcome === "NEUTRAL" ? "neutre" : "non concluant"}.`, { code: o.code, outcome: measurement.outcome, observed: measurement.observed });
     });

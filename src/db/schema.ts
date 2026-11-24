@@ -674,3 +674,32 @@ export const runbookSteps = pgTable("runbook_steps", {
   doneBy: text("done_by").notNull(),
   doneAt: ts("done_at").notNull().defaultNow(),
 }, (t) => [uniqueIndex("runbook_steps_unique").on(t.actionId, t.stepId), index("runbook_steps_tenant").on(t.tenantId, t.actionId)]);
+
+/**
+ * US-110 : une expérience par action exécutée (blueprint §12.1 « RevenueAction 0─1 Experiment 1─* Measurement »).
+ * Elle fige la baseline AVANT l'effet de l'action (jamais modifiée : déclencheur de la base) et porte les fenêtres de mesure.
+ * AWAITING_VERIFICATION : baseline figée, action pas encore vérifiée · OBSERVING : fenêtre d'observation fixée · MEASURED : résultat rendu · CANCELLED : action annulée avant mesure.
+ */
+export const experiments = pgTable("experiments", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
+  actionId: text("action_id").notNull().references(() => revenueActions.id, { onDelete: "cascade" }),
+  opportunityId: text("opportunity_id").notNull(),
+  status: text("status").notNull().default("AWAITING_VERIFICATION"),
+  /** Jour d'entrée en vigueur : date déclarée (procédure manuelle) ou jour de l'exécution. */
+  effectiveOn: date("effective_on", { mode: "string" }).notNull(),
+  /** Séjours visés, ramenés aux nuits encore à vendre à l'entrée en vigueur (null = toutes déjà passées). */
+  stayFrom: date("stay_from", { mode: "string" }),
+  stayTo: date("stay_to", { mode: "string" }),
+  baselineFrom: date("baseline_from", { mode: "string" }).notNull(),
+  baselineTo: date("baseline_to", { mode: "string" }).notNull(),
+  /** Fixée à la vérification de l'action ; null avant. */
+  observeFrom: date("observe_from", { mode: "string" }),
+  observeTo: date("observe_to", { mode: "string" }),
+  /** Baseline figée (voir `experiments/baseline.ts`). Immuable. */
+  baseline: jsonb("baseline").$type<any>().notNull(),
+  capturedAt: ts("captured_at").notNull().defaultNow(),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("experiments_action").on(t.actionId), index("experiments_tenant").on(t.tenantId, t.status), index("experiments_property").on(t.tenantId, t.propertyId, t.createdAt)]);

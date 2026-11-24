@@ -1299,6 +1299,7 @@ table.cascade .delta-neu { color: var(--quiet); }
 .stratum > header .st-no { font-family: var(--mono); font-size: 11.5px; color: var(--faint); border: 1px solid var(--line-strong); border-radius: 5px; padding: 1px 6px; }
 .stratum-body { padding: 16px; }
 .stratum-body > * + * { margin-top: 14px; }
+.experiment h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); font-weight: 600; }
 .result3 { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .result3 > div { border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px; }
 .result3 .r-obs { border-left: 3px solid var(--blue); background: rgb(37 99 235 / 7%); }
