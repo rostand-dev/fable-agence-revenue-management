@@ -68,6 +68,12 @@ export function buildRunbook(i: RunbookInput): RunbookStep[] {
         SAFETY,
       ];
     case "INVESTIGATION":
+      if (i.parameters.subject === "LONG_STAY") return [
+        { ...open, title: `Ouvrir ${where(i.channel)}, rubrique tarifs et promotions.` },
+        { id: "los", kind: "CHECK", checkable: true, title: "Chercher une option de tarif par durée de séjour (semaine, mois) ou une promotion de long séjour.", detail: period(i.parameters) },
+        { id: "gaps", kind: "CHECK", checkable: false, title: "Noter ce que le canal propose, sans rien activer : aucun type équivalent n'est connu du registre." },
+        { id: "notes", kind: "CAPTURE", checkable: false, title: "Consigner le constat dans la déclaration ci-dessous : le registre des promotions n'est pas daté comme vérifié." },
+      ];
       if (i.parameters.subject === "CALENDAR") return [
         { id: "calendar", kind: "CHECK", checkable: true, title: "Ouvrir le calendrier du logement et vérifier que les nuits rouvertes sont bien libres sur tous les canaux.", detail: period(i.parameters) },
         { id: "price", kind: "COMPARE", checkable: true, title: "Comparer le prix publié et les restrictions de ces nuits à ceux des nuits voisines." },

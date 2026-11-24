@@ -283,8 +283,8 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
           // la promotion retirée garde la mémoire de l'opérateur : date réelle, preuve, identifiant. Introuvable ou déjà terminée : la confirmation est refusée, rien n'est inventé.
           const ended = await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(decl.date + "T12:00:00Z"), endReason: "Retirée par une action approuvée", actionId: a.id, proof: decl.proof || null, externalRef: decl.externalRef, updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId), eq(promotions.status, "ACTIVE"))).returning({ id: promotions.id });
           if (!ended.length) throw new DecisionError("La promotion à retirer est introuvable ou déjà terminée dans le registre : vérifiez le registre du logement avant de confirmer.", "VALIDATION");
-        } else if (a.type === "INVESTIGATION" && ch && a.parameters.subject !== "CALENDAR") {
-          // seule la vérification du registre des promotions (PB-10) date les promotions comme vérifiées ; une relecture du calendrier (PB-08) n'y touche pas
+        } else if (a.type === "INVESTIGATION" && ch && !a.parameters.subject) {
+          // seule la vérification du registre des promotions (PB-10) date les promotions comme vérifiées ; une relecture du calendrier (PB-08) ou une vérification de séjour long (PB-09) n'y touche pas
           await tx.update(promotions).set({ verifiedAt: new Date(), verifiedBy: actor.id, updatedAt: new Date() }).where(and(eq(promotions.propertyId, p.id), eq(promotions.channel, ch), eq(promotions.status, "ACTIVE")));
         }
         execution = { ...execution, mode: "MANUAL_DECLARED", declaredBy: actor.id, declaredScope: decl!.scope, declaredDate: decl!.date, proof: decl!.proof || null, externalRef: decl!.externalRef, runbook: guide, baseline };

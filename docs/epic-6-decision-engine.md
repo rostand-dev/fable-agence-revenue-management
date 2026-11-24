@@ -20,14 +20,14 @@ Blueprint E6 : US-060 (règles de signaux PB-01 à PB-06), US-061 (déduplicatio
 ## US-060 — Règles de signaux PB-01 à PB-06
 
 **Ce qui change**
-- **Catalogue `src/lib/engine/playbooks.ts`** : les 13 playbooks du blueprint (PB-01 à PB-13) avec seuils nommés, données requises, période de repos, candidats, exclusions, règles de veto, approbateur, vérification et horizon de mesure. Seuls PB-01 à PB-08, PB-10 et PB-13 sont codés ; les autres sont décrits et marqués « pas encore actif ».
+- **Catalogue `src/lib/engine/playbooks.ts`** : les 13 playbooks du blueprint (PB-01 à PB-13) avec seuils nommés, données requises, période de repos, candidats, exclusions, règles de veto, approbateur, vérification et horizon de mesure. Seuls PB-01 à PB-10 et PB-13 sont codés ; les autres sont décrits et marqués « pas encore actif ».
 - **Signaux `src/lib/engine/signals.ts`** : la détection est séparée de la construction de l'action. Chaque signal porte son playbook, son déclencheur, sa clé de déduplication, ses dates et ses mesures (observé face au seuil). L'ordre de priorité des playbooks est explicite (`SIGNAL_ORDER`).
 - **Nouveau PB-04 (écart par canal)** : un canal en retard sur son poids historique alors que le logement tient son rythme global. Il ne se déclenche qu'avec au moins deux canaux, 12 séjours confirmés sur 12 mois, au plus 20 % de canal inconnu et 10 nuits déjà réservées ; sinon il se tait (inconnu ≠ zéro). Il ne se déclenche pas sur les logements de démo.
 - **Dossier d'opportunité** : encart « Signal » avec le tableau Mesure / Observé / Seuil et la source (playbook, fenêtre). Les mesures sont stockées dans le champ JSON `signals` existant.
 - **Page Méthode** : section « Les playbooks de l'agence », un bloc dépliable par playbook (seuils, données, repos, approbation), lisible sur mobile.
 - **Staging (Coolify)** : aucune migration, aucune variable d'environnement nouvelle.
 
-**Limites connues** : PB-09, PB-11 et PB-12 ne sont que décrits ; le seuil de PB-04 sera recalibré avec les premières données réelles.
+**Limites connues** : PB-11 et PB-12 ne sont que décrits ; le seuil de PB-04 sera recalibré avec les premières données réelles.
 
 **Tests** : unitaires (`signals.test.ts`, 36 cas : un seuil franchi / un seuil juste en dessous par playbook, données manquantes, ordre), non-régression (`review-golden.test.ts`), E2E navigateur (`e2e/playbooks.spec.ts` : page Méthode et dossier, bureau, mobile 390 et 360 px, sans débordement horizontal).
 
@@ -111,3 +111,7 @@ Limites assumées : l'historique est connu à partir du lendemain de la premièr
 
 Signal : une annulation enregistrée depuis au plus 3 jours rouvre au moins 2 nuits à venir (horizon 60 jours) encore libres au calendrier. Silencieux tant que l'historique des annulations est inconnu ou plus court que la fenêtre. Un dossier par séjour annulé (clé canal + dates), option « relire le calendrier et les promotions » (aucune écriture, aucune remise), inaction retenue quand les nuits sont à plus de 45 jours. Le taux d'annulation sur 14 jours est un indicateur (inconnu sous 4 réservations) qui relève l'urgence, pas l'option. PB-08 ne marque aucune nuit et ne déclenche pas de repos de groupe.
 La relecture porte `subject: "CALENDAR"` : sa confirmation n'horodate pas les promotions du canal (réservé à la vérification du registre, PB-10), et son guide opérateur est propre. PB-08 est une relecture sans hypothèse structurante : elle peut coexister avec un dossier de prix (PB-01, PB-03) sur les mêmes dates, l'arbitrage restant à la gestionnaire. La fenêtre de recherche (3 jours) ne doit pas dépasser la période de repos (3 jours), sans quoi un dossier décidé pourrait se rouvrir pour la même annulation (test d'invariant).
+
+## PB-09 · séjours longs en basse saison
+
+Signal : au moins 7 nuits libres consécutives, entre J+8 et J+90, sur des nuits dont l'occupation moyenne du marché est au plus de 40 % (basse saison **définie par la donnée**, jamais par un libellé : une nuit sans donnée de marché écarte tout le trou). Les fenêtres où le logement est déjà en retard sur son marché relèvent de PB-01 et sont écartées. Le trou est ciblé sur 28 nuits au plus, deux trous au plus par revue. Options : remise de durée de séjour Airbnb 7 nuits (10 %), 14 nuits (12 %), 28 nuits (18 %) selon la longueur du trou ; sur Booking, aucun type équivalent au registre de cumul : seule une vérification manuelle est proposée (aucune remise inventée). Une offre dont le prix vendu passe sous un plancher, ou qui dépasse le plafond de cumul, est rejetée par l'auditeur ; une offre de durée de séjour déjà active écarte une seconde remise du même type. Une remise de durée de séjour au-delà de 15 % exige un commentaire d'approbation (`approval.ts`, §11.2). L'offre prend la forme d'une promotion de canal manuelle : confirmation et suivi par le registre des promotions.

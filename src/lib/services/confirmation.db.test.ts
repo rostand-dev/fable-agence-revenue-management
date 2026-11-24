@@ -119,6 +119,13 @@ describe("confirmation de l'opérateur (US-103)", () => {
     expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).not.toBeNull();
   });
 
+  it("offre de durée de séjour (PB-09) confirmée : une promotion LOS avec son séjour minimal entre au registre", async () => {
+    const id = await approveManual("CHANNEL_PROMO", { kind: "LOS", discountPct: 10, label: "Séjour de 7 nuits et plus", stayFrom: "2027-01-10", stayTo: "2027-02-07", minLos: 7 });
+    await D.execute(as("OWNER"), id, { ...OK, externalRef: "ABB-LOS-1" });
+    const [p] = await db.select().from(schema.promotions).where(eq(schema.promotions.actionId, id));
+    expect(p).toMatchObject({ kind: "LOS", minLos: 7, discountPct: 10, stayFrom: "2027-01-10", stayTo: "2027-02-07", status: "ACTIVE", externalRef: "ABB-LOS-1" });
+  });
+
   it("date d'effet antérieure à l'approbation : refusée", async () => {
     const id = await approveManual("INVESTIGATION", { channel: "BOOKING" });
     expect((await fail(D.execute(as("OWNER"), id, { ...OK, date: "2020-01-01" }))).message).toContain("précéder l'approbation");
