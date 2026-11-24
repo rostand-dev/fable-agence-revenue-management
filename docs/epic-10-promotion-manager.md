@@ -76,3 +76,21 @@ Blueprint E10 (P1) : US-100 (registre des promotions actives), US-101 (compilate
 - **Reste à traiter (existant avant l'US)** : le contrôle de doublon du registre n'est pas appliqué à la promotion créée par une action `CHANNEL_PROMO`.
 - **Tests** : unitaires (`confirmation.test.ts`), base de données (`confirmation.db.test.ts`), e2e sur trois largeurs (`promotions-confirmation.spec.ts`), fixture partagée `e2e/helpers/dossier.ts`.
 - **Variables d'environnement** : aucune ajoutée.
+
+## US-104 — Vérification, période de repos, expiration
+
+**Plan.**
+1. **Seconde relecture** (blueprint Annexe B, étape 7) : une action manuelle exécutée ne passe à « vérifiée » que si la vérification vient d'**une autre personne que celle qui l'a confirmée**, ou d'**une relecture faite au moins 24 h après** la confirmation. Sinon refus, l'action reste « exécutée ». La personne qui confirme est conservée dans l'exécution (`declaredBy`) ; sans trace (anciennes actions), seul le délai de 24 h s'applique.
+2. **Période de repos** (blueprint §11.3, « cooldown après action ») : après qu'une promotion a été **terminée à la main** sur un canal, une promotion du même type (même canal, même annonce ou annonce non précisée) n'est ni compilée ni approuvée pendant **7 jours**. Une promotion qui s'éteint d'elle-même (séjours passés) ne déclenche pas de repos. Déclarer au registre une promotion déjà en ligne dans l'extranet n'est jamais refusé : le registre reflète la réalité.
+3. **Expiration** : au passage du planificateur (toutes les 15 min), toute promotion active ou planifiée dont les séjours sont passés est terminée avec le motif « Expirée : séjours terminés », événement d'audit `promotion.expired` (acteur système, chronologie du logement).
+4. Module pur `src/lib/promotions/lifecycle.ts`, service `src/lib/services/promotion-lifecycle.ts`, aucun nouveau champ en base (donc pas de migration), aucune variable d'environnement.
+5. Tests : unitaires, base de données (balayage, repos, seconde relecture), e2e sur trois largeurs (expiration visible au registre, refus du compilateur pendant le repos), relecture de code, CI verte avant fusion.
+
+**Livré.**
+- Registre : une promotion terminée à la main affiche « Période de repos jusqu'au … » ; le compilateur refuse (`COOLDOWN`) et l'approbation d'une promotion de canal est refusée pendant ce repos.
+- Dossier : la règle de relecture est dite avant le clic (« Vous avez confirmé cette action : la relecture revient à une autre personne, ou à vous au moins 24 h après »).
+- Planificateur : `expirePromotions` s'exécute à chaque passage, événement d'audit `promotion.expired` (acteur système).
+- Tests : `lifecycle.test.ts`, `promotion-lifecycle.db.test.ts`, `promotions-cycle-de-vie.spec.ts` (3 largeurs) ; tests existants adaptés (`rbac.db.test.ts` : la vérification vient d'une autre personne ; `promotion-compiler.db.test.ts` : fin ancienne).
+- **Portée de la seconde relecture** : toute action confirmée à la main (promotion, retrait, investigation), conformément à l'Annexe B ; un exploitant seul vérifie donc 24 h après sa confirmation, et la mesure part de la vérification.
+- **Repos** : mesuré au logement et au couple canal + type (l'annonce n'est pas distinguée à l'approbation ni à la compilation). Ne comptent pas : l'expiration naturelle (y compris « Terminer » cliqué après la fin des séjours) et le retour arrière d'une action.
+- **Déploiement** : aucune migration, aucune variable d'environnement.

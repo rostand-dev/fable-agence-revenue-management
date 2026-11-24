@@ -114,7 +114,9 @@ describe("exécuter, vérifier, revenir en arrière selon le rôle (US-084)", ()
   });
 
   it("l'opérateur OTA vérifie mais ne revient pas en arrière ; le revenue manager le peut", async () => {
-    await D.verify(as("OTA_OPERATOR"), manualId);
+    // US-104 : la personne qui a confirmé ne vérifie pas tout de suite ; une autre personne de même rôle le peut
+    await expect(D.verify(as("OTA_OPERATOR"), manualId)).rejects.toBeInstanceOf(D.DecisionError);
+    await D.verify({ ...as("OTA_OPERATOR"), id: "autre-operateur" }, manualId);
     expect(await status(manualId)).toBe("MEASURING");
     await expect(D.rollback(as("OTA_OPERATOR"), manualId, "non")).rejects.toBeInstanceOf(D.ForbiddenError);
     await D.rollback(as("REVENUE_MANAGER"), manualId, "Test");

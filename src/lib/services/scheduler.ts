@@ -1,3 +1,4 @@
+import { expirePromotions } from "./promotion-lifecycle";
 import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { todayISO, type ISODate } from "../dates";
@@ -94,6 +95,8 @@ export async function runDue(now = new Date()): Promise<{ read: number; reviewed
   g.__nsSchedulerBusy = true;
   let read = 0, reviewed = 0;
   try {
+    // US-104 : promotions dont les séjours sont passés, avant les lectures et revues (longues) ; sa propre erreur n'arrête pas le passage
+    try { await expirePromotions(now); } catch (e) { console.error("[expiration]", e instanceof Error ? e.message : e); }
     const props = await db.select().from(properties);
     // un seul chargement des drapeaux coupés pour tout le passage
     const off = await db.select().from(schema.featureFlags).where(eq(schema.featureFlags.enabled, false));

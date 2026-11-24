@@ -12,6 +12,7 @@
  * - NEEDS_HUMAN : promotion proposée mais une règle de cumul est inconnue ou le registre n'a pas été relu récemment ;
  * - NO_SAFE_EQUIVALENT : aucune traduction sûre (type absent du registre de cumul, plancher franchi, promotion déjà en place...).
  */
+import { cooldownFor, cooldownText, type EndedRow } from "./lifecycle";
 import { addDays, type ISODate } from "../dates";
 import { strategyFloorWindow } from "../engine/seasons";
 import { missingEconomics } from "../engine/economics";
@@ -48,7 +49,7 @@ export const INTENTS: Record<Intent, { label: string; help: string; booking: str
 export const INTENT_KEYS = Object.keys(INTENTS) as Intent[];
 
 /** Raisons d'un refus : stables, pour l'écran, les tests et l'audit. */
-export type RefusalCode = "NO_CHANNEL_TYPE" | "NOT_IN_REGISTRY" | "MISSING_DATA" | "WINDOW_TOO_SHORT" | "FLOOR" | "STACK_CAP" | "ALREADY_ACTIVE" | "EXCLUSIVE_WITH_ACTIVE";
+export type RefusalCode = "NO_CHANNEL_TYPE" | "NOT_IN_REGISTRY" | "MISSING_DATA" | "WINDOW_TOO_SHORT" | "FLOOR" | "STACK_CAP" | "ALREADY_ACTIVE" | "EXCLUSIVE_WITH_ACTIVE" | "COOLDOWN";
 
 export type CompileInput = {
   intent: Intent;
@@ -74,6 +75,9 @@ export type CompileContext = {
   registryStale: Partial<Record<Channel, boolean>>;
   /** Canaux sans aucune promotion au registre : le registre est tenu à la main, son silence ne prouve pas qu'il n'y a rien dans l'extranet */
   registryEmpty?: Partial<Record<Channel, boolean>>;
+  /** Promotions terminées récemment (US-104) et jour civil courant : servent à la période de repos après une fin manuelle */
+  ended?: EndedRow[];
+  today?: ISODate;
 };
 
 /** Ce que l'opérateur saisira dans l'extranet : repris tel quel par le guide pas-à-pas (US-102). */
@@ -159,6 +163,8 @@ function compileChannel(i: CompileInput, ctx: CompileContext, channel: Channel):
   if (!kind) return refuse(channel, "NO_CHANNEL_TYPE", `${ch} n'a pas de type de promotion équivalent à « ${intent.label.toLowerCase()} » dans le registre de cumul : rien n'est proposé plutôt que d'en deviner un.`);
   const def = promoKind(channel, kind);
   if (!def) return refuse(channel, "NOT_IN_REGISTRY", `Le type « ${kind} » est absent du registre de cumul de ${ch} : l'éligibilité n'est pas établie.`);
+  const rest = ctx.today ? cooldownFor(ctx.ended ?? [], { channel, kind }, ctx.today) : null;
+  if (rest) return refuse(channel, "COOLDOWN", cooldownText(rest, ch));
   const price = i.publishedNightlyCents[channel];
   if (!price) return refuse(channel, "MISSING_DATA", `Le prix publié sur ${ch} n'est pas renseigné.`);
   const miss = missingEconomics(ctx.model, channel);

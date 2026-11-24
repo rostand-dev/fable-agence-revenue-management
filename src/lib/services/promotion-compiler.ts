@@ -3,6 +3,7 @@ import { db, schema } from "@/db";
 import { todayISO } from "@/lib/dates";
 import { CHANNELS, type Channel, type EconomicModel, type Strategy } from "@/lib/engine/types";
 import { compilePromotions, parseCompileInput, type ActiveRow, type CompileInput, type CompileResult } from "@/lib/promotions/compiler";
+import { COOLDOWN_DAYS } from "@/lib/promotions/lifecycle";
 import { VERIFY_MAX_AGE_DAYS } from "@/lib/promotions/registry";
 import { PromotionError } from "./promotion-registry";
 
@@ -33,7 +34,9 @@ export async function compileForProperty(tenantId: string, propertyId: string, r
     registryStale[c] = live.some((r) => r.channel === c && (r.status === "ACTIVE" || r.status === "PLANNED") && (!r.verifiedAt || +now - +r.verifiedAt > VERIFY_MAX_AGE_DAYS * 86_400_000));
     registryEmpty[c] = !live.some((r) => r.channel === c);
   }
+  // US-104 : fins manuelles récentes du logement (la période de repos dure 7 jours)
+  const endedRows = (await db.select().from(promotions).where(and(eq(promotions.tenantId, tenantId), eq(promotions.propertyId, propertyId), eq(promotions.status, "ENDED")))).filter((r) => r.endedAt && +now - +r.endedAt < (COOLDOWN_DAYS + 1) * 86_400_000);
   const max = (p.strategy as Strategy | null)?.maxDiscountStackPct;
-  const result = compilePromotions(parsed.value, { model: p.economics as EconomicModel, maxDiscountStackPct: typeof max === "number" && Number.isFinite(max) ? max : null, active, registryStale, registryEmpty });
+  const result = compilePromotions(parsed.value, { model: p.economics as EconomicModel, maxDiscountStackPct: typeof max === "number" && Number.isFinite(max) ? max : null, active, registryStale, registryEmpty, ended: endedRows, today });
   return { ok: true, input: parsed.value, result };
 }

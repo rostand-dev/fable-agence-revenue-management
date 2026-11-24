@@ -1,5 +1,7 @@
 import { audienceOfKind } from "@/lib/promotions/registry";
+import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { validateDeclaration, validateMismatch } from "@/lib/promotions/confirmation";
+import { canVerifyManual, cooldownFor, cooldownText, ROLLBACK_REASON } from "@/lib/promotions/lifecycle";
 import { getRunbook } from "./runbook";
 import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
@@ -85,6 +87,13 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
       await audit(tx, actor.tenantId, userActor(actor.id), "opportunity.no_action", "Opportunity", o.id, `${actor.name} retient l'inaction sur ${o.code}${comment ? " — " + comment.trim() : ""}.`, { code: o.code, candidateIndex, comment: comment.trim() || null, reviewAt: c.reviewAt ?? null });
     });
     return null;
+  }
+  // US-104 : période de repos après la fin manuelle d'une promotion du même type sur le même canal (une promotion qui s'éteint d'elle-même n'en ouvre pas)
+  if (c.type === "CHANNEL_PROMO" && (c.parameters as any)?.kind && (c.target.channel ?? (c.parameters as any).channel)) {
+    const ch = String(c.target.channel ?? (c.parameters as any).channel);
+    const rows = await db.select().from(promotions).where(and(eq(promotions.tenantId, actor.tenantId), eq(promotions.propertyId, o.propertyId), eq(promotions.status, "ENDED")));
+    const rest = cooldownFor(rows, { channel: ch, kind: String((c.parameters as any).kind) }, todayISO());
+    if (rest) throw new DecisionError(cooldownText(rest, CHANNEL_LABEL[ch as Channel] ?? ch));
   }
   const [p] = await db.select().from(properties).where(eq(properties.id, o.propertyId));
   // US-002 : on n'approuve pas une option que l'on saurait ne pas pouvoir exécuter (coupe-circuit activé depuis la détection, par exemple) ; en observation, l'approbation reste un jugement hypothétique
@@ -260,7 +269,7 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
         } else if (a.type === "INVESTIGATION" && ch) {
           await tx.update(promotions).set({ verifiedAt: new Date(), verifiedBy: actor.id, updatedAt: new Date() }).where(and(eq(promotions.propertyId, p.id), eq(promotions.channel, ch), eq(promotions.status, "ACTIVE")));
         }
-        execution = { ...execution, mode: "MANUAL_DECLARED", declaredScope: decl!.scope, declaredDate: decl!.date, proof: decl!.proof || null, externalRef: decl!.externalRef, runbook: guide, baseline };
+        execution = { ...execution, mode: "MANUAL_DECLARED", declaredBy: actor.id, declaredScope: decl!.scope, declaredDate: decl!.date, proof: decl!.proof || null, externalRef: decl!.externalRef, runbook: guide, baseline };
       } else {
         execution = { mode: "INTERNAL", note: decl?.scope || "Tâche interne lancée.", baseline };
       }
@@ -328,6 +337,12 @@ export async function verify(actor: Actor, actionId: string) {
   const a = await getAction(actor.tenantId, actionId);
   if (a.status !== "EXECUTED") throw new DecisionError("Seule une action exécutée peut être vérifiée.");
   let check: any = { mode: "DECLARED", note: "Relecture déclarée par le propriétaire dans l'extranet officiel." };
+  // US-104 : une action confirmée à la main est relue par une autre personne, ou par la même personne au moins 24 h plus tard
+  if (a.execution?.mode === "MANUAL_DECLARED") {
+    const r = canVerifyManual({ executedAt: a.executedAt ?? null, declaredBy: a.execution?.declaredBy ?? null, actorId: actor.id, now: new Date() });
+    if (!r.ok) throw new DecisionError(r.error);
+    check = { mode: "DECLARED", note: r.by === "OTHER_PERSON" ? "Relecture déclarée par une autre personne que celle qui a confirmé." : "Relecture déclarée plus de 24 h après la confirmation.", reread: r.by };
+  }
   if (a.execution?.mode === "PRICELABS_API") {
     // relecture réelle chez PriceLabs, comparée à ce qui a été écrit ; une relecture impossible n'est pas une vérification réussie
     const [prop] = await db.select().from(properties).where(and(eq(properties.id, a.propertyId), eq(properties.tenantId, actor.tenantId)));
@@ -355,7 +370,7 @@ export async function verify(actor: Actor, actionId: string) {
   await db.transaction(async (tx) => {
     await move(tx, a.id, actor.tenantId, "EXECUTED", "VERIFIED", { verifiedAt: new Date(), execution: { ...a.execution, verification: check } });
     await move(tx, a.id, actor.tenantId, "VERIFIED", "MEASURING", { measureDueAt: due });
-    await audit(tx, actor.tenantId, agentActor("audit"), "action.verified", "RevenueAction", a.id, `« ${a.label} » vérifiée ; mesure prévue le ${due.split("-").reverse().join("/")}.`, { actionType: a.type, check: check.mode, measureDueAt: due, requestedBy: userActor(actor.id) });
+    await audit(tx, actor.tenantId, agentActor("audit"), "action.verified", "RevenueAction", a.id, `« ${a.label} » vérifiée ; mesure prévue le ${due.split("-").reverse().join("/")}.`, { actionType: a.type, check: check.mode, reread: check.reread ?? null, measureDueAt: due, requestedBy: userActor(actor.id) });
   });
 }
 
@@ -406,7 +421,7 @@ export async function rollback(actor: Actor, actionId: string, reasonRaw: string
         await commitStrategy(tx, { tenantId: actor.tenantId, propertyId: p.id, next: (s) => (remote && s.minPriceCents !== a.parameters.minPriceCents ? s : { ...s, minPriceCents: prevMin }), source: "ACTION_ROLLBACK", createdBy: actor.id });
       }
     } else if (a.execution?.mode === "MANUAL_DECLARED") {
-      if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(), endReason: "Retour arrière de l'action", updatedAt: new Date() }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));
+      if (a.execution.createdPromotionId) await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(), endReason: ROLLBACK_REASON, updatedAt: new Date() }).where(and(eq(promotions.id, a.execution.createdPromotionId), eq(promotions.tenantId, actor.tenantId)));
       if (a.type === "PROMO_REMOVAL") await tx.update(promotions).set({ status: "ACTIVE", endedAt: null, endReason: null, updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
     }
     await move(tx, a.id, actor.tenantId, a.status as ActionState, "ROLLED_BACK", { execution: { ...a.execution, rollback: { at: new Date().toISOString(), reason: reason.trim() || null, manual: a.execution?.mode === "MANUAL_DECLARED", ...(remote ? { writeIds: remote.writeIds, noop: remote.noop, adapter: remote.adapter } : {}) } } });

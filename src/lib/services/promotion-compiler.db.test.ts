@@ -44,7 +44,7 @@ describe("compilation d'une intention sur un logement (US-101)", () => {
     const mobile = await declarePromotion(actor, propA, { channel: "BOOKING", kind: "MOBILE", discountPct: "8", stayFrom: "2026-12-01", stayTo: "2026-12-31" }, NOW);
     let r = await compileForProperty(a.tenantId, propA, RAW, NOW);
     expect(r.ok && r.result.outcomes.find((o) => o.channel === "BOOKING")).toMatchObject({ code: "ALREADY_ACTIVE" });
-    await endPromotion(actor, mobile.id, "test", NOW);
+    await endPromotion(actor, mobile.id, "test", new Date(+NOW - 10 * 86_400_000)); // fin ancienne : la période de repos de 7 jours est passée (US-104)
     r = await compileForProperty(a.tenantId, propA, RAW, NOW);
     expect(r.ok && r.result.outcomes.find((o) => o.channel === "BOOKING")?.status).toBe("NEEDS_HUMAN"); // registre de nouveau vide
     // une promotion Genius active, relue il y a 10 jours : cumul inconnu et registre périmé
