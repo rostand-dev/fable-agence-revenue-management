@@ -56,7 +56,7 @@ function codeOnly(text: string): string {
 const SHARED = ["zod", "node:crypto", "../dates", "../format", "../privacy/pii", "../secret", "../engine/types", "../engine/policy"];
 /** Autorisations supplémentaires, fichier par fichier. */
 const EXTRA: Record<string, string[]> = {
-  "runner.ts": ["@/db", "drizzle-orm"],
+  "runner.ts": ["@/db", "drizzle-orm", "../llm-registry/pricebook"], // pricebook : lecture seule des prix validés, calcul du coût tracé
   "llm-config.ts": ["@/db", "drizzle-orm"],
   "fake-llm-server.ts": ["node:http", "node:net"],
 };

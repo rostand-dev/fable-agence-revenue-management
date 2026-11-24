@@ -8,6 +8,7 @@ import { userActor, type AuditType } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { LlmError, listAnthropicModels } from "@/lib/agents/llm";
+import { refreshAvailabilityForKey } from "@/lib/llm-registry/sync";
 import { requireUser } from "@/lib/auth";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { decryptSecret, encryptSecret, secretHint } from "@/lib/secret";
@@ -49,6 +50,8 @@ export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<Form
     // un choix de modèle que la nouvelle clé ne peut pas utiliser est retiré, pour ne jamais envoyer un modèle inaccessible
     const ids = new Set(models.map((m) => m.id));
     await patchSettings(u.tenantId, (s) => ({ ...s, agentModels: Object.fromEntries(Object.entries((s.agentModels ?? {}) as Record<string, string>).filter(([, v]) => ids.has(v))) }));
+    // registre LLM : relecture de la disponibilité des modèles avec cette clé (sans attendre, sans jamais échouer)
+    void refreshAvailabilityForKey("anthropic", key);
     await audit(u.tenantId, u.id, "llm.key_saved", `${u.name} enregistre sa clé API Anthropic (${secretHint(key)}), ${models.length} modèle${models.length > 1 ? "s" : ""} disponible${models.length > 1 ? "s" : ""}.`, { keyHint: secretHint(key), models: models.length });
     revalidatePath("/", "layout");
     return { ok: `Clé vérifiée : ${models.length} modèle${models.length > 1 ? "s" : ""} disponible${models.length > 1 ? "s" : ""}.` };

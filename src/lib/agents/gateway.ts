@@ -140,7 +140,8 @@ export type JsonCall<T> = {
   deadlineMs?: number;
 };
 
-export type TriedTarget = { provider: ProviderId; model: string; outcome: "OK" | "PROVIDER_ERROR" | "INVALID_JSON" | "SCHEMA" | "TRUNCATED"; detail?: string };
+/** `inputTokens` / `outputTokens` : jetons facturés pour cette cible (corrections comprises), absents si le fournisseur ne les a pas déclarés : sert au coût réel par modèle. */
+export type TriedTarget = { provider: ProviderId; model: string; outcome: "OK" | "PROVIDER_ERROR" | "INVALID_JSON" | "SCHEMA" | "TRUNCATED"; detail?: string; inputTokens?: number; outputTokens?: number };
 export type GatewayMeta = {
   provider: ProviderId | null; model: string | null; source: GatewayTarget["source"] | null;
   /** Appels réellement faits au fournisseur (corrections comprises). */
@@ -170,11 +171,13 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
   const maxAttempts = call.maxAttempts ?? 4, deadline = started + (call.deadlineMs ?? 45000), maxTokens = call.maxTokens ?? 900, timeoutMs = call.timeoutMs ?? 25000;
   let sawInvalid = false, cut = false, ownerKeyRefused = false;
 
-  const ask = async (t: GatewayTarget, prompt: string): Promise<ProviderReply> => {
+  const ask = async (t: GatewayTarget, prompt: string, row: TriedTarget): Promise<ProviderReply> => {
     if (Date.now() >= deadline) { cut = true; throw new LlmError("Délai total dépassé."); }
     meta.attempts++;
     const r = await t.provider.complete(t.apiKey, { model: t.model, system, user: prompt, maxTokens, timeoutMs });
     meta.inputTokens += r.inputTokens ?? 0; meta.outputTokens += r.outputTokens ?? 0;
+    if (r.inputTokens != null) row.inputTokens = (row.inputTokens ?? 0) + r.inputTokens;
+    if (r.outputTokens != null) row.outputTokens = (row.outputTokens ?? 0) + r.outputTokens;
     return r;
   };
   const check = (r: ProviderReply): { ok: true; data: T } | { ok: false; outcome: "INVALID_JSON" | "SCHEMA" | "TRUNCATED"; detail: string } => {
@@ -190,12 +193,12 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
     if (ownerKeyRefused && t.source === "serveur") break;
     const row: TriedTarget = { provider: t.provider.id, model: t.model, outcome: "OK" };
     try {
-      let r = await ask(t, user);
+      let r = await ask(t, user, row);
       let v = check(r);
       if (!v.ok) sawInvalid = true;
       if (!v.ok && v.outcome !== "TRUNCATED" && (call.repair ?? true) && meta.attempts < maxAttempts) {
         // une seule correction : on donne la raison de l'échec, jamais la réponse invalide (elle pourrait reprendre du contenu non fiable)
-        r = await ask(t, `${user}\n\nTa réponse précédente a été refusée (${v.detail}). Réponds à nouveau par un seul objet JSON conforme au schéma.`);
+        r = await ask(t, `${user}\n\nTa réponse précédente a été refusée (${v.detail}). Réponds à nouveau par un seul objet JSON conforme au schéma.`, row);
         v = check(r);
         if (v.ok) meta.repaired = true;
       }

@@ -1,6 +1,6 @@
 import type { OnboardingState } from "@/lib/onboarding";
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, boolean, timestamp, jsonb, date, real, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, boolean, timestamp, jsonb, date, real, numeric, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -434,6 +434,12 @@ export const agentRuns = pgTable("agent_runs", {
   outputTokens: integer("output_tokens"),
   durationMs: integer("duration_ms").notNull().default(0),
   error: text("error"),
+  /** Routeur LLM (PR 1) : coût réel de l'appel en USD (tous les essais, corrections comprises), au prix validé du jour ; null = prix inconnu. Jamais inventé. */
+  costUsd: numeric("cost_usd", { precision: 14, scale: 6 }),
+  /** Coût estimé avant l'appel par le routeur (renseigné à partir de la PR 2) */
+  costEstimatedUsd: numeric("cost_estimated_usd", { precision: 14, scale: 6 }),
+  /** Instantané de prix appliqué au modèle finalement retenu */
+  priceSnapshotId: text("price_snapshot_id"),
   createdAt: created(),
 }, (t) => [index("runs_agent").on(t.tenantId, t.agentId, t.createdAt), index("runs_opp").on(t.opportunityId)]);
 
@@ -756,3 +762,64 @@ export const monthlyReports = pgTable("monthly_reports", {
   uniqueIndex("monthly_reports_one_draft").on(t.tenantId, t.propertyId, t.month).where(sql`${t.status} = 'DRAFT'`),
   index("monthly_reports_tenant").on(t.tenantId, t.month),
 ]);
+
+
+/** Routeur LLM : registre des modèles (disponibilité, cycle de vie, tailles). Global : le comportement d'un modèle ne dépend pas du propriétaire. */
+export const llmModels = pgTable("llm_models", {
+  /** Identifiant API figé du modèle (jamais un alias mouvant « -latest ») */
+  modelId: text("model_id").primaryKey(),
+  /** anthropic | openai | mistral */
+  provider: text("provider").notNull(),
+  label: text("label").notNull(),
+  /** eco | intermediaire | premium */
+  tier: text("tier").notNull(),
+  /** Clé de ce modèle dans le fichier de prix LiteLLM (table de correspondance du catalogue) */
+  priceKey: text("price_key"),
+  /** UNKNOWN (jamais listé) | ACTIVE | DEPRECATED | RETIRED | ABSENT (le fournisseur ne le liste plus) */
+  lifecycle: text("lifecycle").notNull().default("UNKNOWN"),
+  deprecatedAt: ts("deprecated_at"),
+  retiresAt: ts("retires_at"),
+  maxInputTokens: integer("max_input_tokens"),
+  maxOutputTokens: integer("max_output_tokens"),
+  /** JSON structuré pris en charge : null = inconnu */
+  supportsJson: boolean("supports_json"),
+  /** Alias mouvant : jamais routé */
+  isAlias: boolean("is_alias").notNull().default(false),
+  lastSeenAt: ts("last_seen_at"),
+  createdAt: created(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** Routeur LLM : instantanés de prix par modèle (USD par million de jetons). Le prix en vigueur est le dernier VALIDATED ; un changement détecté reste PENDING jusqu'à validation. */
+export const llmPriceSnapshots = pgTable("llm_price_snapshots", {
+  id: id(),
+  modelId: text("model_id").notNull().references(() => llmModels.modelId, { onDelete: "cascade" }),
+  inputUsdPerMtok: numeric("input_usd_per_mtok", { precision: 14, scale: 6 }).notNull(),
+  outputUsdPerMtok: numeric("output_usd_per_mtok", { precision: 14, scale: 6 }).notNull(),
+  /** Palier « long prompt » : au-delà de ce nombre de jetons d'entrée, toute la requête est facturée au prix long */
+  longThresholdTokens: integer("long_threshold_tokens"),
+  longInputUsdPerMtok: numeric("long_input_usd_per_mtok", { precision: 14, scale: 6 }),
+  longOutputUsdPerMtok: numeric("long_output_usd_per_mtok", { precision: 14, scale: 6 }),
+  /** LITELLM | OVERRIDE (variable LLM_PRICE_OVERRIDES) */
+  source: text("source").notNull(),
+  /** VALIDATED | PENDING | REJECTED */
+  status: text("status").notNull(),
+  observedAt: ts("observed_at").notNull().defaultNow(),
+  validatedAt: ts("validated_at"),
+  /** Compte ayant validé (identifiant utilisateur) ; « system » pour une première observation ou une surcharge */
+  validatedBy: text("validated_by"),
+}, (t) => [
+  index("llm_prices_model").on(t.modelId, t.status, t.observedAt),
+  // un seul changement de prix en attente par modèle
+  uniqueIndex("llm_prices_one_pending").on(t.modelId).where(sql`${t.status} = 'PENDING'`),
+]);
+
+/** Routeur LLM : journal des synchronisations (prix, disponibilité) : sert à la fréquence du job et à l'écran des modèles. */
+export const llmSyncRuns = pgTable("llm_sync_runs", {
+  id: id(),
+  startedAt: ts("started_at").notNull().defaultNow(),
+  finishedAt: ts("finished_at"),
+  ok: boolean("ok").notNull().default(false),
+  /** Compteurs et erreurs par étape (prix, disponibilité) */
+  stats: jsonb("stats").$type<any>().notNull().default({}),
+}, (t) => [index("llm_sync_started").on(t.startedAt)]);
