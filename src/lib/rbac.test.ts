@@ -24,6 +24,10 @@ describe("rôles et droits (US-084)", () => {
     expect(can("OTA_OPERATOR", "action.verify")).toBe(true);
   });
 
+  it("le rapport mensuel (US-112) est certifié par les rôles de décision seulement : ni l'opérateur OTA, ni la lecture seule", () => {
+    expect(rolesWith("report.certify").sort()).toEqual(["OWNER", "REVENUE_MANAGER", "TENANT_ADMIN"]);
+    for (const r of ["ANALYST", "OWNER_VIEWER", "AUDITOR", "OTA_OPERATOR"] as const) expect(can(r, "report.certify"), r).toBe(false);
+  });
   it("le registre des promotions (US-100) est tenu par les rôles de décision et l'opérateur OTA, jamais par la lecture seule", () => {
     expect(rolesWith("promotion.manage").sort()).toEqual(["OTA_OPERATOR", "OWNER", "REVENUE_MANAGER", "TENANT_ADMIN"]);
     for (const r of ["ANALYST", "OWNER_VIEWER", "AUDITOR"] as const) expect(can(r, "promotion.manage"), r).toBe(false);

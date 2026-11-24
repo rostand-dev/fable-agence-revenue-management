@@ -1920,3 +1920,15 @@ table.cascade .delta-neu { color: var(--quiet); }
 .promo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 14px; }
 .promo-grid .field { min-width: 0; }
 .promo-grid .field input, .promo-grid .field select { width: 100%; max-width: 100%; min-width: 0; }
+
+/* Rapports mensuels (US-112) : texte lisible en paragraphes, formulaires empilés sur mobile, jamais de débordement */
+.report-text { max-width: 72ch; }
+.report-text p { margin: 0 0 12px; line-height: 1.55; overflow-wrap: anywhere; }
+.report-editor textarea { width: 100%; max-width: 100%; box-sizing: border-box; min-height: 260px; font: inherit; line-height: 1.5; }
+.report-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; align-items: center; }
+.report-actions form { margin: 0; }
+.report-note { margin: 10px 0 0; }
+.report-start { display: grid; gap: 12px; max-width: 420px; }
+.report-start select { width: 100%; }
+.report-editor .check { display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; cursor: pointer; }
+.report-editor .check input { width: 20px; height: 20px; margin-top: 1px; flex: none; }
