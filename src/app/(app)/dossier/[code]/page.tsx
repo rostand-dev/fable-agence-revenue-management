@@ -34,6 +34,8 @@ import { FloorGauge, PromoStack, Waterfall } from "@/components/Waterfall";
 import { sharedAxis } from "@/lib/engine/waterfall";
 import { auditTrail } from "@/lib/audit/query";
 import { Runbook } from "@/components/Runbook";
+import { needsProof } from "@/lib/promotions/confirmation";
+import { todayISO } from "@/lib/dates";
 import { getRunbook } from "@/lib/services/runbook";
 import { auditLabel } from "@/lib/audit/types";
 import { can, denyMessage, executePermission, ROLE_LABEL, rolesWith } from "@/lib/rbac";
@@ -417,11 +419,24 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                         <div className="field"><label htmlFor="scope">{mode === "INTERNAL" ? "Constats et corrections retenues" : "Portée réellement appliquée"} <span className="req" aria-hidden="true">*</span></label>
                           <input id="scope" name="scope" type="text" required minLength={5} placeholder="aucune valeur préremplie" aria-describedby="scope-help" />
                           <span className="help" id="scope-help">Indiquez ce qui a été fait, pas ce qui était prévu.</span></div>
-                        <div className="field"><label htmlFor="date">Date d'application <span className="req" aria-hidden="true">*</span></label><input id="date" name="date" type="date" required /></div>
-                        <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor="proof">Référence ou preuve</label><input id="proof" name="proof" type="text" aria-describedby="proof-help" /><span className="help" id="proof-help">Identifiant de promotion, numéro de confirmation ou lien vers une capture.</span></div>
+                        <div className="field"><label htmlFor="date">{mode === "MANUAL_RUNBOOK" ? "Date d'entrée en vigueur" : "Date d'application"} <span className="req" aria-hidden="true">*</span></label><input id="date" name="date" type="date" required max={todayISO()} aria-describedby="date-help" /><span className="help" id="date-help">Le jour où c'est fait, pas une date prévue.</span></div>
+                        {mode === "MANUAL_RUNBOOK" && <div className="field"><label htmlFor="externalRef">Identifiant dans l'extranet{needsProof(action.type) ? " (ou preuve)" : ""}</label><input id="externalRef" name="externalRef" type="text" maxLength={120} autoComplete="off" aria-describedby="ref-help" /><span className="help" id="ref-help">{needsProof(action.type) ? "L'identifiant relevé, ou à défaut une preuve ci-dessous : l'un des deux est obligatoire." : "Facultatif ici."}</span></div>}
+                        <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor="proof">Preuve</label><input id="proof" name="proof" type="text" maxLength={1000} autoComplete="off" aria-describedby="proof-help" /><span className="help" id="proof-help">Numéro de confirmation ou lien vers une capture. Conservé comme texte : il n'est jamais ouvert ni suivi par NuitSignal.</span></div>
                       </div>
+                      {mode === "MANUAL_RUNBOOK" && runbook && !runbook.progress.complete && <p className="section-note" data-testid="guide-incomplet" style={{ margin: "12px 0 0" }}>Guide pas-à-pas : {runbook.progress.done} étape{runbook.progress.done > 1 ? "s" : ""} cochée{runbook.progress.done > 1 ? "s" : ""} sur {runbook.progress.total}. Vous pouvez déclarer sans les avoir toutes cochées ; l'avancement sera conservé avec la confirmation.</p>}
                       <div style={{ marginTop: 16 }}><Submit icon="check">Déclarer la réalisation</Submit></div>
                     </ActionForm>
+                    {mode === "MANUAL_RUNBOOK" && (
+                      <details className="fold" data-testid="ecart"><summary>L'extranet ne correspond pas à l'action approuvée ?</summary>
+                        <div className="fold-body">
+                          <p className="help" style={{ margin: "0 0 10px" }}>Arrêtez-vous : n'improvisez pas une autre remise. L'action reste approuvée, rien n'est inscrit au registre, et un incident est ouvert pour les personnes qui décident.</p>
+                          <ActionForm action={executeAction} hidden={{ actionId: action.id, mismatch: 1 }}>
+                            <div className="field"><label htmlFor="ecart-note">Écart constaté <span className="req" aria-hidden="true">*</span></label><textarea id="ecart-note" name="scope" required minLength={10} maxLength={1000} rows={3} placeholder="Ce que dit l'extranet, ce qui était approuvé" /></div>
+                            <div style={{ marginTop: 12 }}><Submit icon="alert" className="btn btn-ghost">Signaler un écart et arrêter</Submit></div>
+                          </ActionForm>
+                        </div>
+                      </details>
+                    )}
                   </>
                 )}
               </div>
@@ -435,7 +450,13 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                     ["Mode", exec.mode === "PRICELABS_API" ? "Écriture PriceLabs (API), confirmée par relecture" : exec.mode === "DEMO_SIMULATED" ? "Écriture PriceLabs simulée" : exec.mode === "MANUAL_DECLARED" ? "Procédure manuelle déclarée" : "Tâche interne"],
                     ["Exécutée le", action.executedAt ? fmtDateTime(action.executedAt) : "—", true],
                     ...(exec.declaredScope ? [["Portée déclarée", exec.declaredScope] as [string, string]] : []),
-                    ...(exec.mode === "MANUAL_DECLARED" ? [["Preuve", exec.proof ?? <Vq>aucune pièce jointe</Vq>] as [string, React.ReactNode]] : []),
+                    ...(exec.mode === "MANUAL_DECLARED" ? [
+                      ["Identifiant dans l'extranet", exec.externalRef ?? <Vq>non saisi</Vq>] as [string, React.ReactNode],
+                      ["Preuve", exec.proof ?? <Vq>aucune pièce jointe</Vq>] as [string, React.ReactNode],
+                      ["Date d'entrée en vigueur", exec.declaredDate ? fmtDay(exec.declaredDate) : <Vq>inconnue</Vq>, true] as [string, React.ReactNode, boolean],
+                      ...(exec.runbook ? [["Guide pas-à-pas", `${exec.runbook.done} étape${exec.runbook.done > 1 ? "s" : ""} cochée${exec.runbook.done > 1 ? "s" : ""} sur ${exec.runbook.total}`] as [string, React.ReactNode]] : []),
+                      ...(needsProof(action.type) ? [["Registre des promotions", <Link key="reg" href={`/logements/${p.id}?tab=canaux`}>Voir dans le registre du logement</Link>] as [string, React.ReactNode]] : []),
+                    ] : []),
                     ...(exec.note ? [["Note", exec.note] as [string, string]] : []),
                   ]} />
                 )}

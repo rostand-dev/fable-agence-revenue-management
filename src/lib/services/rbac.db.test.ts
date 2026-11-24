@@ -1,3 +1,4 @@
+import { todayISO } from "@/lib/dates";
 import { and, eq } from "drizzle-orm";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { db, schema } from "@/db";
@@ -98,7 +99,7 @@ describe("exécuter, vérifier, revenir en arrière selon le rôle (US-084)", ()
   it("l'opérateur OTA applique la procédure manuelle, pas l'écriture PriceLabs", async () => {
     await expect(D.execute(as("OTA_OPERATOR"), apiId)).rejects.toBeInstanceOf(D.ForbiddenError);
     expect(await status(apiId)).toBe("APPROVED");
-    await D.execute(as("OTA_OPERATOR"), manualId, { scope: "Portée déclarée pour le test", date: "2026-11-20", proof: "ref-1" });
+    await D.execute(as("OTA_OPERATOR"), manualId, { scope: "Portée déclarée pour le test", date: todayISO(), proof: "ref-1" });
     expect(await status(manualId)).toBe("EXECUTED");
   });
 
@@ -121,7 +122,7 @@ describe("exécuter, vérifier, revenir en arrière selon le rôle (US-084)", ()
   });
 
   it("le revenue manager exécute l'action API", async () => {
-    await D.execute(as("REVENUE_MANAGER"), apiId, (await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, apiId)))[0].simulation.executionMode === "MANUAL_RUNBOOK" ? { scope: "Portée déclarée pour le test", date: "2026-11-20", proof: "" } : undefined);
+    await D.execute(as("REVENUE_MANAGER"), apiId, (await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, apiId)))[0].simulation.executionMode === "MANUAL_RUNBOOK" ? { scope: "Portée déclarée pour le test", date: todayISO(), proof: "", externalRef: "REF-TEST-1" } : undefined);
     expect(["EXECUTED", "FAILED"]).toContain(await status(apiId));
   });
 });

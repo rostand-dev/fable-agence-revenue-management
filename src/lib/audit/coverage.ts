@@ -33,7 +33,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   rejectAction: { events: ["opportunity.rejected", "access.denied"] },
   deferAction: { events: ["opportunity.deferred", "access.denied"] },
   reopenAction: { events: ["opportunity.reopened", "access.denied"] },
-  executeAction: { events: ["action.executed", "action.failed", "action.precondition_failed", "access.denied"] },
+  executeAction: { events: ["action.executed", "action.failed", "action.precondition_failed", "action.mismatch_reported", "access.denied"] },
   verifyAction: { events: ["action.verified", "action.verification_failed", "access.denied"] },
   rollbackAction: { events: ["action.rolled_back", "action.rollback_failed", "access.denied"] },
   acknowledgeAlertAction: { events: ["alert.acknowledged", "access.denied"] },
