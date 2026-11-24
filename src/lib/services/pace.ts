@@ -2,7 +2,8 @@ import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { computePace, STLY_OFFSET_DAYS, type BookedNight, type CancelledNight, type WindowPace } from "../metrics/pace";
-import { nightsOf, type Snap } from "../reservations/nights";
+import { cancelledFromChanges } from "../reservations/cancellations";
+import { nightsOf } from "../reservations/nights";
 import { PortfolioError } from "./portfolio";
 
 const { properties, reservations, reservationNights, reservationChanges, calendarDays } = schema;
@@ -31,17 +32,10 @@ export async function getPace(tenantId: string, propertyId: string, now = new Da
   ]);
   const booked: BookedNight[] = rows.filter((r) => r.status === "CONFIRMED").map((r) => ({ night: r.night, bookedAt: r.bookedAt }));
   const blocked: ISODate[] = [...rows.filter((r) => r.status === "BLOCKED").map((r) => r.night), ...calBlocked.map((r) => r.date)];
-  // Une réservation est « annulée » selon sa dernière transition : annulée (statut final CANCELLED, venant d'un autre statut), puis remise en vigueur ou non.
-  // Un évènement ultérieur qui la laisse annulée (modification de montant, relecture) ne change rien : l'annulation d'origine reste comptée.
-  const cancelledBy = new Map<string, { before: Snap; at: ISODate }>();
-  for (const c of changes) {
-    const wasCancelled = (c.before as Snap | null)?.status === "CANCELLED", nowCancelled = (c.after as { status?: string } | null)?.status === "CANCELLED" || c.kind === "CANCELLED";
-    if (nowCancelled && !wasCancelled && c.before) cancelledBy.set(c.externalId, { before: c.before as Snap, at: todayISO(c.createdAt) });
-    else if (!nowCancelled) cancelledBy.delete(c.externalId);
-  }
+  const cancelledBy = cancelledFromChanges(changes);
   const since14 = addDays(today, -13);
   const cancelled: CancelledNight[] = [];
-  for (const { before, at } of cancelledBy.values()) {
+  for (const { before, at } of cancelledBy) {
     if (at < since14) continue;
     for (const n of nightsOf({ ...before, status: "CONFIRMED" })) cancelled.push({ night: n.night, cancelledAt: at });
   }
