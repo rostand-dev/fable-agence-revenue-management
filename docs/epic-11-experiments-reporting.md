@@ -44,6 +44,12 @@ Chaque US est livrée par sa propre PR, fusionnée seulement quand la CI est ver
 
 **Tests** : fenêtres (`windows.test.ts`) ; baseline — insuffisances, net partiel, annulations, an passé (`baseline.test.ts`) ; service sur base réelle — baseline figée dans la transaction d'exécution, date déclarée, unicité, immuabilité, observation à la vérification, annulation par retour arrière, isolation entre espaces, cascade (`experiments.db.test.ts`) ; E2E navigateur sur trois largeurs (`experiments-baseline.spec.ts`).
 
+**Livré et précisions issues de la relecture.**
+- L'état des séjours (réservées, occupation) est lu **à la date d'entrée en vigueur** : une procédure déclarée avec une date passée ne mêle pas les réservations postérieures. Les nuits bloquées et les annulations ne se reconstituent pas pour une date passée : la baseline porte alors `capturedLate` et l'écran le dit.
+- Le déclencheur fige aussi l'identité de l'expérience (espace, logement, dossier) et la fenêtre d'observation une fois fixée ; une contrainte refuse une fenêtre inversée. Une mesure prévue au plus tard le jour d'entrée en vigueur ne fixe aucune fenêtre (mesure non concluante, US-111).
+- La clôture de la mesure marque l'expérience « mesurée » ; la migration lit les dates déclarées de façon tolérante (une date inexistante ne fait pas échouer la migration).
+- Limite assumée : l'historique « connu » ne compte que les réservations confirmées ; si les plus anciennes ont été annulées, la baseline peut être jugée insuffisante à tort (choix prudent).
+
 ## US-111 — Résultat positif, neutre, négatif ou non concluant
 
 *Plan.*

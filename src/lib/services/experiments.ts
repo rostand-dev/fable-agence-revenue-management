@@ -65,7 +65,8 @@ export async function startObservation(tx: Exec, tenantId: string, actionId: str
   const [row] = await tx.select({ effectiveOn: experiments.effectiveOn }).from(experiments).where(and(eq(experiments.actionId, actionId), eq(experiments.tenantId, tenantId)));
   if (!row) return;
   const w = observationWindow(row.effectiveOn, measureDueAt);
-  await tx.update(experiments).set({ status: "OBSERVING", observeFrom: w?.from ?? row.effectiveOn, observeTo: w?.to ?? measureDueAt, updatedAt: new Date() })
+  // mesure prévue au plus tard le jour d'entrée en vigueur : aucune fenêtre (jamais une fenêtre inversée), la mesure sera non concluante
+  await tx.update(experiments).set({ status: "OBSERVING", observeFrom: w?.from ?? null, observeTo: w?.to ?? null, updatedAt: new Date() })
     .where(and(eq(experiments.actionId, actionId), eq(experiments.tenantId, tenantId), eq(experiments.status, "AWAITING_VERIFICATION")));
 }
 
@@ -93,4 +94,10 @@ export function windowsOf(x: Pick<ExperimentRow, "stayFrom" | "stayTo" | "baseli
     baseline: x.baselineFrom < x.baselineTo ? { from: x.baselineFrom, to: x.baselineTo } : null,
     observation: x.observeFrom && x.observeTo ? { from: x.observeFrom, to: x.observeTo } : null,
   };
+}
+
+/** À la clôture de la mesure : l'expérience est mesurée (une expérience annulée le reste). */
+export async function markMeasured(tx: Exec, tenantId: string, actionId: string): Promise<void> {
+  await tx.update(experiments).set({ status: "MEASURED", updatedAt: new Date() })
+    .where(and(eq(experiments.actionId, actionId), eq(experiments.tenantId, tenantId), inArray(experiments.status, ["AWAITING_VERIFICATION", "OBSERVING"])));
 }

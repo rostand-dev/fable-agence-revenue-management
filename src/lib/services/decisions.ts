@@ -3,7 +3,7 @@ import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { validateDeclaration, validateMismatch } from "@/lib/promotions/confirmation";
 import { canVerifyManual, cooldownFor, cooldownText, ROLLBACK_REASON } from "@/lib/promotions/lifecycle";
 import { getRunbook } from "./runbook";
-import { cancelExperiment, captureBaseline, createExperiment, startObservation } from "./experiments";
+import { cancelExperiment, captureBaseline, createExperiment, markMeasured, startObservation } from "./experiments";
 import { effectiveDateOf } from "../experiments/windows";
 import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
@@ -491,6 +491,7 @@ export async function measureDueActions(tenantId: string, today: ISODate): Promi
     };
     await db.transaction(async (tx) => {
       await move(tx, a.id, tenantId, "MEASURING", "CLOSED", { measurement });
+      await markMeasured(tx, tenantId, a.id);
       await tx.insert(agentRuns).values({ id: newId("run"), tenantId, agentId: "reporting", opportunityId: o.id, operation: "measure", mode: "DETERMINISTIC", summary: `Mesure de « ${a.label} » (${o.code}) : ${measurement.observed} Effet incrémental inconnu.` });
       await audit(tx, tenantId, agentActor("reporting"), "experiment.measured", "RevenueAction", a.id, `Mesure de « ${a.label} » : résultat ${measurement.outcome === "POSITIVE" ? "positif (corrélation)" : measurement.outcome === "NEUTRAL" ? "neutre" : "non concluant"}.`, { code: o.code, outcome: measurement.outcome, observed: measurement.observed });
     });

@@ -33,13 +33,15 @@ END $$;--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "experiments_action" ON "experiments" USING btree ("action_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experiments_tenant" ON "experiments" USING btree ("tenant_id","status");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "experiments_property" ON "experiments" USING btree ("tenant_id","property_id","created_at");--> statement-breakpoint
--- La baseline est figée à la capture : ni elle, ni les fenêtres de référence et de séjours, ni la date d'entrée en vigueur ne se modifient (blueprint §12.4 : les snapshots sont immuables). Rejouable.
+-- La baseline est figée à la capture : ni elle, ni les fenêtres de référence et de séjours, ni la date d'entrée en vigueur, ni l'identité de l'expérience, ni la fenêtre d'observation une fois fixée ne se modifient (blueprint §12.4 : les snapshots sont immuables). Rejouable.
 CREATE OR REPLACE FUNCTION ns_experiment_freeze() RETURNS trigger AS $fn$
 BEGIN
 	IF NEW.baseline IS DISTINCT FROM OLD.baseline OR NEW.effective_on IS DISTINCT FROM OLD.effective_on
 		OR NEW.baseline_from IS DISTINCT FROM OLD.baseline_from OR NEW.baseline_to IS DISTINCT FROM OLD.baseline_to
 		OR NEW.stay_from IS DISTINCT FROM OLD.stay_from OR NEW.stay_to IS DISTINCT FROM OLD.stay_to
-		OR NEW.action_id IS DISTINCT FROM OLD.action_id OR NEW.captured_at IS DISTINCT FROM OLD.captured_at THEN
+		OR NEW.action_id IS DISTINCT FROM OLD.action_id OR NEW.captured_at IS DISTINCT FROM OLD.captured_at
+		OR NEW.tenant_id IS DISTINCT FROM OLD.tenant_id OR NEW.property_id IS DISTINCT FROM OLD.property_id OR NEW.opportunity_id IS DISTINCT FROM OLD.opportunity_id
+		OR (OLD.observe_from IS NOT NULL AND NEW.observe_from IS DISTINCT FROM OLD.observe_from) OR (OLD.observe_to IS NOT NULL AND NEW.observe_to IS DISTINCT FROM OLD.observe_to) THEN
 		RAISE EXCEPTION 'La baseline d''une expérience est figée : elle ne se modifie pas.' USING ERRCODE = 'check_violation';
 	END IF;
 	RETURN NEW;
@@ -47,20 +49,33 @@ END;
 $fn$ LANGUAGE plpgsql;--> statement-breakpoint
 DROP TRIGGER IF EXISTS ns_experiment_freeze ON "experiments";--> statement-breakpoint
 CREATE TRIGGER ns_experiment_freeze BEFORE UPDATE ON "experiments" FOR EACH ROW EXECUTE FUNCTION ns_experiment_freeze();--> statement-breakpoint
+-- Lecture tolérante d'une date déclarée (« 2026-02-31 » est bien formée mais n'existe pas) : NULL plutôt qu'une migration qui plante. Fonction temporaire, rejouable.
+CREATE OR REPLACE FUNCTION pg_temp.ns_safe_date(t text) RETURNS date AS $f$
+BEGIN
+	IF t IS NULL OR t !~ '^\d{4}-\d{2}-\d{2}$' THEN RETURN NULL; END IF;
+	RETURN t::date;
+EXCEPTION WHEN others THEN RETURN NULL;
+END;
+$f$ LANGUAGE plpgsql;--> statement-breakpoint
 -- Actions déjà exécutées et pas encore mesurées au moment de la migration : une expérience « héritée » (version 0), sans fenêtre de référence ni rythme.
 -- Leur mesure sera non concluante : une baseline qui n'a pas été figée ne s'invente pas après coup. Rejouable (une seule expérience par action).
 INSERT INTO "experiments" ("id", "tenant_id", "property_id", "action_id", "opportunity_id", "status", "effective_on", "stay_from", "stay_to", "baseline_from", "baseline_to", "observe_from", "observe_to", "baseline")
 SELECT 'exp_' || replace(gen_random_uuid()::text, '-', ''), a."tenant_id", a."property_id", a."id", a."opportunity_id",
 	CASE WHEN a."status" = 'EXECUTED' THEN 'AWAITING_VERIFICATION' ELSE 'OBSERVING' END,
 	eff.d, o."stay_from", o."stay_to", eff.d, eff.d,
-	CASE WHEN a."status" = 'EXECUTED' THEN NULL ELSE eff.d END,
-	CASE WHEN a."status" = 'EXECUTED' THEN NULL ELSE a."measure_due_at" END,
+	CASE WHEN a."status" = 'EXECUTED' OR a."measure_due_at" IS NULL OR a."measure_due_at" <= eff.d THEN NULL ELSE eff.d END,
+	CASE WHEN a."status" = 'EXECUTED' OR a."measure_due_at" IS NULL OR a."measure_due_at" <= eff.d THEN NULL ELSE a."measure_due_at" END,
 	jsonb_build_object('version', 0, 'legacy', true, 'sufficient', false, 'limits', jsonb_build_array('LEGACY'), 'onBooks', a."execution" -> 'baseline')
 FROM "revenue_actions" a
 JOIN "opportunities" o ON o."id" = a."opportunity_id"
-CROSS JOIN LATERAL (SELECT CASE WHEN (a."execution" ->> 'declaredDate') ~ '^\d{4}-\d{2}-\d{2}$' THEN (a."execution" ->> 'declaredDate')::date ELSE (COALESCE(a."executed_at", a."created_at") AT TIME ZONE 'Europe/Paris')::date END AS d) eff
+CROSS JOIN LATERAL (SELECT COALESCE(pg_temp.ns_safe_date(a."execution" ->> 'declaredDate'), (COALESCE(a."executed_at", a."created_at") AT TIME ZONE 'Europe/Paris')::date) AS d) eff
 WHERE a."status" IN ('EXECUTED', 'VERIFIED', 'MEASURING')
 	AND NOT EXISTS (SELECT 1 FROM "experiments" e WHERE e."action_id" = a."id");--> statement-breakpoint
+ALTER TABLE "experiments" DROP CONSTRAINT IF EXISTS "experiments_observe_order";--> statement-breakpoint
+DO $$ BEGIN
+	ALTER TABLE "experiments" ADD CONSTRAINT "experiments_observe_order" CHECK (observe_from IS NULL OR observe_to IS NULL OR observe_to > observe_from);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;--> statement-breakpoint
 -- Isolation par la base (US-011). Le rôle applicatif lit, ajoute et met à jour l'état (jamais de suppression : l'historique des mesures se garde). Rejouable.
 DO $$
 BEGIN

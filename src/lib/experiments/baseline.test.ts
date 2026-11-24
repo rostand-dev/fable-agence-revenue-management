@@ -107,3 +107,17 @@ describe("baseline (US-110)", () => {
     }
   });
 });
+
+describe("date d'entrée en vigueur dans le passé (procédure déclarée après coup)", () => {
+  it("l'état des séjours exclut les réservations postérieures à l'entrée en vigueur : la baseline ne mêle pas deux instants", () => {
+    const eff = "2026-11-18";
+    const nights = [N("2026-12-01", "2026-11-10"), N("2026-12-02", "2026-11-17"), N("2026-12-03", "2026-11-18"), N("2026-12-04", "2026-11-22")];
+    const b = computeBaseline({ ...base, asOf: "2026-11-24", effectiveOn: eff, nights });
+    expect(b.onBooks?.bookedNights).toBe(2);
+    expect(b.pickup?.nights).toBe(2);
+    expect(b.capturedLate).toBe(true);
+  });
+  it("capture le jour même : pas de capture tardive", () => {
+    expect(computeBaseline({ ...base, nights: [] }).capturedLate).toBe(false);
+  });
+});

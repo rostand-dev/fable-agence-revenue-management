@@ -59,6 +59,8 @@ export type Baseline = {
   comparable: { available: boolean; reason: ComparableReason | null; window: DateWindow | null; pickupNights: number | null; days: number };
   sufficient: boolean;
   limits: BaselineLimit[];
+  /** Vrai si la baseline a été figée après l'entrée en vigueur (date déclarée dans le passé) : les nuits bloquées et les annulations sont lues à la capture, pas à l'entrée en vigueur. */
+  capturedLate?: boolean;
 };
 
 export type BaselineInput = {
@@ -101,12 +103,12 @@ export function computeBaseline(i: BaselineInput): Baseline {
   if (i.firstBookingDate === null) limits.push("NO_HISTORY");
   else if (i.firstBookingDate > window.from) limits.push("HISTORY_TOO_SHORT");
 
-  const base = { version: 1 as const, asOf: i.asOf, effectiveOn: i.effectiveOn, window: { ...window, days: BASELINE_DAYS } };
+  const base = { version: 1 as const, asOf: i.asOf, effectiveOn: i.effectiveOn, capturedLate: i.effectiveOn < i.asOf, window: { ...window, days: BASELINE_DAYS } };
   if (!stay) {
     return { ...base, stay: null, onBooks: null, pickup: null, comparable: { available: false, reason: "STAY_PAST", window: null, pickupNights: null, days: BASELINE_DAYS }, sufficient: false, limits };
   }
   const stayDays = diffDays(stay.to, stay.from);
-  const booked = new Set(i.nights.filter((n) => within(n.night, stay) && n.bookedAt <= i.asOf).map((n) => n.night));
+  const booked = new Set(i.nights.filter((n) => within(n.night, stay) && n.bookedAt < i.effectiveOn).map((n) => n.night));
   const blockedOnly = new Set(i.blocked.filter((d) => within(d, stay) && !booked.has(d)));
   const available = stayDays - blockedOnly.size;
   const onBooks = { bookedNights: booked.size, blockedNights: blockedOnly.size, availableNights: available, occupancy: available > 0 ? booked.size / available : null };

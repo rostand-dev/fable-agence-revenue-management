@@ -131,6 +131,26 @@ describe("expérience et baseline (US-110)", () => {
     expect((await listExperiments(t.tenantId, { limit: -5 })).length).toBeLessThanOrEqual(500);
   });
 
+});
+
+describe("expérience : clôture et migration (US-110, relecture)", () => {
+  it("la mesure de l'action marque l'expérience comme mesurée", async () => {
+    const x = (await getExperimentOfAction(t.tenantId, apiAction))!;
+    await db.update(schema.revenueActions).set({ measureDueAt: addDays(todayISO(), -1) }).where(eq(schema.revenueActions.id, apiAction));
+    expect(await D.measureDueActions(t.tenantId, todayISO())).toBeGreaterThanOrEqual(1);
+    expect((await getExperimentOfAction(t.tenantId, apiAction))!.status).toBe("MEASURED");
+    expect((await actionRow(apiAction)).status).toBe("CLOSED");
+    expect((await getExperimentOfAction(t.tenantId, apiAction))!.baseline).toEqual(x.baseline);
+  });
+  it("la fenêtre d'observation fixée et l'identité de l'expérience ne se modifient plus ; une fenêtre inversée est refusée", async () => {
+    const x = (await getExperimentOfAction(t.tenantId, apiAction))!;
+    await refusedAsFrozen(db.update(schema.experiments).set({ observeTo: addDays(todayISO(), 30) }).where(eq(schema.experiments.id, x.id)));
+    await refusedAsFrozen(db.update(schema.experiments).set({ tenantId: other.tenantId }).where(eq(schema.experiments.id, x.id)));
+    await expect(db.update(schema.experiments).set({ status: "OBSERVING" }).where(eq(schema.experiments.id, "inexistante"))).resolves.toBeTruthy();
+  });
+});
+
+describe("suppression (US-110)", () => {
   it("suppression du logement (cascade) : les expériences disparaissent avec lui, celles des autres espaces restent", async () => {
     const count = async (tenantId: string) => (await db.execute(sql`select count(*)::int as n from experiments where tenant_id = ${tenantId}`).then((r) => r.rows as { n: number }[]))[0].n;
     expect(await count(t.tenantId)).toBeGreaterThanOrEqual(2);

@@ -1,10 +1,12 @@
 import { Term } from "@/components/Term";
 import { Recap, Vq } from "@/components/ui";
-import { fmtDate, fmtPeriod } from "@/lib/dates";
+import { addDays, fmtDate, fmtDay, type ISODate } from "@/lib/dates";
 import { BASELINE_LIMIT_LABEL, COMPARABLE_REASON_LABEL, netPerNight, type Baseline } from "@/lib/experiments/baseline";
 import { euro, pct } from "@/lib/format";
 import { EXPERIMENT_STATUS_LABEL, isLegacyBaseline, windowsOf, type ExperimentRow, type ExperimentStatus } from "@/lib/services/experiments";
 
+/** Fenêtre en jours, fin exclue affichée comme dernier jour inclus : « du 10 mars au 23 mars · 14 jours ». */
+const days = (w: { from: ISODate; to: ISODate }, n: number) => `du ${fmtDay(w.from)} au ${fmtDay(addDays(w.to, -1))} · ${n} jour${n > 1 ? "s" : ""}`;
 const nights = (n: number) => `${n} nuit${n > 1 ? "s" : ""}`;
 const perDay = (x: number) => `${x.toLocaleString("fr-FR", { maximumFractionDigits: 2 })} nuit${x >= 2 ? "s" : ""} par jour`;
 
@@ -19,7 +21,7 @@ export function ExperimentPanel({ experiment }: { experiment: ExperimentRow }) {
   const common: [React.ReactNode, React.ReactNode, boolean?][] = [
     ["État", status],
     ["Entrée en vigueur", fmtDate(x.effectiveOn), true],
-    ["Observation", w.observation ? `${fmtPeriod(w.observation.from, w.observation.to)} (jusqu'à la veille de la mesure)` : <Vq>pas encore fixée</Vq>, true],
+    ["Observation", w.observation ? days(w.observation, Math.round((Date.parse(w.observation.to) - Date.parse(w.observation.from)) / 86400000)) : <Vq>pas encore fixée</Vq>, true],
   ];
   if (isLegacyBaseline(b)) {
     return (
@@ -34,8 +36,8 @@ export function ExperimentPanel({ experiment }: { experiment: ExperimentRow }) {
   const net = base.pickup ? netPerNight(base.pickup) : null;
   const rows: [React.ReactNode, React.ReactNode, boolean?][] = [
     ...common,
-    ["Nuits visées", base.stay ? `${fmtPeriod(base.stay.from, base.stay.to)} · ${nights(base.stay.nights)} à vendre` : <Vq>toutes passées</Vq>, true],
-    ["Fenêtre de référence", `${fmtPeriod(base.window.from, base.window.to)} · ${base.window.days} jours avant l'action`, true],
+    ["Nuits visées", base.stay ? `du ${fmtDay(base.stay.from)} au ${fmtDay(addDays(base.stay.to, -1))} · ${nights(base.stay.nights)} à vendre` : <Vq>toutes passées</Vq>, true],
+    ["Fenêtre de référence", `${days(base.window, base.window.days)} avant l'action`, true],
     [<Term key="p" id="pickup">Rythme de référence</Term>, base.pickup ? `${nights(base.pickup.nights)} réservées, soit ${perDay(base.pickup.perDay)}` : <Vq>inconnu</Vq>],
     ["Net par nuit", net === null ? <Vq>inconnu</Vq> : `${euro(net)}${base.pickup && base.pickup.netNights < base.pickup.nights ? ` (sur ${nights(base.pickup.netNights)} au net connu)` : ""}`],
     ["Occupation des séjours visés", base.onBooks?.occupancy == null ? <Vq>inconnue</Vq> : `${pct(base.onBooks.occupancy)} (${base.onBooks.bookedNights} réservées sur ${base.onBooks.availableNights} disponibles)`],
@@ -46,7 +48,7 @@ export function ExperimentPanel({ experiment }: { experiment: ExperimentRow }) {
       <h4>Expérience</h4>
       <Recap rows={rows} />
       {base.sufficient
-        ? <p className="muted" style={{ margin: "8px 0 0" }}>Référence figée le {fmtDate(base.asOf)}, avant l'effet de l'action : elle ne change plus.</p>
+        ? <p className="muted" style={{ margin: "8px 0 0" }}>Référence figée le {fmtDate(base.asOf)}, avant l'effet de l'action : elle ne change plus.{base.capturedLate && " Figée après l'entrée en vigueur déclarée : les nuits bloquées et les annulations sont lues au jour de la capture."}</p>
         : <p className="muted" style={{ margin: "8px 0 0" }} data-testid="experiment-limits">Référence insuffisante : {base.limits.map((l) => BASELINE_LIMIT_LABEL[l]).join(" ; ")}. La mesure restera non concluante plutôt que de comparer à un faux zéro.</p>}
     </div>
   );
