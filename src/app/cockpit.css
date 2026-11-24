@@ -1932,3 +1932,8 @@ table.cascade .delta-neu { color: var(--quiet); }
 .report-start select { width: 100%; }
 .report-editor .check { display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; cursor: pointer; }
 .report-editor .check input { width: 20px; height: 20px; margin-top: 1px; flex: none; }
+/* Historique des rapports (US-113) : filtres empilés sur mobile */
+[data-testid="rapports-filtres"] { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+[data-testid="rapports-filtres"] .field { min-width: 140px; flex: 1 1 140px; }
+[data-testid="rapports-filtres"] select { width: 100%; }
+.inbox-filters .btn-sm, [data-testid="rapport-exports"] .btn-sm, [data-testid="rapports-liste"] > p .btn-sm, [data-testid="mesures-liste"] > p .btn-sm { min-height: 44px; display: inline-flex; align-items: center; }

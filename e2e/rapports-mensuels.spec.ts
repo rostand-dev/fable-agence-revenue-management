@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
+import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
 
@@ -12,6 +13,9 @@ function monthValue(offset: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 const slot = () => ({ bureau: 3, "mobile-390": 4, "mobile-360": 5 } as Record<string, number>)[test.info().project.name] ?? 6;
+/** Ligne de rapport du mois de ce projet (les trois largeurs tournent en parallèle sur le même logement). */
+const monthLabel = () => new Intl.DateTimeFormat("fr-FR", { month: "long", year: "numeric", timeZone: "UTC" }).format(new Date(`${monthValue(slot())}-01T00:00:00Z`));
+const myRow = (page: Page, status: "DRAFT" | "CERTIFIED") => page.locator(`[data-testid="rapport-ligne"][data-status="${status}"]`).filter({ hasText: monthLabel() });
 async function clean() {
   const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await c.connect();
@@ -39,9 +43,9 @@ test("Rapport mensuel : préparer, refuser un nombre inventé, certifier, figé,
   await page.getByLabel("Mois à rapporter").selectOption(monthValue(slot()));
   await page.getByRole("button", { name: "Préparer ou actualiser le rapport" }).click();
   await expect(page.getByText("Rapport préparé")).toBeVisible();
-  await expect(page.locator('[data-testid="rapport-ligne"][data-status="DRAFT"]').first()).toBeVisible();
+  await expect(myRow(page, "DRAFT").first()).toBeVisible();
 
-  await page.locator('[data-testid="rapport-ligne"][data-status="DRAFT"]').first().getByRole("link").click();
+  await myRow(page, "DRAFT").first().getByRole("link").click();
   await expect(page.getByTestId("rapport-etat")).toContainText("Brouillon");
   await expect(page.getByTestId("rapport-metriques")).toBeVisible();
   await expect(page.getByTestId("rapport-actions")).toContainText("Effet incrémental");
@@ -82,9 +86,9 @@ test("Rapport mensuel : préparer, refuser un nombre inventé, certifier, figé,
   await expect(page.getByText("Rapport préparé")).toBeVisible();
   await page.goto("/rapports");
   const lignes = page.getByTestId("rapport-ligne");
-  await expect(page.locator('[data-testid="rapport-ligne"][data-status="CERTIFIED"]')).toHaveCount(1);
-  await expect(page.locator('[data-testid="rapport-ligne"][data-status="DRAFT"]')).toHaveCount(1);
-  await expect(lignes.filter({ hasText: "une nouvelle version est en brouillon" })).toHaveCount(1);
+  await expect(myRow(page, "CERTIFIED")).toHaveCount(1);
+  await expect(myRow(page, "DRAFT")).toHaveCount(1);
+  await expect(lignes.filter({ hasText: monthLabel() }).filter({ hasText: "une nouvelle version est en brouillon" })).toHaveCount(1);
   await expectNoHorizontalOverflow(page, "liste avec deux versions");
 });
 
@@ -102,7 +106,7 @@ test("Rapport mensuel : un analyste lit sans pouvoir préparer ni certifier ; le
     await expect(page.getByTestId("rapport-reserve")).toBeVisible();
     await expect(page.getByRole("button", { name: "Préparer ou actualiser le rapport" })).toHaveCount(0);
     await expectNoHorizontalOverflow(page, "rapports en lecture seule");
-    await page.getByTestId("rapport-ligne").first().getByRole("link").click();
+    await myRow(page, "DRAFT").first().getByRole("link").click();
     await expect(page.getByTestId("rapport-texte")).toBeVisible();
     await expect(page.getByRole("button", { name: /Certifier/ })).toHaveCount(0);
     await expect(page.getByLabel("Texte du rapport")).toHaveCount(0);
@@ -117,4 +121,74 @@ test("Glossaire : le terme « Rapport certifié » est expliqué", async ({ page
   await page.goto("/glossaire");
   await expect(page.getByText("Rapport certifié").first()).toBeVisible();
   await expectNoHorizontalOverflow(page, "glossaire");
+});
+
+test("Exports PDF et CSV d'un rapport certifié, historique filtré et exporté (US-113)", async ({ page, browser, baseURL }) => {
+  await page.goto("/rapports");
+  await page.getByLabel("Mois à rapporter").selectOption(monthValue(slot()));
+  await page.getByRole("button", { name: "Préparer ou actualiser le rapport" }).click();
+  await expect(page.getByText("Rapport préparé")).toBeVisible();
+  await myRow(page, "DRAFT").first().getByRole("link").click();
+  await page.waitForURL(/\/rapports\/rpt_/);
+  const id = page.url().split("/rapports/")[1];
+
+  // un brouillon ne s'exporte pas ; format inconnu refusé ; sans session : 401
+  { const r0 = await page.request.get(`/api/rapports/${id}/export?format=pdf`); expect(r0.status(), `${id} ${await r0.text()}`).toBe(409); }
+  expect((await page.request.get(`/api/rapports/${id}/export?format=docx`)).status()).toBe(400);
+  expect((await page.request.get(`/api/rapports/inconnu/export?format=pdf`)).status()).toBe(404);
+  await expect(page.getByTestId("rapport-exports")).toHaveCount(0);
+  const anon = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, httpCredentials });
+  expect((await anon.request.get(`/api/rapports/${id}/export?format=pdf`)).status()).toBe(401);
+  expect((await anon.request.get(`/api/rapports/historique?logement=x&type=rapports`)).status()).toBe(401);
+  await anon.close();
+
+  await page.getByLabel(/J'ai relu les chiffres/).check();
+  await page.getByRole("button", { name: "Certifier le rapport" }).click();
+  await expect(page.getByTestId("rapport-etat")).toContainText("Certifié");
+  const exports = page.getByTestId("rapport-exports");
+  await expect(exports).toBeVisible();
+  await expectNoHorizontalOverflow(page, "rapport certifié avec exports");
+
+  const pdf = await page.request.get(`/api/rapports/${id}/export?format=pdf`);
+  expect(pdf.status()).toBe(200);
+  expect(pdf.headers()["content-type"]).toBe("application/pdf");
+  expect(pdf.headers()["content-disposition"]).toMatch(new RegExp(`filename="rapport-[a-z0-9-]+-${monthValue(slot())}-v1\\.pdf"`));
+  expect((await pdf.body()).subarray(0, 8).toString("latin1")).toMatch(/^%PDF-1\.4/);
+  const csv = await page.request.get(`/api/rapports/${id}/export?format=csv`);
+  expect(csv.status()).toBe(200);
+  expect(csv.headers()["content-type"]).toContain("text/csv");
+  const text = await csv.text();
+  expect(text.startsWith("\uFEFF")).toBe(true);
+  expect(text).toContain("Revenu net;");
+  expect(text).toContain("Effet incrémental des actions;inconnu");
+  // le lien de l'écran télécharge bien un fichier
+  const dl = page.waitForEvent("download");
+  await exports.getByRole("link", { name: "Exporter en PDF" }).click();
+  expect((await dl).suggestedFilename()).toMatch(/^rapport-[a-z0-9-]+-\d{4}-\d{2}-v1\.pdf$/);
+
+  // historique : filtres, compteur, réinitialisation, exports avec les mêmes filtres
+  await page.goto("/rapports");
+  const lignes = page.getByTestId("rapport-ligne");
+  await expect(lignes.first()).toBeVisible();
+  await page.getByLabel("État").selectOption("DRAFT");
+  await page.getByRole("button", { name: "Filtrer" }).click();
+  await expect(page.getByTestId("rapports-compteur")).toContainText("filtres actifs");
+  await expect(page.locator('[data-testid="rapport-ligne"][data-status="CERTIFIED"]')).toHaveCount(0);
+  await page.goto("/rapports?etat=CERTIFIED&annee=1999&resultat=n-importe-quoi");
+  await expect(page.getByTestId("rapports-vide")).toContainText("Aucun rapport ne correspond");
+  await expectNoHorizontalOverflow(page, "historique filtré sans résultat");
+  await page.getByTestId("rapports-reinit").click();
+  await expect(page.getByTestId("rapports-vide")).toHaveCount(0);
+  await expect(page.getByTestId("mesures-liste")).toBeVisible();
+  await expectNoHorizontalOverflow(page, "historique complet");
+  const hist = await page.request.get(`/api/rapports/historique?logement=${(await page.getByTestId("export-historique-rapports").getAttribute("href"))!.match(/logement=([^&]+)/)![1]}&type=rapports&etat=CERTIFIED`);
+  expect(hist.status()).toBe(200);
+  const ht = await hist.text();
+  expect(ht).toContain("Logement;Mois;Version;État");
+  expect(ht).not.toContain(";Brouillon;");
+  const mes = await page.request.get((await page.getByTestId("export-historique-mesures").getAttribute("href"))!);
+  expect(mes.status()).toBe(200);
+  expect(await mes.text()).toContain("Logement;Dossier;Action;Résultat");
+  expect((await page.request.get("/api/rapports/historique?logement=inconnu&type=rapports")).status()).toBe(404);
+  expect((await page.request.get("/api/rapports/historique?logement=x&type=autre")).status()).toBe(400);
 });
