@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { declarePromotionAction, endPromotionAction, updatePromotionAction, verifyPromotionAction } from "@/app/actions/promotions";
 import { ActionForm, Submit } from "@/components/forms";
 import { State, Vq } from "@/components/ui";
@@ -101,6 +102,7 @@ export function PromotionRegistry({ propertyId, promotions, listings, canManage,
     <section className="stack" data-testid="promo-registry" aria-labelledby="promo-h">
       <h2 id="promo-h" style={{ fontSize: 18, margin: "14px 0 0" }}>Registre des promotions</h2>
       <p className="section-note" style={{ margin: 0 }}>Tenu à la main tant que les accès partenaires officiels ne sont pas obtenus : il reflète ce que vous relevez dans l'extranet d'Airbnb ou de Booking.com. Au-delà de {VERIFY_MAX_AGE_DAYS} jours sans vérification, une promotion est considérée comme incertaine.</p>
+      <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${propertyId}/compilateur`} data-testid="open-compiler">Que proposer ? Compiler une intention</Link></p>
       {canManage ? (
         <details className="fold" data-testid="promo-add"><summary>Déclarer une promotion</summary>
           <div className="fold-body">
