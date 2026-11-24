@@ -66,6 +66,7 @@ export const AUDIT_TYPES = {
   "promotion.declared": { category: "CONFIGURATION", label: "Promotion déclarée au registre" },
   "promotion.updated": { category: "CONFIGURATION", label: "Promotion modifiée au registre" },
   "promotion.ended": { category: "CONFIGURATION", label: "Promotion terminée" },
+  "promotion.expired": { category: "CONFIGURATION", label: "Promotion expirée (séjours terminés)" },
   "strategy.draft_saved": { category: "CONFIGURATION", label: "Brouillon de stratégie enregistré" },
   "strategy.draft_discarded": { category: "CONFIGURATION", label: "Brouillon de stratégie abandonné" },
   "strategy.published": { category: "CONFIGURATION", label: "Stratégie publiée" },

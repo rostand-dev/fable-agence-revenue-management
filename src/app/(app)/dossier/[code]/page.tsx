@@ -5,6 +5,7 @@ import { Term } from "@/components/Term";
 import { notFound } from "next/navigation";
 import { and, asc, eq, ne } from "drizzle-orm";
 import { AgentChat } from "@/components/AgentChat";
+import { canVerifyManual, REREAD_MIN_HOURS } from "@/lib/promotions/lifecycle";
 import { approveAction, deferAction, executeAction, rejectAction, reopenAction, rollbackAction, verifyAction } from "@/app/actions/decisions";
 import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
@@ -476,7 +477,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 {action.status === "EXECUTED" && !canVerify && <div data-testid="verification-reservee"><Banner role="tech" title="Vérification réservée">{denyMessage(user.role, "action.verify")}</Banner></div>}
                 {action.status === "EXECUTED" && canVerify && (
                   <ActionForm action={verifyAction} hidden={{ actionId: action.id }}>
-                    <p className="muted" style={{ margin: "0 0 12px" }}>{exec?.mode === "PRICELABS_API" ? `${agentName("audit", names)} relit l'état réel chez PriceLabs et le compare à l'écriture enregistrée.` : exec?.mode === "DEMO_SIMULATED" ? `${agentName("audit", names)} relit la grille et la compare à l'action approuvée.` : "Relisez l'état réel dans l'outil, puis confirmez qu'il correspond à l'action approuvée."}</p>
+                    <p className="muted" style={{ margin: "0 0 12px" }}>{exec?.mode === "PRICELABS_API" ? `${agentName("audit", names)} relit l'état réel chez PriceLabs et le compare à l'écriture enregistrée.` : exec?.mode === "DEMO_SIMULATED" ? `${agentName("audit", names)} relit la grille et la compare à l'action approuvée.` : <>Relisez l'état réel dans l'extranet, puis confirmez qu'il correspond à l'action approuvée. {exec?.mode === "MANUAL_DECLARED" && <span data-testid="regle-relecture">{rereadRule(exec, action.executedAt, user.id)}</span>}</>}</p>
                     <Submit icon="search">{exec?.mode === "PRICELABS_API" ? "Relire chez PriceLabs" : exec?.mode === "DEMO_SIMULATED" ? "Vérifier l'état relu" : "Confirmer la relecture"}</Submit>
                   </ActionForm>
                 )}
@@ -574,4 +575,11 @@ export default async function Dossier({ params, searchParams }: { params: Promis
       <p className="foot">Montants en euros, hors taxes de séjour. Les valeurs marquées « simulation » reposent sur l'hypothèse citée à côté d'elles et ne constituent pas un revenu acquis.{p.isDemo && " Logement de démonstration : données synthétiques."}</p>
     </Page>
   );
+}
+
+/** Règle de la seconde relecture (US-104), dite avant le clic : une autre personne, ou la même au moins 24 h après la confirmation. */
+function rereadRule(exec: any, executedAt: Date | null, userId: string): string {
+  const r = canVerifyManual({ executedAt, declaredBy: exec?.declaredBy ?? null, actorId: userId, now: new Date() });
+  if (r.ok) return r.by === "OTHER_PERSON" ? "Vous n'êtes pas la personne qui a confirmé : vous pouvez relire maintenant." : `Plus de ${REREAD_MIN_HOURS} h se sont écoulées depuis la confirmation : vous pouvez relire.`;
+  return `Vous avez confirmé cette action : la relecture revient à une autre personne, ou à vous au moins ${REREAD_MIN_HOURS} h après${r.earliest ? ` (à partir du ${r.earliest.toLocaleString("fr-FR", { timeZone: "Europe/Paris", dateStyle: "short", timeStyle: "short" })})` : ""}.`;
 }

@@ -5,6 +5,7 @@ import { userActor } from "@/lib/audit/types";
 import { todayISO } from "@/lib/dates";
 import { can, denyMessage, ROLE_LABEL, PERMISSION_LABEL, type Permission, type Role } from "@/lib/rbac";
 import { findDuplicate, promotionView, unknownStacking, validatePromotion, type CleanPromotion, type RegistryRow } from "@/lib/promotions/registry";
+import { EXPIRY_REASON } from "@/lib/promotions/lifecycle";
 
 /**
  * Registre des promotions (US-100). Les écrans (actions serveur) passent tous par ici : mêmes règles, même isolation par propriétaire
@@ -120,7 +121,10 @@ export async function endPromotion(actor: PromotionActor, id: string, reasonRaw:
   const cur = await promotionOf(actor.tenantId, id);
   await need(actor, "promotion.manage", cur.propertyId);
   if (cur.status === "ENDED") throw new PromotionError("CONFLICT", "Cette promotion est déjà terminée.");
-  const reason = String(reasonRaw ?? "").trim().slice(0, 200) || null;
+  // une promotion dont les séjours sont déjà passés s'éteint d'elle-même : la terminer à la main ne doit pas ouvrir de période de repos (US-104)
+  const naturallyOver = !!cur.stayTo && cur.stayTo <= todayISO(now);
+  const typed = String(reasonRaw ?? "").trim().slice(0, 200) || null;
+  const reason = naturallyOver ? (typed && typed !== EXPIRY_REASON ? `${EXPIRY_REASON} — ${typed}` : EXPIRY_REASON) : typed === EXPIRY_REASON ? null : typed;
   return db.transaction(async (tx) => {
     const [row] = await tx.update(promotions).set({ status: "ENDED", endedAt: now, endReason: reason, updatedAt: now }).where(and(eq(promotions.id, cur.id), eq(promotions.tenantId, actor.tenantId), ne(promotions.status, "ENDED"))).returning();
     if (!row) throw new PromotionError("CONFLICT", "Cette promotion vient de changer d'état : rechargez la page.");

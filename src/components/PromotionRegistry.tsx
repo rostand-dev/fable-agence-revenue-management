@@ -2,7 +2,8 @@ import Link from "next/link";
 import { declarePromotionAction, endPromotionAction, updatePromotionAction, verifyPromotionAction } from "@/app/actions/promotions";
 import { ActionForm, Submit } from "@/components/forms";
 import { State, Vq } from "@/components/ui";
-import { fmtDay } from "@/lib/dates";
+import { fmtDay, todayISO } from "@/lib/dates";
+import { cooldownFor } from "@/lib/promotions/lifecycle";
 import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { AUDIENCE_LABEL, PROMO_CHANNELS, VERIFY_MAX_AGE_DAYS } from "@/lib/promotions/registry";
 import { kindsOf, promoKind } from "@/lib/stacking/rules";
@@ -74,7 +75,11 @@ function Card({ p, listings, canManage, canVerify }: { p: PromotionListItem; lis
           : p.view.ageDays === null ? <Vq>jamais</Vq> : p.view.freshness === "STALE" ? <Vq kind="obsolete">il y a {p.view.ageDays} j</Vq> : p.view.ageDays === 0 ? "aujourd'hui" : `il y a ${p.view.ageDays} j`}</dd></div>
       </dl>
       {p.unknownStackWith.length > 0 && <p className="promo-warn" role="note">Cumul inconnu avec {p.unknownStackWith.map((l) => `« ${l} »`).join(", ")} : l'aide officielle ne dit pas si ces offres se cumulent (voir « Méthode »).</p>}
-      {p.view.state === "EXPIRED" && <p className="promo-warn" role="note">Les séjours visés sont passés : terminez cette promotion pour la retirer des calculs.</p>}
+      {p.view.state === "EXPIRED" && <p className="promo-warn" role="note">Les séjours visés sont passés : cette promotion sera terminée automatiquement au prochain passage du planificateur (toutes les 15 minutes) ; vous pouvez aussi la terminer maintenant.</p>}
+      {p.view.state === "ENDED" && (() => {
+        const rest = cooldownFor([{ channel: p.channel, kind: p.kind, listingId: p.listingId, status: p.status, endedAt: p.endedAt, endReason: p.endReason, label: p.label }], { channel: p.channel, kind: p.kind, listingId: p.listingId }, todayISO());
+        return rest ? <p className="promo-warn" role="note" data-testid="promo-repos">Période de repos jusqu'au {fr(rest.until)} : pas de nouvelle promotion de ce type sur ce canal avant cette date, pour laisser lire l'effet de l'arrêt.</p> : null;
+      })()}
       {(live || p.view.state === "EXPIRED") && (canManage || canVerify) && (
         <div className="promo-actions">
           {canVerify && p.view.state === "ACTIVE" && <ActionForm action={verifyPromotionAction} hidden={{ promotionId: p.id }}><Submit className="btn btn-sm" icon="check">Marquer vérifiée</Submit></ActionForm>}
