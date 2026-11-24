@@ -109,7 +109,9 @@ describe("confirmation de l'opérateur (US-103)", () => {
   });
 
   it("relecture du calendrier (PB-08) : confirmée sans dater les promotions du canal comme vérifiées ; la vérification du registre (PB-10) le fait", async () => {
-    const [prop] = await db.select().from(schema.properties).where(eq(schema.properties.tenantId, t.tenantId));
+    // le logement de l'action clonée par approveManual (et non « le premier » du locataire, dont l'ordre n'est pas garanti)
+    const [src] = await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, actionId));
+    const prop = { id: src.propertyId };
     await db.insert(schema.promotions).values({ id: "promo-cal-1", tenantId: t.tenantId, propertyId: prop.id, channel: "BOOKING", kind: "MOBILE", label: "Jamais relue", discountPct: 10, stayFrom: "2026-12-01", stayTo: "2026-12-31", status: "ACTIVE", source: "DECLARED", verifiedAt: null } as any);
     const cal = await approveManual("INVESTIGATION", { channel: "BOOKING", subject: "CALENDAR", dates: ["2026-12-10"] });
     await D.execute(as("OWNER"), cal, { ...OK, externalRef: "CAL-1" });
