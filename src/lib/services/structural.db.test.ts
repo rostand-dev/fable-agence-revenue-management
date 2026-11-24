@@ -5,6 +5,7 @@ import { makeTenant } from "@/test/db";
 import { todayISO } from "../dates";
 import { reviewProperty } from "../engine/detect";
 import { PLAYBOOKS } from "../engine/playbooks";
+import * as D from "./decisions";
 import { loadEngineInput, runDailyReview } from "./review";
 import { seedDemo } from "./seed";
 import type { Candidate } from "../engine/types";
@@ -74,6 +75,24 @@ describe("garde-fous structurants du prix de base, sur une base réelle", () => 
   });
 });
 
+describe("contrôle à l'approbation", () => {
+  it("un dossier détecté avant une autre approbation ne contourne pas le verrou : l'approbation est refusée", async () => {
+    await clearBase();
+    const open = (await db.select().from(opportunities).where(and(eq(opportunities.propertyId, evryId), eq(opportunities.playbook, "PB-02"), eq(opportunities.status, "OPEN"))))[0];
+    expect(open, "dossier PB-02 ouvert attendu").toBeTruthy();
+    const idx = (open.candidates as Candidate[]).findIndex((c) => c.type === "BASE_PRICE_CHANGE");
+    expect(idx).toBeGreaterThanOrEqual(0);
+    // la détection a vu un levier libre ; entre-temps une autre modification du prix de base est approuvée
+    const other = await baseAction("APPROVED", 5, 0);
+    await expect(D.approve(t.actor, open.id, idx, "Hausse du prix de base sur la demande lointaine.")).rejects.toThrow(/déjà en cours/);
+    await db.delete(revenueActions).where(eq(revenueActions.id, other));
+    // le plafond cumulé est aussi revérifié
+    await baseAction("CLOSED", 12, 2);
+    await expect(D.approve(t.actor, open.id, idx, "Hausse du prix de base sur la demande lointaine.")).rejects.toThrow(/plafond de 15 %/);
+    await clearBase();
+  });
+});
+
 describe("groupe de repos PB-02, PB-11, PB-12 dans la revue", () => {
   it("une décision sur PB-12 empêche la réouverture de PB-02 pendant son repos, puis la laisse revenir", async () => {
     await clearBase();
@@ -82,10 +101,11 @@ describe("groupe de repos PB-02, PB-11, PB-12 dans la revue", () => {
     // un dossier PB-12 tranché hier (copie d'un dossier existant : mêmes colonnes obligatoires)
     const { id: _id, code: _code, ...rest } = open[0];
     const twelve = newId("opp");
-    await db.insert(opportunities).values({ ...rest, id: twelve, code: "G-" + twelve.slice(-6), playbook: "PB-12", dedupeKey: `${evryId}|PB-12|x`, status: "DECIDED", decidedAt: new Date(Date.now() - 86400000) });
+    await db.insert(opportunities).values({ ...rest, id: twelve, code: "G-" + twelve.slice(-6), playbook: "PB-12", dedupeKey: `${evryId}|PB-12|x`, status: "DECIDED", decision: "APPROVED", decidedAt: new Date(Date.now() - 86400000), groupKey: null, deferUntil: null });
     // le dossier PB-02 existant expire : seul un nouveau dossier pourrait le remplacer
     await db.update(opportunities).set({ status: "EXPIRED" }).where(and(eq(opportunities.propertyId, evryId), eq(opportunities.playbook, "PB-02")));
-    await runDailyReview(t.tenantId, "MANUAL");
+    const run = await runDailyReview(t.tenantId, "MANUAL");
+    expect(run.resting, "le signal PB-02 doit être compté en repos : la revue l'a vu et l'a laissé fermé").toBeGreaterThanOrEqual(1);
     const during = await db.select().from(opportunities).where(and(eq(opportunities.propertyId, evryId), eq(opportunities.playbook, "PB-02"), eq(opportunities.status, "OPEN")));
     expect(during, "PB-02 doit rester au repos tant que PB-12 est en repos").toHaveLength(0);
     // la période écoulée, PB-02 rouvre

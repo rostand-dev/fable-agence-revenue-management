@@ -124,10 +124,11 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     add("STRUCTURAL_LOCK", "Verrou structurant", hold ? "FAIL" : "PASS",
       hold ? `Une modification du prix de base est déjà en cours${hold.since ? " depuis le " + hold.since.split("-").reverse().join("/") : ""} : attendre la fin de son observation ou son retour arrière avant d'en tester une autre.` : "Aucune autre modification du prix de base en cours.");
     const change = typeof c.parameters.changePct === "number" ? c.parameters.changePct : (c.priceChangePct ?? 0);
+    const unknownPast = (ctx.recentBaseChanges ?? []).some((x) => x.changePct === MAX_BASE_VARIATION_7D_PCT);
     const total = cumulativeBaseVariation(ctx.recentBaseChanges ?? [], change);
     const fmt = (x: number) => x.toFixed(1).replace(".", ",");
     add("MAX_VARIATION_7D", "Variation maximale sur 7 jours", total > MAX_BASE_VARIATION_7D_PCT + 0.01 ? "FAIL" : "PASS",
-      total > MAX_BASE_VARIATION_7D_PCT + 0.01 ? `${fmt(total)} % cumulés sur 7 jours avec cette option, au-delà du plafond de ${MAX_BASE_VARIATION_7D_PCT} %.` : `${fmt(total)} % cumulés sur 7 jours, dans le plafond de ${MAX_BASE_VARIATION_7D_PCT} %.`);
+      total > MAX_BASE_VARIATION_7D_PCT + 0.01 ? `${fmt(total)} % cumulés sur 7 jours avec cette option, au-delà du plafond de ${MAX_BASE_VARIATION_7D_PCT} %.${unknownPast ? " Une variation passée est inconnue : elle est comptée au plafond." : ""}` : `${fmt(total)} % cumulés sur 7 jours, dans le plafond de ${MAX_BASE_VARIATION_7D_PCT} %.`);
   }
   if (c.nightsTouched > 14 && c.type !== "BASE_PRICE_CHANGE") add("SCOPE", "Portée en nuits", "WARN", `${c.nightsTouched} nuits touchées pour un maximum de 14 sans validation renforcée.`);
   else if (c.nightsTouched > 0) add("SCOPE", "Portée en nuits", "PASS", `${c.nightsTouched} nuit${c.nightsTouched > 1 ? "s" : ""} touchée${c.nightsTouched > 1 ? "s" : ""}.`);
