@@ -15,8 +15,13 @@ test("Méthode : le catalogue des 13 playbooks se déplie, avec seuils, données
   await expect(pb01).toContainText("−18 pts");
   await expect(pb01).toContainText("Période de repos après décision");
   await expect(pb01).toContainText("14 jours");
-  // un playbook décrit au blueprint mais pas encore codé le dit
-  await expect(section.locator("li.playbook", { hasText: /^PB-12/ })).toContainText("pas encore actif");
+  // tous les playbooks du catalogue sont codés : aucun ne se dit « pas encore actif »
+  await expect(section.getByText("pas encore actif")).toHaveCount(0);
+  const pb12 = section.locator("li.playbook", { hasText: /^PB-12/ });
+  await pb12.locator("summary").click();
+  await expect(pb12).toContainText("Durée minimale pendant laquelle le retard de rythme est suivi");
+  await expect(pb12).toContainText("Palier de baisse du prix de base proposé");
+  await expect(pb12).toContainText("Contenu ou visibilité non exclus");
   // PB-08 est codé : seuils, repos et approbateur visibles
   const pb08 = section.locator("li.playbook", { hasText: /^PB-08/ });
   await expect(pb08).not.toContainText("pas encore actif");

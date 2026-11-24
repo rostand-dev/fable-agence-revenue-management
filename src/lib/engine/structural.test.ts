@@ -80,6 +80,9 @@ describe("groupe de repos PB-02, PB-11, PB-12", () => {
     expect(until).toBe("2026-11-28"); // 5 jours déjà écoulés sur les 21 de PB-02
     expect(groupCooldownUntil(decided, "PB-11", NOW)).toBe(until);
     expect(groupCooldownUntil(decided, "PB-01", NOW)).toBeNull();
+    // approuver un audit ne bouge aucun prix de base : le groupe n'est pas au repos
+    expect(groupCooldownUntil(decided.map((d) => ({ ...d, selectedType: "LISTING_AUDIT" })), "PB-11", NOW)).toBeNull();
+    expect(groupCooldownUntil(decided.map((d) => ({ ...d, selectedType: "BASE_PRICE_CHANGE" })), "PB-11", NOW)).toBe(until);
   });
   it("le même playbook garde son propre repos (clé de dédoublonnage) : il ne se bloque pas lui-même ici", () => {
     expect(groupCooldownUntil([{ playbook: "PB-02", status: "DECIDED", decision: "APPROVED", createdAt: daysAgo(3), decidedAt: daysAgo(1) }], "PB-02", NOW)).toBeNull();

@@ -5,6 +5,7 @@ import { addDays, diffDays, todayISO, type ISODate } from "../dates";
 import { MAX_HISTORY_DAYS, type Cancellation } from "../engine/history";
 import { cancelledFromChanges } from "../reservations/cancellations";
 import { reviewProperty, type EngineInput } from "../engine/detect";
+import { PLAYBOOKS } from "../engine/playbooks";
 import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
 import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
 import { groupCooldownUntil, recentBaseChanges, STRUCTURAL_COUNTED_STATUSES, structuralHold } from "../engine/structural";
@@ -61,6 +62,15 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   ]);
   const [trk] = await db.select({ since: sql<Date | null>`min(${reservationChanges.createdAt})` }).from(reservationChanges).where(and(eq(reservationChanges.propertyId, p.id), eq(reservationChanges.tenantId, tenantId)));
   const cancellations: Cancellation[] = cancelledFromChanges(changes).filter(({ before }) => typeof before.channel === "string" && before.checkIn && before.checkOut && before.checkOut > before.checkIn && Number.isFinite(before.grossRoomCents)).map(({ before, at }) => ({ channel: before.channel, checkIn: before.checkIn, checkOut: before.checkOut, nights: diffDays(before.checkOut, before.checkIn), grossRoomCents: before.grossRoomCents, cancelledAt: at }));
+  // PB-12 : depuis quand le retard de rythme est suivi = plus ancien dossier de rythme encore vivant (PB-01 : date de création ; PB-12 : `lagSince` qu'il porte,
+  // car il remplace PB-01 sans effacer l'ancienneté). Aucun dossier vivant : inconnu, PB-12 reste silencieux.
+  const lagRows = await db.select({ createdAt: opportunities.createdAt, signals: opportunities.signals, expiresAt: opportunities.expiresAt }).from(opportunities)
+    .where(and(eq(opportunities.tenantId, tenantId), eq(opportunities.propertyId, p.id), inArray(opportunities.status, ["OPEN", "DEFERRED", "DECIDED", "EXPIRED"]),
+      sql`(${opportunities.playbook} = 'PB-12' or (${opportunities.playbook} = 'PB-01' and ${opportunities.reasonCode} = 'PACE_BELOW_MARKET'))`));
+  // un dossier compte tant que le retard est suivi : refraîchi (échéance dans le futur) ou interrompu depuis moins que la tolérance ; un dossier tranché
+  // ou expiré depuis plus longtemps ne prolonge pas un retard résolu. L'ancienneté d'origine voyage dans `signals.lagSince` d'un dossier au suivant.
+  const tolerance = addDays(today, -PLAYBOOKS["PB-12"].thresholds.lagGapToleranceDays.value);
+  const lagSince = lagRows.filter((r) => r.expiresAt >= tolerance).map((r) => (typeof r.signals?.lagSince === "string" ? r.signals.lagSince : todayISO(r.createdAt))).sort()[0] ?? null;
   const firstBooking = resas.filter((r) => r.status === "CONFIRMED").map((r) => r.bookedAt).sort()[0] ?? null;
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
@@ -84,7 +94,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),
     promos: promos.map((x) => ({ id: x.id, channel: x.channel as Channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.stayFrom, stayTo: x.stayTo, verifiedAt: x.verifiedAt }) satisfies Promo),
     capabilities,
-    cancellations, cancellationTracking: trk?.since ? { since: todayISO(new Date(trk.since)) } : null, firstBookingDate: firstBooking,
+    lagSince, cancellations, cancellationTracking: trk?.since ? { since: todayISO(new Date(trk.since)) } : null, firstBookingDate: firstBooking,
     recentBaseChanges: recentBaseChanges(baseActs, today),
     structuralHold: structuralHold(baseActs),
     activeRanges: acts.filter((a) => a.type !== "MIN_PRICE_CHANGE").map((a) => { const ds: string[] | undefined = a.params?.dates; return ds?.length ? { from: ds[0], to: addDays(ds[ds.length - 1], 1) } : { from: a.from, to: a.to }; }),
@@ -190,7 +200,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       const decision = openingDecision(prev, o.playbook, now);
       if (decision.action === "SKIP") { resting++; continue; } // période de repos du playbook, ou dossier différé
       // groupe de repos (PB-02, PB-11, PB-12 : même levier) : une décision sur l'un met les autres au repos, sauf pour un dossier déjà ouvert que l'on rafraîchit
-      if (decision.action === "CREATE" && groupCooldownUntil(existing, o.playbook, now)) { resting++; continue; }
+      if (decision.action === "CREATE" && groupCooldownUntil(existing.map((e) => ({ ...e, selectedType: (e.candidates as { type: string }[] | null)?.[e.selected]?.type ?? null })), o.playbook, now)) { resting++; continue; }
       const row = { ...oppRow(o, scoring), groupKey: groups[idx] };
       // US-071 : constats de l'analyste marché. Une analyse par modèle n'est refaite que si les faits ont changé (la revue est fréquente, le budget est borné).
       const prevAnalysis = prev?.signals?.marketAnalysis as MarketAnalysis | undefined;
