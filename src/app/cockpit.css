@@ -1904,3 +1904,18 @@ table.cascade .delta-neu { color: var(--quiet); }
 .alert-actions form { margin: 0; }
 .rail-count-alert { color: var(--attention-ink); font-weight: 700; }
 @media (max-width: 767px) { .bottombar-count-alert { background: #be123c; } }
+
+/* US-100 : registre des promotions (cartes, faits, formulaires). Une colonne sur mobile, jamais de défilement horizontal. */
+.promo-card { padding: 16px; }
+.promo-pct { font-family: var(--mono); font-weight: 600; white-space: nowrap; }
+.promo-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px 18px; margin: 0 0 12px; }
+.promo-facts > div { min-width: 0; }
+.promo-facts dt { font-size: 12.5px; color: var(--faint); }
+.promo-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.promo-warn { margin: 0 0 12px; font-size: 13.5px; color: var(--attention-ink); overflow-wrap: anywhere; }
+.promo-actions { display: grid; gap: 8px; }
+.promo-actions > form { margin: 0; }
+.promo-fold { background: transparent; }
+.promo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px 14px; }
+.promo-grid .field { min-width: 0; }
+.promo-grid .field input, .promo-grid .field select { width: 100%; max-width: 100%; min-width: 0; }

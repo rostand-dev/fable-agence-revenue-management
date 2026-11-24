@@ -24,6 +24,11 @@ describe("rôles et droits (US-084)", () => {
     expect(can("OTA_OPERATOR", "action.verify")).toBe(true);
   });
 
+  it("le registre des promotions (US-100) est tenu par les rôles de décision et l'opérateur OTA, jamais par la lecture seule", () => {
+    expect(rolesWith("promotion.manage").sort()).toEqual(["OTA_OPERATOR", "OWNER", "REVENUE_MANAGER", "TENANT_ADMIN"]);
+    for (const r of ["ANALYST", "OWNER_VIEWER", "AUDITOR"] as const) expect(can(r, "promotion.manage"), r).toBe(false);
+  });
+
   it("l'auditeur lit le journal et ne modifie rien ; l'analyste et le propriétaire du bien n'ont aucun droit d'écriture", () => {
     expect(GRANTS.AUDITOR).toEqual(["audit.read"]);
     expect(GRANTS.ANALYST).toEqual([]);
