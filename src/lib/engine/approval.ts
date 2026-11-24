@@ -20,6 +20,7 @@ export function approvalRequirement(c: Pick<Candidate, "type" | "risk" | "audit"
   if (c.risk === "CRITICAL") reasons.push("action à risque critique");
   // approbation du propriétaire ou du mandat (§11.2) : seulement pour une action qui s'exécute, jamais pour l'inaction ni une simple vérification
   const pb = playbook ? playbookOf(playbook) : null;
+  if (playbook && !pb) console.warn(`[approval] playbook inconnu du catalogue : ${playbook} (aucune exigence propriétaire appliquée)`);
   if (pb?.approver === "REVENUE_MANAGER_AND_OWNER" && CANDIDATE_SPECS[c.type]?.executable) reasons.push(`le playbook ${pb.code} demande la validation du propriétaire ou du mandat`);
   return { commentRequired: reasons.length > 0, reasons };
 }
