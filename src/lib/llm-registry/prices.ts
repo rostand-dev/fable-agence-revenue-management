@@ -17,12 +17,14 @@ export type ModelFacts = { price: PriceEntry; supportsJson: boolean | null; maxI
 /** Dollars par jeton → dollars par million, sans bruit de virgule flottante (1e-7 × 1e6 = 0,1 et non 0,09999999999999999). */
 const perMtok = (perToken: number): number => Number((perToken * 1e6).toPrecision(9));
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null);
+/** Prix de base du fichier communautaire : strictement positif (une entrée à 0 est factice ou erronée : jamais enregistrée sans surcharge explicite). */
+const positive = (v: unknown): number | null => { const n = num(v); return n !== null && n > 0 ? n : null; };
 
 /** Un modèle du fichier LiteLLM → faits utiles, ou null si le prix d'entrée ou de sortie manque. Seul le palier standard (« above_Nk_tokens » sans suffixe batch, flex, priority…) est lu. */
 export function readLitellmEntry(raw: unknown): ModelFacts | null {
   if (!raw || typeof raw !== "object") return null;
   const e = raw as Record<string, unknown>;
-  const inp = num(e.input_cost_per_token), out = num(e.output_cost_per_token);
+  const inp = positive(e.input_cost_per_token), out = positive(e.output_cost_per_token);
   if (inp === null || out === null) return null;
   let long: PriceEntry["long"] = null;
   for (const k of Object.keys(e)) {
@@ -55,7 +57,7 @@ export function parseLitellmPrices(doc: unknown, catalog: readonly CatalogModel[
 const overrideSchema = z.record(z.string(), z.object({
   input: z.number().min(0).max(10000), output: z.number().min(0).max(10000),
   longThresholdTokens: z.number().int().min(1).optional(), longInput: z.number().min(0).max(10000).optional(), longOutput: z.number().min(0).max(10000).optional(),
-}).strict());
+}).strict().refine((o) => [o.longThresholdTokens, o.longInput, o.longOutput].filter((v) => v !== undefined).length % 3 === 0, { message: "palier long incomplet" }));
 
 /**
  * Surcharges de prix (variable LLM_PRICE_OVERRIDES) : JSON `{"<modèle>": {"input": 1, "output": 5}}`, en USD par million de jetons ; palier long facultatif.

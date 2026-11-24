@@ -1,6 +1,6 @@
 import type { OnboardingState } from "@/lib/onboarding";
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, boolean, timestamp, jsonb, date, real, numeric, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigserial, boolean, timestamp, jsonb, date, real, numeric, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -793,6 +793,8 @@ export const llmModels = pgTable("llm_models", {
 /** Routeur LLM : instantanés de prix par modèle (USD par million de jetons). Le prix en vigueur est le dernier VALIDATED ; un changement détecté reste PENDING jusqu'à validation. */
 export const llmPriceSnapshots = pgTable("llm_price_snapshots", {
   id: id(),
+  /** Ordre d'insertion strictement croissant : départage deux instantanés de même horodatage (le dernier validé est toujours le plus récent) */
+  seq: bigserial("seq", { mode: "number" }).notNull(),
   modelId: text("model_id").notNull().references(() => llmModels.modelId, { onDelete: "cascade" }),
   inputUsdPerMtok: numeric("input_usd_per_mtok", { precision: 14, scale: 6 }).notNull(),
   outputUsdPerMtok: numeric("output_usd_per_mtok", { precision: 14, scale: 6 }).notNull(),

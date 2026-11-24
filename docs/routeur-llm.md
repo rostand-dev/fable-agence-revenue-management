@@ -1,6 +1,6 @@
 # Routeur LLM « le moins cher adapté » : registres et coût tracé (PR 1 sur 3)
 
-Plan de référence : `claude/plan-routeur-llm.md` (version 5, projet Claude « Fable-Agence-RM »). Cette PR pose les **registres** et la **trace du coût** ; elle ne change **aucun comportement des agents** (le choix du modèle vient avec la PR 2).
+Plan de référence : `plan-routeur-llm.md` (version 5, document du projet Claude « Fable-Agence-RM », absent du dépôt). Cette PR pose les **registres** et la **trace du coût** ; elle ne change **aucun comportement des agents** (le choix du modèle vient avec la PR 2).
 
 ## Ce que contient la PR 1
 
@@ -29,3 +29,6 @@ Décrites une à une dans `.env.example` et `docker-compose.yml` : `MISTRAL_API_
 - La disponibilité n'est lue qu'avec les clés **enregistrées par les propriétaires** (jamais une clé du serveur). Aujourd'hui seule la clé Anthropic existe : OpenAI et Mistral restent `UNKNOWN` tant que les clés correspondantes ne sont pas saisissables (PR 2).
 - Le coût des conversations en direct avec un agent (chat) n'est pas encore tracé : seules les tâches passant par l'exécuteur d'agent le sont.
 - L'identifiant figé `mistral-small-2603` est celui du fichier LiteLLM ; il n'est routable qu'une fois listé par Mistral avec une clé de propriétaire.
+- La disponibilité d'un modèle est **globale** (déduite de toutes les clés enregistrées, 3 par fournisseur au plus) : un modèle n'est déclaré absent que si aucune clé ne le voit. L'accès propre à chaque propriétaire se vérifie, en PR 2, avec la liste personnelle de sa clé.
+- Aucune redirection HTTP n'est suivie vers les fournisseurs ni vers le fichier de prix. `LLM_PRICES_URL` et les `*_API_BASE` sont fournis par l'exploitant : ils ne doivent pointer que vers des adresses de confiance.
+- Après un échec de synchronisation, nouvel essai au bout d'une heure ; le droit de lancer une passe est pris par une insertion conditionnelle atomique (deux instances ne la lancent jamais en double).

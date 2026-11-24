@@ -124,6 +124,25 @@ describe("generateJson", () => {
     expect(r).toMatchObject({ ok: false, kind: "INVALID_OUTPUT" });
   });
 
+  it("jetons par cible : la première réponse facturée reste comptée quand la correction tombe en panne", async () => {
+    const p = scriptedProvider((_r, i) => (i === 0 ? "rien du tout" : new Error("panne")));
+    const r = await generateJson([target(p, "m-eco")], call);
+    expect(r.meta.tried).toHaveLength(1);
+    expect(r.meta.tried[0]).toMatchObject({ model: "m-eco", outcome: "PROVIDER_ERROR" });
+    expect(r.meta.tried[0].inputTokens).toBeGreaterThan(0);
+    expect(r.meta.tried[0].outputTokens).toBeGreaterThan(0);
+  });
+
+  it("jetons par cible : chaque cible essayée garde les siens (montée en gamme)", async () => {
+    const eco = scriptedProvider(() => "invalide"), premium = scriptedProvider(() => good);
+    const r = await generateJson([target(eco, "m-eco"), target(premium, "m-premium")], call);
+    expect(r.ok).toBe(true);
+    const byModel = Object.fromEntries(r.meta.tried.map((t) => [t.model, t]));
+    expect(byModel["m-eco"].inputTokens).toBeGreaterThan(0);
+    expect(byModel["m-premium"].inputTokens).toBeGreaterThan(0);
+    expect(r.meta.inputTokens).toBe((byModel["m-eco"].inputTokens ?? 0) + (byModel["m-premium"].inputTokens ?? 0));
+  });
+
   it("toutes les cibles en panne : PROVIDER_ERROR ; sorties invalides : INVALID_OUTPUT ; jamais d'exception", async () => {
     const down = scriptedProvider(() => new Error("panne"));
     expect(await generateJson([target(down)], call)).toMatchObject({ ok: false, kind: "PROVIDER_ERROR" });

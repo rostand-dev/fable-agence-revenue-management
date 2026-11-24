@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS "llm_models" (
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "llm_price_snapshots" (
 	"id" text PRIMARY KEY NOT NULL,
+	"seq" bigserial NOT NULL,
 	"model_id" text NOT NULL,
 	"input_usd_per_mtok" numeric(14, 6) NOT NULL,
 	"output_usd_per_mtok" numeric(14, 6) NOT NULL,

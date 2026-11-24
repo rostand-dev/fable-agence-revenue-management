@@ -134,3 +134,19 @@ describe("agents : aucune écriture externe (US-075)", () => {
     expect(/\bfetch\b/.test(codeOnly("const f = fetch; f(url)"))).toBe(true);
   });
 });
+
+describe("registre LLM : les modules que les agents importent restent en lecture seule", () => {
+  const REG = join(LIB, "llm-registry");
+  const readOnly = ["pricebook.ts", "prices.ts", "catalog.ts"];
+  const FORBIDDEN_CALLS = /\.(insert|update|delete|execute)\s*\(|\bfetch\s*\(|\bsetInterval\s*\(|\bsetTimeout\s*\(/;
+  it("pricebook, prices et catalog n'écrivent pas en base, n'appellent pas le réseau et n'importent ni synchronisation ni validation ni intégration", () => {
+    for (const f of readOnly) {
+      const text = readFileSync(join(REG, f), "utf8");
+      expect(codeOnly(text), `${f} : écriture ou réseau interdits ici (module importé par les agents)`).not.toMatch(FORBIDDEN_CALLS);
+      for (const s of specifiers(text)) expect(["zod", "drizzle-orm", "@/db", "./prices", "./catalog"].includes(s), `${f} importe « ${s} » : interdit`).toBe(true);
+    }
+  });
+  it("aucun module d'agent n'importe le module qui écrit les prix (validation) ni la synchronisation", () => {
+    for (const f of files) for (const s of specifiers(read(f))) expect(/llm-registry\/(price-validation|sync|job|cap)/.test(s), `${name(f)} importe « ${s} »`).toBe(false);
+  });
+});

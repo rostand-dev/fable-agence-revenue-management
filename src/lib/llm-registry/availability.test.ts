@@ -74,6 +74,10 @@ describe("coût réel d'un appel tracé", () => {
     expect(r.costUsd).toBeCloseTo(0.0015 + 0.03, 6);
     expect(r.snapshotId).toBe("p2");
   });
+  it("une correction en échec après une première réponse facturée : la première réponse compte (jetons présents)", () => {
+    const r = costOfTried([{ model: "claude-haiku-5-5", outcome: "PROVIDER_ERROR", inputTokens: 10_000, outputTokens: 1_000 }], book);
+    expect(r.costUsd).toBeCloseTo(0.0015, 6);
+  });
   it("une panne du fournisseur n'a pas de réponse donc pas de coût", () => {
     const r = costOfTried([{ model: "claude-haiku-5-5", outcome: "PROVIDER_ERROR" }, { model: "claude-sonnet-5-5", outcome: "OK", inputTokens: 1_000_000, outputTokens: 0 }], book);
     expect(r.costUsd).toBe(2);
@@ -88,10 +92,16 @@ describe("coût réel d'un appel tracé", () => {
 });
 
 describe("job de synchronisation : fréquence", () => {
-  it("due si jamais lancée ou si la dernière passe a plus de l'intervalle ; jamais si désactivée (0)", () => {
+  const at = (h: number, ok: boolean) => ({ startedAt: new Date(+NOW - h * 3600_000), ok });
+  it("due si jamais lancée ou si la dernière passe réussie a plus de l'intervalle ; jamais si désactivée (0)", () => {
     expect(syncDue(null, NOW, 24)).toBe(true);
-    expect(syncDue(new Date(+NOW - 25 * 3600_000), NOW, 24)).toBe(true);
-    expect(syncDue(new Date(+NOW - 23 * 3600_000), NOW, 24)).toBe(false);
+    expect(syncDue(at(25, true), NOW, 24)).toBe(true);
+    expect(syncDue(at(23, true), NOW, 24)).toBe(false);
     expect(syncDue(null, NOW, 0)).toBe(false);
+  });
+  it("après un échec ou une passe interrompue : nouvel essai au bout d'une heure, pas de 24 h", () => {
+    expect(syncDue(at(0.5, false), NOW, 24)).toBe(false);
+    expect(syncDue(at(1, false), NOW, 24)).toBe(true);
+    expect(syncDue(at(2, false), NOW, 24)).toBe(true);
   });
 });

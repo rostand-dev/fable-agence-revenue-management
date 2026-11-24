@@ -9,7 +9,7 @@ import { encryptSecret } from "../secret";
 import { capFromSettings, getMonthlyCapEur, setMonthlyCapEur } from "./cap";
 import { invalidatePriceBook, loadPriceBook } from "./pricebook";
 import { rejectPendingPrice, validatePendingPrice } from "./price-validation";
-import { runLlmSyncIfDue } from "./job";
+import { claimSyncRun, runLlmSyncIfDue } from "./job";
 import { refreshAvailabilityForKey, seedCatalog, syncLlmRegistry, syncPrices, type SyncDeps } from "./sync";
 
 const NOW = new Date("2026-11-24T10:00:00Z");
@@ -121,6 +121,27 @@ describe("registre LLM : prix (base réelle)", () => {
     expect((await loadPriceBook()).get("claude-sonnet-5-5")!.price).toMatchObject({ inputPerMtok: 3, outputPerMtok: 15 });
   });
 
+  it("deux instantanés de même horodatage : le dernier inséré est toujours le prix en vigueur (jamais tiré au hasard)", async () => {
+    await seedCatalog();
+    for (let i = 0; i < 5; i++) {
+      await db.delete(schema.llmPriceSnapshots);
+      for (const price of ["2", "3"]) await db.insert(schema.llmPriceSnapshots).values({ id: `llmp_${Math.random().toString(36).slice(2)}`, modelId: "claude-sonnet-5-5", inputUsdPerMtok: price, outputUsdPerMtok: "10", source: "OVERRIDE", status: "VALIDATED", observedAt: NOW, validatedAt: NOW, validatedBy: "system" });
+      invalidatePriceBook();
+      expect((await loadPriceBook()).get("claude-sonnet-5-5")!.price.inputPerMtok).toBe(3);
+    }
+  });
+
+  it("deux passes qui signalent le même changement en même temps : aucune erreur, un seul changement en attente, les autres modèles traités", async () => {
+    await seedCatalog();
+    await syncPrices(deps(fakeFetch({ prices: () => json(litellm()) }).f));
+    const changed = fakeFetch({ prices: () => json(litellm({ "gpt-6-luna": { input_cost_per_token: 3e-7, output_cost_per_token: 5e-7 }, "gpt-6.1-terra": { input_cost_per_token: 2e-6, output_cost_per_token: 5e-6 } })) });
+    const [a, b] = await Promise.all([syncPrices(deps(changed.f)), syncPrices(deps(changed.f))]);
+    expect(a.errors ?? []).toEqual([]);
+    expect(b.errors ?? []).toEqual([]);
+    const pending = await db.select().from(schema.llmPriceSnapshots).where(eq(schema.llmPriceSnapshots.status, "PENDING"));
+    expect(pending.map((p) => p.modelId).sort()).toEqual(["gpt-6-luna", "gpt-6.1-terra"]);
+  });
+
   it("surcharge invalide : signalée, aucun prix appliqué à tort", async () => {
     await seedCatalog();
     const s = await syncPrices(deps(fakeFetch({ prices: () => json(litellm()) }).f, { env: { LLM_PRICE_OVERRIDES: "{pas du json" } }));
@@ -173,6 +194,21 @@ describe("registre LLM : disponibilité (base réelle)", () => {
     expect((await db.select().from(schema.llmSyncRuns).where(eq(schema.llmSyncRuns.ok, false))).length).toBe(1);
   });
 
+  it("accès restreint d'une seule clé : le modèle n'est déclaré absent que si AUCUNE clé ne le voit", async () => {
+    await seedCatalog();
+    let n = 0;
+    const f = fakeFetch({ prices: () => json(litellm()), anthropic: () => (n++ % 2 === 0 ? list([["claude-sonnet-5-5", "active"]]) : list([["claude-haiku-5-5", "active"], ["claude-sonnet-5-5", "active"]])) }).f;
+    await syncLlmRegistry(deps(f, { keys: async () => ({ anthropic: ["sk-ant-restreinte-0123456789012", "sk-ant-complete-01234567890123"] }) }));
+    expect((await db.select().from(schema.llmModels).where(eq(schema.llmModels.modelId, "claude-haiku-5-5")))[0].lifecycle).toBe("ACTIVE");
+  });
+
+  it("enregistrement d'une clé : un modèle non listé par cette seule clé n'est jamais passé en ABSENT", async () => {
+    await seedCatalog();
+    await refreshAvailabilityForKey("anthropic", "sk-ant-test-0123456789012345", deps(fakeFetch({ anthropic: () => list([["claude-haiku-5-5", "active"], ["claude-sonnet-5-5", "active"]]) }).f));
+    await refreshAvailabilityForKey("anthropic", "sk-ant-restreinte-0123456789012", deps(fakeFetch({ anthropic: () => list([["claude-haiku-5-5", "active"]]) }).f));
+    expect((await db.select().from(schema.llmModels).where(eq(schema.llmModels.modelId, "claude-sonnet-5-5")))[0].lifecycle).toBe("ACTIVE");
+  });
+
   it("une clé refusée (401) n'empêche pas d'essayer la clé suivante", async () => {
     let n = 0;
     const f = fakeFetch({ prices: () => json(litellm()), anthropic: () => (n++ === 0 ? new Response("{}", { status: 401 }) : list([["claude-haiku-5-5", "active"]])) }).f;
@@ -210,6 +246,19 @@ describe("registre LLM : disponibilité (base réelle)", () => {
     expect((await db.select().from(schema.llmSyncRuns)).length).toBe(0);
     await db.insert(schema.llmSyncRuns).values({ id: "llms_recent", startedAt: new Date(NOW.getTime() - 3600_000), ok: true });
     expect(await runLlmSyncIfDue(NOW)).toBe(false);
+  });
+
+  it("job : deux instances en même temps ne lancent qu'une passe ; après un échec, nouvel essai au bout d'une heure", async () => {
+    const [a, b] = await Promise.all([claimSyncRun(NOW, 24), claimSyncRun(NOW, 24)]);
+    expect([a, b].filter(Boolean)).toHaveLength(1);
+    // la passe est en cours (non terminée) : bloquée 1 h, puis reprise
+    expect(await claimSyncRun(new Date(NOW.getTime() + 30 * 60_000), 24)).toBeNull();
+    expect(await claimSyncRun(new Date(NOW.getTime() + 61 * 60_000), 24)).not.toBeNull();
+    // une passe réussie bloque jusqu'à l'intervalle
+    await db.delete(schema.llmSyncRuns);
+    await db.insert(schema.llmSyncRuns).values({ id: "llms_ok", startedAt: NOW, ok: true });
+    expect(await claimSyncRun(new Date(NOW.getTime() + 5 * 3600_000), 24)).toBeNull();
+    expect(await claimSyncRun(new Date(NOW.getTime() + 25 * 3600_000), 24)).not.toBeNull();
   });
 });
 

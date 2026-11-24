@@ -42,6 +42,8 @@ describe("prix : lecture du fichier LiteLLM", () => {
     expect(parseLitellmPrices({ "gpt-6-luna": { input_cost_per_token: 1e-7 } }).has("gpt-6-luna")).toBe(false);
     expect(parseLitellmPrices({ "gpt-6-luna": { input_cost_per_token: "x", output_cost_per_token: 1 } }).has("gpt-6-luna")).toBe(false);
     expect(readLitellmEntry(null)).toBeNull();
+    // une entrée à 0 dans le fichier communautaire est factice ou erronée : jamais enregistrée
+    expect(readLitellmEntry({ input_cost_per_token: 0, output_cost_per_token: 1e-6 })).toBeNull();
     expect(parseLitellmPrices([1, 2]).size).toBe(0);
     expect(parseLitellmPrices(null).size).toBe(0);
   });
@@ -68,6 +70,12 @@ describe("prix : surcharges LLM_PRICE_OVERRIDES", () => {
     expect(error).toBeNull();
     expect(overrides.get("gpt-6-luna")).toEqual({ inputPerMtok: 0.3, outputPerMtok: 0.9, long: null });
     expect(overrides.get("claude-haiku-5-5")!.long).toEqual({ thresholdTokens: 100000, inputPerMtok: 0.5, outputPerMtok: 2.5 });
+  });
+  it("palier long incomplet : refusé en entier (jamais un palier supprimé en silence)", () => {
+    for (const bad of ['{"m":{"input":1,"output":1,"longThresholdTokens":100}}', '{"m":{"input":1,"output":1,"longInput":2,"longOutput":3}}']) {
+      expect(parsePriceOverrides(bad).overrides.size).toBe(0);
+      expect(parsePriceOverrides(bad).error).toMatch(/LLM_PRICE_OVERRIDES/);
+    }
   });
   it("JSON invalide, champ inconnu ou prix négatif : aucune surcharge appliquée et erreur explicite", () => {
     for (const bad of ["{pas du json", '{"m":{"input":-1,"output":1}}', '{"m":{"input":1}}', '{"m":{"input":1,"output":1,"x":2}}', "[1]"]) {

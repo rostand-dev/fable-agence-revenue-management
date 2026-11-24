@@ -15,12 +15,19 @@ export function snapshotToPrice(s: Pick<Snap, "inputUsdPerMtok" | "outputUsdPerM
   return { inputPerMtok: Number(s.inputUsdPerMtok), outputPerMtok: Number(s.outputUsdPerMtok), long };
 }
 
+/** Dernier instantané VALIDATED de chaque modèle : par horodatage, puis par ordre d'insertion (seq) : jamais de départage au hasard. */
+export async function latestValidated(): Promise<Map<string, Snap>> {
+  const rows = await db.select().from(schema.llmPriceSnapshots).where(eq(schema.llmPriceSnapshots.status, "VALIDATED"))
+    .orderBy(desc(schema.llmPriceSnapshots.observedAt), desc(schema.llmPriceSnapshots.seq));
+  const out = new Map<string, Snap>();
+  for (const r of rows) if (!out.has(r.modelId)) out.set(r.modelId, r);
+  return out;
+}
+
 /** Dernier prix validé de chaque modèle. */
 export async function loadPriceBook(): Promise<PriceBook> {
-  const rows = await db.select().from(schema.llmPriceSnapshots).where(eq(schema.llmPriceSnapshots.status, "VALIDATED"))
-    .orderBy(desc(schema.llmPriceSnapshots.observedAt), desc(schema.llmPriceSnapshots.id));
   const book: PriceBook = new Map();
-  for (const r of rows) if (!book.has(r.modelId)) book.set(r.modelId, { snapshotId: r.id, price: snapshotToPrice(r) });
+  for (const [modelId, r] of await latestValidated()) book.set(modelId, { snapshotId: r.id, price: snapshotToPrice(r) });
   return book;
 }
 
@@ -38,10 +45,11 @@ export type TriedCost = { model: string; outcome: string; inputTokens?: number; 
 
 /**
  * Coût réel d'un appel : somme des essais facturables (corrections et replis compris), chacun au prix de son modèle.
- * Un essai en panne du fournisseur n'a pas de réponse donc pas de coût. null si aucun essai facturable, ou si l'un d'eux n'a ni prix ni jetons connus.
+ * Un essai est facturable dès qu'il a des jetons, même s'il a fini en panne (une première réponse facturée puis une correction en échec). Un essai en panne SANS jeton n'a pas de coût.
+ * null si aucun essai facturable, ou si l'un d'eux n'a ni prix ni jetons connus.
  */
 export function costOfTried(tried: readonly TriedCost[], book: PriceBook): { costUsd: number | null; snapshotId: string | null } {
-  const billable = tried.filter((t) => t.outcome !== "PROVIDER_ERROR");
+  const billable = tried.filter((t) => t.outcome !== "PROVIDER_ERROR" || t.inputTokens != null || t.outputTokens != null);
   if (billable.length === 0) return { costUsd: null, snapshotId: null };
   let total = 0;
   for (const t of billable) {
