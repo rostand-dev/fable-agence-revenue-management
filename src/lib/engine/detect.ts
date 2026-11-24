@@ -10,8 +10,8 @@ import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
 import { conformOpportunity, type ConformityIssue } from "./candidates";
 import { strategyFloorOver } from "./seasons";
 import {
-  detectCancellation, detectChannelGap, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
-  type CancellationPayload, type ChannelGapPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
+  detectCancellation, detectChannelGap, detectLongStay, detectDataDrift, detectEventUplift, detectFloorBreach, detectMinPriceBelowFloor, detectOrphanGap, detectPaceHigh, detectPaceLow, detectStackRisk, summarize,
+  type CancellationPayload, type ChannelGapPayload, type LongStayPayload, type DataDriftPayload, type EventUpliftPayload, type FloorBreachPayload, type MinPricePayload, type OrphanGapPayload, type PaceHighPayload, type PaceLowPayload, type Signal, type StackRiskPayload,
 } from "./signals";
 import { channelShare, leadTimes, medianLos, windowStats, type WindowStat } from "./metrics";
 import type { Candidate, Channel, DetectedOpportunity, Diagnosis, DiagnosisStep, Evidence, Promo, StackResult } from "./types";
@@ -589,6 +589,82 @@ function channelGap(ctx: Ctx, signals: Signal<ChannelGapPayload>[]): DetectedOpp
   }
   return out;
 }
+/* ------------------------------------------------------------------ PB-09 */
+/**
+ * PB-09 · trou libre long en basse saison. Offre de durée de séjour 7, 14 ou 28 nuits : seul Airbnb a ce type de promotion au registre de cumul ;
+ * sur Booking, aucun type équivalent n'existe et seule une vérification manuelle est proposée (aucune remise inventée). L'auditeur rejette toute offre
+ * dont le prix vendu passe sous un plancher, calculé sur la durée du séjour de l'offre. L'inaction reste proposée.
+ */
+function longStay(ctx: Ctx, signals: Signal<LongStayPayload>[]): DetectedOpportunity[] {
+  const out: DetectedOpportunity[] = [];
+  const tiers = [{ n: 7, pct: threshold("PB-09", "discount7Pct") }, { n: 14, pct: threshold("PB-09", "discount14Pct") }, { n: 28, pct: threshold("PB-09", "discount28Pct") }];
+  const hasAirbnb = ctx.channels.includes("AIRBNB"), hasBooking = ctx.channels.includes("BOOKING");
+  for (const sig of signals) {
+    const { dates, marketOccupancy, leadDays, gapNights } = sig.payload;
+    const from = sig.from, to = sig.to, a = avgDay(ctx, dates);
+    if (a.price === null) continue;
+    const promos = hasAirbnb ? refPromos(ctx, "AIRBNB", dates) : [];
+    const losActive = hasAirbnb && dates.some((d) => promosOn(ctx.promos, "AIRBNB", d).some((p) => String(p.kind).toUpperCase() === "LOS"));
+    const cands: Candidate[] = [];
+    if (hasAirbnb && !losActive) {
+      for (const tier of tiers.filter((x) => x.n <= dates.length)) {
+        const label = `Séjour de ${tier.n} nuits et plus`, promoFn = (d: ISODate) => promosOn(ctx.promos, "AIRBNB", d), add = { label, discountPct: tier.pct };
+        const cur = stack(ctx, "AIRBNB", tier.n, a.price, promos), next = stack(ctx, "AIRBNB", tier.n, a.price, [...promos, add]);
+        const b0 = expected(ctx, dates, "AIRBNB", 1, promoFn, tier.n), b1 = expected(ctx, dates, "AIRBNB", 1, (d) => [...promoFn(d), add], tier.n);
+        cands.push(finalize(ctx, {
+          type: "CHANNEL_PROMO", label: `Remise durée de séjour Airbnb −${tier.pct} % dès ${tier.n} nuits`,
+          detail: `Remise de ${tier.pct} % sur les séjours d'au moins ${tier.n} nuits, arrivées du ${fmtDay(from)} au ${fmtDay(to)} sur Airbnb ; les séjours plus courts et l'autre canal sont inchangés.`, agent: "distribution",
+          target: { system: "AIRBNB", channel: "AIRBNB" }, parameters: { kind: "LOS", discountPct: tier.pct, label, stayFrom: from, stayTo: to, minLos: tier.n }, nightsTouched: dates.length, priceChangePct: null,
+          current: cur, proposed: next, expectedDeltaCents: b0 !== null && b1 !== null ? Math.round((b1 - b0) * (ctx.share.AIRBNB ?? 0.5)) : null,
+          hypothesis: `${DEMAND_MODEL_NOTE} La demande de séjours longs n'est pas mesurée : l'écart est celui d'une baisse de prix équivalente, pondéré par la part habituelle d'Airbnb.`,
+          rollbackPlan: "Désactiver la promotion de durée de séjour dans l'extranet Airbnb.", executionMode: "MANUAL_RUNBOOK", risk: "MEDIUM", measurementWindowDays: PLAYBOOKS["PB-09"].measurementHorizonDays,
+        }, from, to));
+      }
+    }
+    if (hasBooking) cands.push(finalize(ctx, {
+      type: "INVESTIGATION", label: "Vérifier une offre de long séjour dans l'extranet Booking",
+      detail: "Booking n'a pas de type de promotion de durée de séjour dans le registre de cumul : relever ce que le canal propose, sans rien activer.", agent: "distribution",
+      target: { system: "BOOKING", channel: "BOOKING" }, parameters: { channel: "BOOKING", subject: "LONG_STAY", stayFrom: from, stayTo: to, nights: dates.length }, nightsTouched: 0, priceChangePct: null, current: null, proposed: null, expectedDeltaCents: null,
+      hypothesis: "Non chiffrable : aucune promotion équivalente n'est connue du registre.", rollbackPlan: "Aucune écriture externe : rien à annuler.", executionMode: "MANUAL_RUNBOOK", risk: "LOW", measurementWindowDays: 0,
+    }, from, to));
+    const cur0 = hasAirbnb ? stack(ctx, "AIRBNB", 7, a.price, promos) : null;
+    if (!cands.length) continue; // rien d'actionnable (offre déjà active, aucun autre canal) : pas de dossier réduit à l'inaction
+    cands.push(noAction(ctx, from, to, cur0, "Attendre une revue supplémentaire : le trou peut encore se remplir sans offre.", 7));
+    const promoOk = cands.some((c) => c.type === "CHANNEL_PROMO" && c.audit.verdict !== "REJECT");
+    const selected = pick(cands, { forceType: !promoOk && hasBooking && !hasAirbnb ? "INVESTIGATION" : undefined });
+    const nPromo = cands.filter((c) => c.type === "CHANNEL_PROMO").length;
+    out.push({
+      playbook: "PB-09", signal: summarize(sig, ctx.today), dedupe: sig.dedupe ?? undefined, reasonCode: "LONG_GAP_LOW_SEASON",
+      title: `Trou libre en basse saison : ${plural(gapNights, "nuit")} libres${gapNights > dates.length ? `, ${dates.length} ciblées` : ""}, à partir du ${fmtDay(from)}`,
+      stayFrom: from, stayTo: to,
+      signalText: `${plural(gapNights, "nuit")} libres consécutives${gapNights > dates.length ? ` (${dates.length} ciblées)` : ""}, marché occupé à ${pct(marketOccupancy)} en moyenne (seuil : ${pct(threshold("PB-09", "lowMarketOccupancy"))})`, signalSource: "Calendrier et marché",
+      hypothesisText: "La période est creuse sur tout le marché : un séjour long peut remplir un trou que des séjours courts ne remplissent pas.",
+      signals: { nights: dates.length, marketOccupancy: Math.round(marketOccupancy * 1000) / 1000, leadDays, airbnbOffers: nPromo, longStayPromoActive: losActive },
+      diagnosis: {
+        primary: "DEMAND_WEAK", primaryLabel: "Période creuse : demande de marché faible",
+        alternatives: [
+          { cause: "PRICE_HIGH", label: "Prix trop haut pour la période", why: a.pctl === null ? "Inconnu : position de prix non lue." : `Position de prix moyenne : ${Math.round(a.pctl)}e percentile du marché ; le marché étant lui-même creux, ce n'est pas la cause la plus probable.` },
+          { cause: "RESTRICTION_MISMATCH", label: "Séjour minimum mal adapté", why: a.minStay === null ? "Inconnu : séjour minimum non lu." : `Séjour minimum moyen : ${Math.round(a.minStay)} nuits sur le trou.` },
+        ],
+        confidence: confidence([[dates.length >= 10, 0.06], [marketOccupancy <= 0.3, 0.06], [!ctx.stale.includes("AIRBNB"), 0.04]], 0.42),
+        confidenceNote: "Diagnostic par la donnée de marché et le calendrier : la demande de séjours longs n'est pas mesurée.",
+        tree: [
+          { question: "La période est-elle en basse saison (marché peu occupé) ?", answer: `Oui : ${pct(marketOccupancy)} d'occupation moyenne du marché sur le trou.`, verdict: "oui" },
+          { question: "Le trou est-il assez long pour une offre de durée de séjour ?", answer: `Oui : ${plural(dates.length, "nuit")} consécutives.`, verdict: "oui" },
+          { question: "Une promotion de durée de séjour est-elle déjà active sur Airbnb ?", answer: !hasAirbnb ? "Sans objet : Airbnb n'est pas un canal du logement." : losActive ? "Oui : une seconde remise du même type n'est pas proposée." : ctx.stale.includes("AIRBNB") ? "Inconnu : le registre des promotions Airbnb n'a pas été vérifié depuis plus de 7 jours." : "Non.", verdict: !hasAirbnb ? "inconnu" : losActive ? "oui" : ctx.stale.includes("AIRBNB") ? "inconnu" : "non" },
+          { question: "Booking a-t-il un type de promotion équivalent ?", answer: "Non : aucun type de durée de séjour au registre de cumul ; seule une vérification manuelle est proposée.", verdict: "non" },
+        ],
+        evidence: [
+          { kind: "fait", label: "Nuits libres consécutives", value: `${fmtDay(from)} → ${fmtDay(to)} (${plural(dates.length, "nuit")})`, source: srcCal(ctx) },
+          { kind: "fait", label: "Occupation moyenne du marché sur le trou", value: pct(marketOccupancy), source: srcMkt(ctx) },
+          { kind: "fait", label: "Prix publié moyen des nuits libres", value: euro(a.price), source: srcPL(ctx) },
+        ],
+      },
+      candidates: cands, selected, veto: false, urgency: 0.9 + Math.max(0, 30 - leadDays) / 60, expiresAt: addDays(ctx.today, 14),
+    });
+  }
+  return out;
+}
 /* ------------------------------------------------------------------ PB-08 */
 /**
  * PB-08 · une annulation rouvre des nuits. Le dossier demande une relecture (calendrier, prix publié, promotions du canal) et n'engage ni remise ni baisse de prix :
@@ -715,6 +791,7 @@ export function reviewProperty(input: EngineInput): EngineResult {
     ...step(detectPaceHigh(ctx, stats), (s) => paceHigh(ctx, s)),
     ...step(detectPaceLow(ctx, stats), (s) => paceLow(ctx, s)),
     ...step(detectChannelGap(ctx, stats), (s) => channelGap(ctx, s)),
+    ...step(detectLongStay(ctx, stats), (s) => longStay(ctx, s)),
     ...step(detectCancellation(ctx), (s) => cancellation(ctx, s)),
     ...step(detectDataDrift(ctx), (s) => dataDrift(ctx, s)),
   ];

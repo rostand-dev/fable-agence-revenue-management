@@ -16,13 +16,18 @@ test("Méthode : le catalogue des 13 playbooks se déplie, avec seuils, données
   await expect(pb01).toContainText("Période de repos après décision");
   await expect(pb01).toContainText("14 jours");
   // un playbook décrit au blueprint mais pas encore codé le dit
-  await expect(section.locator("li.playbook", { hasText: "PB-09" })).toContainText("pas encore actif");
+  await expect(section.locator("li.playbook", { hasText: "PB-11" })).toContainText("pas encore actif");
   // PB-08 est codé : seuils, repos et approbateur visibles
   const pb08 = section.locator("li.playbook", { hasText: "PB-08" });
   await expect(pb08).not.toContainText("pas encore actif");
   await pb08.locator("summary").click();
   await expect(pb08).toContainText("Nuits rouvertes minimales");
   await expect(pb08).toContainText("Une annulation reste à traiter pendant ce nombre de jours");
+  const pb09 = section.locator("li.playbook", { hasText: "PB-09" });
+  await expect(pb09).not.toContainText("pas encore actif");
+  await pb09.locator("summary").click();
+  await expect(pb09).toContainText("Nuits libres consécutives minimales");
+  await expect(pb09).toContainText("Occupation moyenne du marché sur le trou en dessous de laquelle");
   await expect(section.locator("li.playbook", { hasText: "PB-04" })).not.toContainText("pas encore actif");
   await expectNoHorizontalOverflow(page, "méthode : playbooks");
   await section.scrollIntoViewIfNeeded();

@@ -267,6 +267,45 @@ export function detectChannelGap(ctx: Ctx, stats: WindowStat[]): Signal<ChannelG
   }];
 }
 
+/* ------------------------------------------------------------------ PB-09 */
+export type LongStayPayload = { dates: ISODate[]; gapNights: number; marketOccupancy: number; leadDays: number };
+/**
+ * PB-09 : un trou libre long sur une période de marché peu occupé. La basse saison est établie par la donnée (occupation du marché sur le trou),
+ * jamais par un libellé : une nuit sans donnée de marché écarte tout le trou (inconnu ≠ zéro). Les fenêtres où le logement est déjà en retard sur son marché
+ * relèvent de PB-01 (un seul diagnostic à la fois) : leurs nuits sont écartées. Les nuits traitées sont marquées pour les playbooks suivants.
+ */
+export function detectLongStay(ctx: Ctx, stats: WindowStat[]): Signal<LongStayPayload>[] {
+  const minGap = threshold("PB-09", "minGapNights"), minLead = threshold("PB-09", "minLeadDays"), maxLead = threshold("PB-09", "maxLeadDays"), low = threshold("PB-09", "lowMarketOccupancy"), maxRuns = threshold("PB-09", "maxRuns");
+  const from = addDays(ctx.today, minLead), to = addDays(ctx.today, maxLead + 1);
+  const lagging = stats.filter((w) => w.gap !== null && w.gap <= threshold("PB-01", "paceGap"));
+  const free = ctx.days.filter((d) => d.state === "FREE" && d.priceCents !== null && d.date >= from && d.date < to && !ctx.claimed.has(d.date) && !lagging.some((w) => d.date >= w.from && d.date < w.to)).map((d) => d.date);
+  const out: Signal<LongStayPayload>[] = [];
+  for (const run of runs(free)) {
+    if (out.length >= maxRuns) break;
+    if (run.length < minGap) continue;
+    const occ = run.map((d) => ctx.byDate.get(d)?.marketOccupancy ?? null);
+    if (occ.some((x) => x === null)) continue;
+    const avgOcc = (occ as number[]).reduce((a, b) => a + b, 0) / occ.length;
+    if (avgOcc > low) continue;
+    const target = run.slice(0, threshold("PB-09", "maxTargetNights"));
+    // clé stable d'un jour à l'autre : la fin du trou réel dans le calendrier (le début glisse avec la date et avec les nuits retirées en amont) ;
+    // un trou qui va jusqu'à la fin de l'horizon lu n'a pas de fin connue : clé « open » (un seul trou peut l'être)
+    const rawEnd = (() => { let d = run[0]; const free = new Set(ctx.days.filter((x) => x.state === "FREE").map((x) => x.date)); while (free.has(addDays(d, 1))) d = addDays(d, 1); return d; })();
+    const key = rawEnd < addDays(ctx.today, 90) ? rawEnd : "open";
+    target.forEach((d) => ctx.claimed.add(d));
+    out.push({
+      playbook: "PB-09", trigger: "LONG_GAP_LOW_SEASON", dedupe: key, channel: null, from: target[0], to: addDays(target[target.length - 1], 1), dates: target,
+      measures: [
+        m("gapNights", "Nuits libres consécutives", run.length, minGap, ">=", "nuits"),
+        m("marketOccupancy", "Occupation moyenne du marché sur le trou", round2(avgOcc), low, "<=", "ratio"),
+        m("leadDays", "Délai avant la première nuit", diffDays(target[0], ctx.today), minLead, ">=", "jours"),
+      ],
+      payload: { dates: target, gapNights: run.length, marketOccupancy: avgOcc, leadDays: diffDays(target[0], ctx.today) },
+    });
+  }
+  return out;
+}
+
 /* ------------------------------------------------------------------ PB-08 */
 export type CancellationPayload = { channel: string; checkIn: ISODate; checkOut: ISODate; cancelledAt: ISODate; stayNights: number; reopened: ISODate[]; cancelled14: number | null; rate14: number | null };
 /**
@@ -322,4 +361,4 @@ export function detectDataDrift(ctx: Ctx): Signal<DataDriftPayload>[] {
 }
 
 /** Ordre d'évaluation fixe : un playbook qui marque des nuits les retire aux suivants (veto d'abord, puis causes structurelles, puis rythme). */
-export const SIGNAL_ORDER: PlaybookCode[] = ["PB-06", "PB-13", "PB-05", "PB-03", "PB-07", "PB-02", "PB-01", "PB-04", "PB-08", "PB-10"];
+export const SIGNAL_ORDER: PlaybookCode[] = ["PB-06", "PB-13", "PB-05", "PB-03", "PB-07", "PB-02", "PB-01", "PB-04", "PB-09", "PB-08", "PB-10"];

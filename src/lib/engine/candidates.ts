@@ -72,6 +72,8 @@ export function candidateIssues(c: Candidate, playbook: string): string[] {
   if (!spec.systems.includes(c.target.system)) out.push(`système cible ${c.target.system} non permis pour ${spec.label}`);
   if (!spec.modes.includes(c.executionMode)) out.push(`mode d'exécution ${c.executionMode} non permis pour ${spec.label}`);
   for (const r of spec.params) { const e = checkParam((c.parameters as Record<string, unknown>)[r.key], r); if (e) out.push(`paramètre ${r.key} : ${e}`); }
+  // une remise de durée de séjour sans séjour minimal serait inscrite au registre comme une remise sur tous les séjours
+  if (c.type === "CHANNEL_PROMO" && (c.parameters as Record<string, unknown>).kind === "LOS") { const n = (c.parameters as Record<string, unknown>).minLos; if (!Number.isInteger(n) || (n as number) < 2) out.push("paramètre minLos : séjour minimal (entier d'au moins 2 nuits) obligatoire pour une remise de durée de séjour"); }
   if (spec.touchesNights && !(c.nightsTouched > 0)) out.push("une action datée doit toucher au moins une nuit");
   if (!spec.touchesNights && c.nightsTouched !== 0 && c.type !== "LISTING_AUDIT" && c.type !== "INVESTIGATION") out.push("cette action ne touche aucune nuit");
   if (spec.executable) {
