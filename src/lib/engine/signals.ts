@@ -277,7 +277,7 @@ export function detectCancellation(ctx: Ctx): Signal<CancellationPayload>[] {
   const win = threshold("PB-08", "windowDays"), maxLead = threshold("PB-08", "maxLeadDays"), minNights = threshold("PB-08", "minReopenedNights"), alert = threshold("PB-08", "alertRate");
   if (!cancellationStats(ctx.cancellations, ctx.cancellationTracking, ctx.resas, ctx.today, win)) return [];
   const from0 = addDays(ctx.today, -win + 1), horizon = addDays(ctx.today, maxLead + 1);
-  const raw14 = cancellationStats(ctx.cancellations, ctx.cancellationTracking, ctx.resas, ctx.today, 14);
+  const raw14 = cancellationStats(ctx.cancellations, ctx.cancellationTracking, ctx.resas, ctx.today, threshold("PB-08", "rateWindowDays"));
   // un taux sur trop peu de réservations n'est pas un taux : il reste inconnu
   const s14 = raw14 && raw14.cancelled + raw14.booked >= threshold("PB-08", "minRateSample") ? raw14 : null;
   const out: Signal<CancellationPayload>[] = [];

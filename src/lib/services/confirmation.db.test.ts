@@ -108,6 +108,17 @@ describe("confirmation de l'opérateur (US-103)", () => {
     expect(p.endedAt!.toISOString().slice(0, 10)).toBe(OK.date);
   });
 
+  it("relecture du calendrier (PB-08) : confirmée sans dater les promotions du canal comme vérifiées ; la vérification du registre (PB-10) le fait", async () => {
+    const [prop] = await db.select().from(schema.properties).where(eq(schema.properties.tenantId, t.tenantId));
+    await db.insert(schema.promotions).values({ id: "promo-cal-1", tenantId: t.tenantId, propertyId: prop.id, channel: "BOOKING", kind: "MOBILE", label: "Jamais relue", discountPct: 10, stayFrom: "2026-12-01", stayTo: "2026-12-31", status: "ACTIVE", source: "DECLARED", verifiedAt: null } as any);
+    const cal = await approveManual("INVESTIGATION", { channel: "BOOKING", subject: "CALENDAR", dates: ["2026-12-10"] });
+    await D.execute(as("OWNER"), cal, { ...OK, externalRef: "CAL-1" });
+    expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).toBeNull();
+    const reg = await approveManual("INVESTIGATION", { channel: "BOOKING" });
+    await D.execute(as("OWNER"), reg, { ...OK, externalRef: "REG-1" });
+    expect((await db.select().from(schema.promotions).where(eq(schema.promotions.id, "promo-cal-1")))[0].verifiedAt).not.toBeNull();
+  });
+
   it("date d'effet antérieure à l'approbation : refusée", async () => {
     const id = await approveManual("INVESTIGATION", { channel: "BOOKING" });
     expect((await fail(D.execute(as("OWNER"), id, { ...OK, date: "2020-01-01" }))).message).toContain("précéder l'approbation");

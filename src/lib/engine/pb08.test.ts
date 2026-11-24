@@ -4,7 +4,7 @@ import { capabilityFlags } from "../integrations/capabilities";
 import { buildDemo } from "./demo";
 import { reviewProperty, type EngineInput } from "./detect";
 import type { Cancellation } from "./history";
-import { threshold } from "./playbooks";
+import { PLAYBOOKS, threshold } from "./playbooks";
 import type { Day, Resa } from "./types";
 
 const TODAY = "2026-11-12";
@@ -33,6 +33,33 @@ function scenario(o: { cancellations?: Cancellation[] | undefined; since?: ISODa
   };
 }
 const pb08 = (i: EngineInput) => reviewProperty(i).opportunities.filter((x) => x.playbook === "PB-08");
+
+describe("PB-08 · garde-fous du catalogue", () => {
+  it("la fenêtre de recherche ne dépasse pas la période de repos : un dossier décidé ne se rouvre pas pour la même annulation", () => {
+    expect(threshold("PB-08", "windowDays")).toBeLessThanOrEqual(PLAYBOOKS["PB-08"].cooldownDays);
+  });
+  it("la relecture ne date pas les promotions comme vérifiées et ne touche aucune nuit", () => {
+    const [o] = pb08(scenario({ cancellations: [canc()] }));
+    expect(o.candidates[0].parameters.subject).toBe("CALENDAR");
+    expect(o.candidates[0].executionMode).toBe("MANUAL_RUNBOOK");
+  });
+  it("une action de prix en observation sur les mêmes dates ne fait pas rejeter la relecture", () => {
+    const i = scenario({ cancellations: [canc()] });
+    i.activeRanges = [{ from: addDays(TODAY, 8), to: addDays(TODAY, 20) }];
+    const [o] = pb08(i);
+    expect(o.candidates[0].audit.verdict).not.toBe("REJECT");
+    expect(o.candidates[o.selected].type).toBe("INVESTIGATION");
+  });
+  it("nuits rouvertes non contiguës (une nuit revendue au milieu) : seules les nuits libres sont comptées", () => {
+    const [o] = pb08(scenario({ cancellations: [canc({ nights: 4 })], booked: [addDays(TODAY, 11)] }));
+    expect(o.signal!.nights).toBe(3);
+    expect(o.candidates[0].parameters.dates).toEqual([10, 12, 13].map((n) => addDays(TODAY, n)));
+  });
+  it("séjour déjà commencé : seules les nuits à venir sont rouvertes", () => {
+    const [o] = pb08(scenario({ cancellations: [canc({ inDays: -2, nights: 5 })] }));
+    expect(o.stayFrom).toBe(TODAY); expect(o.signal!.nights).toBe(3);
+  });
+});
 
 describe("PB-08 · dates rouvertes par une annulation", () => {
   it("annulation récente avec des nuits encore libres : un dossier de relecture, sans action de prix", () => {

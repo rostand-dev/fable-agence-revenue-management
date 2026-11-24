@@ -5,7 +5,7 @@ import { auditCandidate } from "./audit";
 import { avgDay, expected, fmtPctFr, markupFactor, markupPctOf, overlaps, plural, promosOn, runs, stack, type Ctx, type EngineInput } from "./context";
 import { DEMAND_MODEL_NOTE, sellProbability } from "./demand";
 import { cumulativeDiscountPct, hardFloorCents, missingEconomics } from "./economics";
-import { threshold } from "./playbooks";
+import { PLAYBOOKS, threshold } from "./playbooks";
 import { DEFAULT_SCORING, priorityScoreWith } from "./scoring";
 import { conformOpportunity, type ConformityIssue } from "./candidates";
 import { strategyFloorOver } from "./seasons";
@@ -22,7 +22,7 @@ export { markupFactor, promosOn };
 export type { EngineInput };
 
 function finalize(ctx: Ctx, draft: Omit<Candidate, "audit">, from: ISODate, to: ISODate): Candidate {
-  return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && draft.type !== "MIN_PRICE_CHANGE" && overlaps(ctx, from, to) }) };
+  return { ...draft, audit: auditCandidate(draft, { ...ctx.audit, window: { from, to }, conflict: draft.type !== "NO_ACTION" && draft.type !== "MIN_PRICE_CHANGE" && draft.type !== "INVESTIGATION" && overlaps(ctx, from, to) }) };
 }
 /** Écriture PriceLabs par API seulement si la capacité existe pour ce logement (US-002) ; sinon procédure manuelle guidée. */
 /** Écriture par API seulement si la capacité est ouverte ET si ce type d'action s'écrit par API (sur un logement réel, voir API_WRITE_TYPES) ; sinon procédure manuelle. */
@@ -599,24 +599,25 @@ function cancellation(ctx: Ctx, signals: Signal<CancellationPayload>[]): Detecte
   return signals.map((sig) => {
     const { channel, checkIn, checkOut, cancelledAt, stayNights, reopened, cancelled14, rate14 } = sig.payload;
     const from = sig.from, to = sig.to, name = (CHANNEL_LABEL as Record<string, string>)[channel] ?? channel;
-    const alert = threshold("PB-08", "alertRate"), series = rate14 !== null && rate14 >= alert;
-    const lead = diffDays(from, ctx.today);
+    const alert = threshold("PB-08", "alertRate"), rateDays = threshold("PB-08", "rateWindowDays"), series = rate14 !== null && rate14 >= alert;
+    const lead = diffDays(from, ctx.today), noActionLead = threshold("PB-08", "noActionLeadDays");
     const cands: Candidate[] = [
       finalize(ctx, {
         type: "INVESTIGATION", label: `Relire le calendrier et les promotions des ${plural(reopened.length, "nuit")} rouverte${reopened.length > 1 ? "s" : ""}`,
-        detail: `Contrôler que les nuits du ${fmtDay(from)} au ${fmtDay(to)} sont bien ouvertes sur tous les canaux, que leur prix et leurs restrictions sont cohérents, et quelles promotions les couvrent. Aucun prix ni aucune remise n'est modifié.`, agent: "distribution",
-        target: { system: "INTERNAL" }, parameters: { channel, checkIn, checkOut, nights: reopened.length }, nightsTouched: 0, priceChangePct: null, current: null, proposed: null, expectedDeltaCents: null,
+        detail: `Contrôler que les ${plural(reopened.length, "nuit")} rouverte${reopened.length > 1 ? "s" : ""} entre le ${fmtDay(from)} et le ${fmtDay(addDays(to, -1))} sont bien ouvertes sur tous les canaux, que leur prix et leurs restrictions sont cohérents, et quelles promotions les couvrent. Aucun prix ni aucune remise n'est modifié.`, agent: "distribution",
+        // « subject » distingue cette relecture du calendrier de la vérification du registre des promotions (PB-10) : elle ne le date pas comme vérifié
+        target: { system: "INTERNAL" }, parameters: { channel, subject: "CALENDAR", checkIn, checkOut, nights: reopened.length, dates: reopened }, nightsTouched: 0, priceChangePct: null, current: null, proposed: null, expectedDeltaCents: null,
         hypothesis: "Non chiffrable : il s'agit de vérifier que les nuits rouvertes sont bien proposées, pas de produire un revenu.",
-        rollbackPlan: "Aucune écriture externe : rien à annuler.", executionMode: "MANUAL_RUNBOOK", risk: "LOW", measurementWindowDays: threshold("PB-08", "windowDays") + 4,
+        rollbackPlan: "Aucune écriture externe : rien à annuler.", executionMode: "MANUAL_RUNBOOK", risk: "LOW", measurementWindowDays: PLAYBOOKS["PB-08"].measurementHorizonDays,
       }, from, to),
-      noAction(ctx, from, to, null, "Les nuits rouvertes retrouvent leur chance de se vendre au prix courant : attendre avant toute réaction, la fenêtre est encore lointaine.", 3),
+      noAction(ctx, from, to, null, lead > noActionLead ? "Les nuits rouvertes retrouvent leur chance de se vendre au prix courant, et la fenêtre est encore lointaine : attendre avant toute réaction." : "Les nuits rouvertes retrouvent leur chance de se vendre au prix courant : attendre la prochaine revue plutôt que réagir à une seule annulation.", 3),
     ];
     return {
       playbook: "PB-08", signal: summarize(sig, ctx.today), dedupe: sig.dedupe ?? undefined, reasonCode: "DATES_REOPENED",
       title: `Annulation ${name} : ${plural(reopened.length, "nuit")} rouverte${reopened.length > 1 ? "s" : ""} du ${fmtDay(from)} au ${fmtDay(to)}`,
       stayFrom: from, stayTo: to,
       signalText: `Séjour du ${fmtDay(checkIn)} au ${fmtDay(checkOut)} annulé le ${fmtDay(cancelledAt)} : ${plural(reopened.length, "nuit")} encore libre${reopened.length > 1 ? "s" : ""}`, signalSource: "Historique des réservations SuperHote",
-      hypothesisText: "Une annulation ponctuelle rouvre des dates ; sans série d'annulations, elle ne dit rien du prix.",
+      hypothesisText: series ? "Une série d'annulations rouvre des dates : le motif n'est pas connu, le dossier demande une relecture avant toute décision de prix." : "Une annulation ponctuelle rouvre des dates ; sans série d'annulations, elle ne dit rien du prix.",
       signals: { channel, checkIn, checkOut, cancelledAt, reopenedNights: reopened.length, cancelledStays14d: cancelled14, cancellationRate14d: rate14 === null ? null : Math.round(rate14 * 1000) / 1000 },
       diagnosis: {
         primary: "CANCELLATION", primaryLabel: "Annulation qui rouvre des dates",
@@ -628,16 +629,16 @@ function cancellation(ctx: Ctx, signals: Signal<CancellationPayload>[]): Detecte
         confidenceNote: "Constat d'une annulation enregistrée par SuperHote ; son motif n'est pas connu.",
         tree: [
           { question: "Des nuits à venir sont-elles rouvertes et encore libres ?", answer: `Oui : ${plural(reopened.length, "nuit")} sur ${plural(stayNights, "nuit")} du séjour annulé.`, verdict: "oui" },
-          { question: "S'agit-il d'une série d'annulations ?", answer: rate14 === null ? "Inconnu : historique des annulations trop court pour 14 jours." : `${series ? "Oui" : "Non"} : ${plural(cancelled14 ?? 0, "annulation")} sur 14 jours, soit ${pct(rate14)} des réservations (alerte à ${pct(alert)}).`, verdict: rate14 === null ? "inconnu" : series ? "oui" : "non" },
+          { question: "S'agit-il d'une série d'annulations ?", answer: rate14 === null ? "Inconnu : historique ou échantillon trop court pour calculer le taux." : `${series ? "Oui" : "Non"} : ${plural(cancelled14 ?? 0, "annulation")} sur ${rateDays} jours, soit ${pct(rate14)} des réservations (alerte à ${pct(alert)}).`, verdict: rate14 === null ? "inconnu" : series ? "oui" : "non" },
           { question: "Le motif de l'annulation est-il connu ?", answer: "Non : SuperHote ne le transmet pas.", verdict: "inconnu" },
         ],
         evidence: [
           { kind: "fait", label: `Séjour annulé (${name})`, value: `${fmtDay(checkIn)} → ${fmtDay(checkOut)}, annulé le ${fmtDay(cancelledAt)}`, source: "Historique des réservations SuperHote" },
           { kind: "fait", label: "Nuits rouvertes encore libres", value: `${fmtDay(from)} → ${fmtDay(to)} (${plural(reopened.length, "nuit")})`, source: srcCal(ctx) },
-          ...(rate14 !== null ? [{ kind: "comparaison" as const, label: "Taux d'annulation sur 14 jours", value: `${pct(rate14)} (${plural(cancelled14 ?? 0, "annulation")})`, source: "Historique des réservations SuperHote" }] : []),
+          ...(rate14 !== null ? [{ kind: "comparaison" as const, label: `Taux d'annulation sur ${rateDays} jours`, value: `${pct(rate14)} (${plural(cancelled14 ?? 0, "annulation")})`, source: "Historique des réservations SuperHote" }] : []),
         ],
       },
-      candidates: cands, selected: pick(cands, { forceType: lead > 45 ? "NO_ACTION" : "INVESTIGATION" }), veto: false, urgency: 0.8 + (series ? 0.4 : 0) + Math.max(0, 14 - lead) / 40, expiresAt: addDays(ctx.today, threshold("PB-08", "windowDays") + 4),
+      candidates: cands, selected: pick(cands, { forceType: lead > noActionLead ? "NO_ACTION" : "INVESTIGATION" }), veto: false, urgency: 0.8 + (series ? 0.4 : 0) + Math.max(0, 14 - lead) / 40, expiresAt: addDays(ctx.today, threshold("PB-08", "expiryDays")),
     } satisfies DetectedOpportunity;
   });
 }

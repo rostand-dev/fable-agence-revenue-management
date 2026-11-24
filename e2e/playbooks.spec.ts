@@ -22,7 +22,7 @@ test("Méthode : le catalogue des 13 playbooks se déplie, avec seuils, données
   await expect(pb08).not.toContainText("pas encore actif");
   await pb08.locator("summary").click();
   await expect(pb08).toContainText("Nuits rouvertes minimales");
-  await expect(pb08).toContainText("3 jours");
+  await expect(pb08).toContainText("Une annulation reste à traiter pendant ce nombre de jours");
   await expect(section.locator("li.playbook", { hasText: "PB-04" })).not.toContainText("pas encore actif");
   await expectNoHorizontalOverflow(page, "méthode : playbooks");
   await section.scrollIntoViewIfNeeded();
