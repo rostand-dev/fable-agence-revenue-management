@@ -102,4 +102,21 @@ Chaque US est livrée par sa propre PR, fusionnée seulement quand la CI est ver
 
 ## Déploiement (staging Coolify)
 
-Renseigné à la fin de chaque US : migrations à jouer, variables d'environnement (aucune ajoutée pour l'instant), points à vérifier.
+**Livré** : US-110 (#81), US-111 (#82), US-112 (#83), US-113 (#84).
+
+**Migrations à jouer** (dans l'ordre, automatiquement au démarrage comme les précédentes ; toutes idempotentes, rejouables deux fois sans effet) :
+- `0031_us_110_experiments` : table `experiments`, déclencheur de gel de la baseline, expériences « héritées » pour les actions déjà exécutées ;
+- `0032_us_111_mesures` : table `experiment_measurements`, déclencheur anti-modification, reprise des mesures existantes (marquées héritées) ;
+- `0033_us_112_rapports` : table `monthly_reports`, contraintes, déclencheurs anti-modification et anti-suppression d'un rapport certifié, RLS.
+
+**Variables d'environnement** : aucune ajoutée sur l'épic (US-113 : aucune migration non plus).
+
+**Points à vérifier après déploiement** :
+1. Le conteneur démarre et `/api/health` répond ; les trois migrations sont appliquées (aucune erreur dans les logs de démarrage).
+2. `/historique` et un dossier clos : la mesure existante s'affiche (marquée « antérieure au suivi des expériences »).
+3. Exécuter puis vérifier une action : le dossier affiche le bloc « Expérience » (référence figée, fenêtres) ; après la fenêtre d'observation, le résultat (positif, neutre, négatif ou non concluant) et ses motifs.
+4. `/rapports` : préparer le rapport du dernier mois, retoucher, certifier (case de relecture), exporter en PDF et en CSV, ouvrir le CSV dans Excel.
+5. Avec un compte « Analyste » : lecture seule sur `/rapports`, exports possibles.
+6. Si RLS est activée (`TENANT_RLS`), le rôle applicatif a bien reçu les droits des trois nouvelles tables (lecture/ajout ; mise à jour pour `experiments` et `monthly_reports` ; jamais de suppression).
+
+**Limites assumées** : pas de période témoin (l'effet incrémental reste « inconnu ») ; la fraîcheur des réservations n'est pas contrôlable pour un logement sans source reliée ; les mesures sur très peu de nuits attendues restent à faible confiance ; la contribution et l'objectif ne sont pas suivis (dits « inconnus » dans les rapports) ; les listes de l'historique ne sont pas paginées.
