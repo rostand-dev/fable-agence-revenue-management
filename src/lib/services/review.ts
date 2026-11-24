@@ -7,7 +7,7 @@ import { cancelledFromChanges } from "../reservations/cancellations";
 import { reviewProperty, type EngineInput } from "../engine/detect";
 import { PLAYBOOKS } from "../engine/playbooks";
 import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
-import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
+import { dedupeOpportunities, groupKeys, openingDecision, shouldExpire } from "../engine/lifecycle";
 import { groupCooldownUntil, recentBaseChanges, STRUCTURAL_COUNTED_STATUSES, structuralHold } from "../engine/structural";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveTargets } from "../agents/llm-config";
@@ -186,6 +186,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
 
     const existing = await db.select().from(opportunities).where(and(eq(opportunities.propertyId, p.id), inArray(opportunities.status, ["OPEN", "DEFERRED", "DECIDED"])));
     const seen = new Set<string>();
+    const renewed = new Set<string>(); // dossiers rafraîchis cette revue : leur échéance vient d'être repoussée
     // un même signal ne produit qu'un dossier par revue (le plus prioritaire), puis les dossiers qui se touchent sont regroupés
     const found = dedupeOpportunities(res.opportunities, (x) => scoreOpportunity(x, scoring).score);
     // la clé suit les dossiers détectés (y compris ceux laissés au repos) : elle peut changer d'une revue à l'autre, seuls les dossiers ouverts sont listés ensemble
@@ -246,7 +247,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
         await secondReadingFor(prev.id);
         const sameChoice = prev.candidates?.[prev.selected]?.label === o.candidates[o.selected].label;
         await db.update(opportunities).set({ ...row, narrative: sameChoice && prev.narrative ? prev.narrative : deterministicNarrative(o) }).where(eq(opportunities.id, prev.id));
-        refreshed++; continue;
+        renewed.add(prev.id); refreshed++; continue;
       }
       let narrative = deterministicNarrative(o);
       const id = newId("opp");
@@ -261,7 +262,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       await db.insert(opportunities).values({ id, tenantId, propertyId: p.id, code: code(seq++), dedupeKey: key, ...row, narrative, status: "OPEN", createdAt: now });
       opened++;
     }
-    for (const e of existing) if (e.status === "OPEN" && (!seen.has(e.dedupeKey) || e.expiresAt < today)) {
+    for (const e of existing) if (e.status === "OPEN" && shouldExpire(e, seen, renewed, today)) {
       await db.update(opportunities).set({ status: "EXPIRED" }).where(eq(opportunities.id, e.id)); expired++;
     }
   }

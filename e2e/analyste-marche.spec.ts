@@ -50,6 +50,18 @@ test("Revue avec modèle : les constats sont rédigés par l'analyste (faux serv
   const analyse = page.getByTestId("analyse-marche");
   await expect(analyse).toContainText("a rédigé ces constats à partir des pièces numérotées");
   await expect(analyse.getByTestId("constat").first()).toContainText("Les pièces citées décrivent");
-  await page.goto("/equipe/marche?tab=activite");
+  await page.goto("/equipe/marche?tab=activite&mode=llm"); // filtre : les lignes de règles de chaque revue ne masquent pas la trace du modèle
   await expect(page.getByTestId("trace-prompt").first()).toContainText("marche.market_analysis");
+});
+
+test("Activité d'un agent : le filtre « Avec modèle seulement » ne garde que les interventions du modèle, sans débordement", async ({ page }) => {
+  await page.goto("/equipe/marche?tab=activite");
+  const filtre = page.getByTestId("activite-filtre");
+  await expect(filtre.getByRole("link", { name: "Toutes les interventions" })).toHaveAttribute("aria-current", "true");
+  await filtre.getByRole("link", { name: "Avec modèle seulement" }).click();
+  await expect(page).toHaveURL(/mode=llm/);
+  await expect(filtre.getByRole("link", { name: "Avec modèle seulement" })).toHaveAttribute("aria-current", "true");
+  for (const li of await page.locator("ul.timeline li").all()) await expect(li).not.toContainText("· règles");
+  const w = await page.evaluate(() => ({ s: document.documentElement.scrollWidth, c: document.documentElement.clientWidth }));
+  expect(w.s).toBeLessThanOrEqual(w.c + 1);
 });
