@@ -336,3 +336,22 @@ h3.sub { font-size: 14px; margin: 18px 0 8px; }
 .transition-list li { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere; }
 .transition-list .tr-state { font-weight: 600; }
 @media (min-width: 640px) { .transition-list li { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto; align-items: baseline; gap: 12px; } }
+
+/* US-102 : guide pas-à-pas cochable. Une colonne sur mobile, texte et bouton empilés ; rien ne dépasse à 360 px. */
+.runbook-progress { margin: 0 0 6px; font-size: 14px; }
+.runbook-bar { width: 100%; height: 8px; margin: 0 0 12px; accent-color: var(--blue-core); }
+.runbook-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; counter-reset: rb; }
+.runbook-step { counter-increment: rb; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; }
+.runbook-step.is-done { border-color: var(--sain, var(--line)); }
+.runbook-step.is-stop { border-style: dashed; }
+.runbook-text { min-width: 0; }
+.runbook-kind { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+.runbook-kind::before { content: counter(rb) ". "; }
+.runbook-title { margin: 2px 0 0; font-size: 14.5px; overflow-wrap: anywhere; }
+.runbook-detail, .runbook-done { margin: 4px 0 0; font-size: 13px; color: var(--quiet); overflow-wrap: anywhere; }
+.runbook-form .btn { width: 100%; min-height: 44px; }
+.runbook-state { font-size: 13px; color: var(--faint); }
+@media (min-width: 720px) {
+  .runbook-step { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+  .runbook-form .btn { width: auto; }
+}

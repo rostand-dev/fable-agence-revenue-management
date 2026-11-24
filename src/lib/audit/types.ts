@@ -33,6 +33,8 @@ export const AUDIT_TYPES = {
   "action.verified": { category: "EXECUTION", label: "Action vérifiée" },
   "action.verification_failed": { category: "EXECUTION", label: "Vérification en échec" },
   "promotion.verified": { category: "EXECUTION", label: "Promotion vérifiée dans l'extranet" },
+  "runbook.step_checked": { category: "EXECUTION", label: "Étape du guide cochée" },
+  "runbook.step_unchecked": { category: "EXECUTION", label: "Étape du guide décochée" },
   "action.rollback_failed": { category: "EXECUTION", label: "Retour arrière en échec" },
   "alert.raised": { category: "EXECUTION", label: "Alerte d'exécution levée" },
   "alert.acknowledged": { category: "EXECUTION", label: "Alerte d'exécution prise en compte" },

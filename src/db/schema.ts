@@ -657,3 +657,14 @@ export const executionAlerts = pgTable("execution_alerts", {
   index("execution_alerts_action").on(t.actionId),
   uniqueIndex("execution_alerts_open_dedupe").on(t.tenantId, t.dedupeKey).where(sql`status <> 'RESOLVED'`),
 ]);
+
+/** US-102 : étapes cochées du guide pas-à-pas d'une action appliquée à la main. Une ligne = une étape faite (qui, quand) ; décocher supprime la ligne, l'audit garde la trace. */
+export const runbookSteps = pgTable("runbook_steps", {
+  id: id(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  actionId: text("action_id").notNull().references(() => revenueActions.id, { onDelete: "cascade" }),
+  /** Identifiant stable de l'étape (voir `promotions/runbook.ts`) */
+  stepId: text("step_id").notNull(),
+  doneBy: text("done_by").notNull(),
+  doneAt: ts("done_at").notNull().defaultNow(),
+}, (t) => [uniqueIndex("runbook_steps_unique").on(t.actionId, t.stepId), index("runbook_steps_tenant").on(t.tenantId, t.actionId)]);

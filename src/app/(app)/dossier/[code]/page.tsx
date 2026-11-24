@@ -33,39 +33,10 @@ import { emailConfigured } from "@/lib/email/resend";
 import { FloorGauge, PromoStack, Waterfall } from "@/components/Waterfall";
 import { sharedAxis } from "@/lib/engine/waterfall";
 import { auditTrail } from "@/lib/audit/query";
+import { Runbook } from "@/components/Runbook";
+import { getRunbook } from "@/lib/services/runbook";
 import { auditLabel } from "@/lib/audit/types";
 import { can, denyMessage, executePermission, ROLE_LABEL, rolesWith } from "@/lib/rbac";
-
-const RUNBOOK: Record<string, (c: Candidate) => string[]> = {
-  CHANNEL_PROMO: (c) => [
-    "Ouvrir l'extranet officiel du canal depuis votre navigateur, connecté à votre compte.",
-    "Vérifier le logement, les dates de séjour et le fuseau horaire.",
-    "Contrôler les promotions déjà actives et les comparer au registre.",
-    `Créer la promotion « ${c.parameters.label ?? c.label} » à ${c.parameters.discountPct} %, séjours du ${fmtDay(c.parameters.stayFrom)} au ${fmtDay(c.parameters.stayTo)}.`,
-    `Comparer le prix final affiché à la simulation : ${euro(c.proposed?.soldNightlyCents)} la nuit.`,
-    "Relever l'identifiant ou la confirmation, puis déclarer la réalisation ci-dessous.",
-    "Si l'état réel diffère de ce qui est approuvé : s'arrêter. Ne pas improviser une remise différente.",
-  ],
-  PROMO_REMOVAL: (c) => [
-    "Ouvrir l'extranet officiel du canal, rubrique promotions.",
-    `Repérer la promotion « ${c.parameters.promotionLabel} » et vérifier ses dates.`,
-    "La désactiver pour les dates du dossier uniquement ; laisser les autres promotions en l'état.",
-    `Contrôler le prix final affiché : ${euro(c.proposed?.soldNightlyCents)} la nuit attendus.`,
-    "Déclarer la réalisation ci-dessous, avec la date et la référence de confirmation.",
-  ],
-  INVESTIGATION: (c) => [
-    "Ouvrir l'extranet officiel du canal, rubrique promotions.",
-    `Relever chaque promotion active : type, taux, dates de séjour. Le registre en attend ${(c.parameters.promotions ?? []).length}.`,
-    "Signaler tout écart avec le registre dans le champ de portée ci-dessous.",
-    "Déclarer la vérification : le registre est alors horodaté à aujourd'hui.",
-  ],
-  DEFAULT: (c) => [
-    "Ouvrir PriceLabs sur le logement concerné.",
-    `Appliquer : ${c.label}.`,
-    "Relire la grille publiée pour les dates du dossier.",
-    "Déclarer la réalisation ci-dessous.",
-  ],
-};
 
 export default async function Dossier({ params, searchParams }: { params: Promise<{ code: string }>; searchParams: Promise<{ option?: string }> }) {
   const user = await requireUser();
@@ -108,6 +79,8 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const mode: string | undefined = action?.simulation?.executionMode;
   // US-084 : le serveur refuse ce que le rôle ne permet pas ; l'écran ne propose que ce qui sera accepté
   const canDecide = can(user.role, "decision.decide"), canExec = can(user.role, executePermission(mode)), canVerify = can(user.role, "action.verify"), canRollback = can(user.role, "action.rollback");
+  // US-102 : guide pas-à-pas, seulement quand une action approuvée s'applique à la main (avancement lu en base)
+  const runbook = action && action.status === "APPROVED" && mode !== "API_PRICELABS" ? await getRunbook(user.tenantId, action.id) : null;
   const who = (perm: Parameters<typeof rolesWith>[0]) => rolesWith(perm).map((r) => ROLE_LABEL[r].toLowerCase()).join(", ");
   const exec = action?.execution, meas = action?.measurement;
   const writes = action ? await writesOfAction(user.tenantId, action.id) : [];
@@ -419,9 +392,11 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   ["Retour arrière", action.rollbackPlan],
                 ]} />
                 {action.status === "APPROVED" && !canExec && <div data-testid="execution-reservee"><Banner role="tech" title="Exécution réservée">{denyMessage(user.role, executePermission(mode))} Elle revient à : {who(executePermission(mode))}.</Banner></div>}
+                {action.status === "APPROVED" && !canExec && runbook && <Runbook actionId={action.id} state={runbook} canCheck={false} />}
                 {action.status === "APPROVED" && canExec && blocked && (
                   <>
                     <div id="exec-blocked"><Banner role="veto" title="Exécution impossible">{blocked}</Banner></div>
+                    {runbook && <Runbook actionId={action.id} state={runbook} canCheck={false} />}
                     <div><button type="button" className="btn btn-primary" disabled aria-describedby="exec-blocked"><Icon name="ban" />{mode === "API_PRICELABS" ? "Recontrôler puis écrire" : "Déclarer la réalisation"}</button></div>
                   </>
                 )}
@@ -435,9 +410,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                   <>
                     <div>
                       <p className="gauge-label" style={{ marginBottom: 8 }}>Procédure pas à pas — {agentName(mode === "INTERNAL" ? "annonce" : "distribution", names)}</p>
-                      {mode === "INTERNAL"
-                        ? <ol className="runbook"><li>Relire titre, description et photos de chaque annonce.</li><li>Comparer les équipements déclarés à ceux du logement.</li><li>Relire les avis des 90 derniers jours et noter tout frein récurrent.</li><li>Consigner les corrections retenues ci-dessous.</li></ol>
-                        : <ol className="runbook">{(RUNBOOK[action.type] ?? RUNBOOK.DEFAULT)({ ...c, parameters: action.parameters, label: action.label, proposed: action.simulation.proposed } as Candidate).map((s, i) => <li key={i}>{s}</li>)}</ol>}
+                      <Runbook actionId={action.id} state={runbook!} canCheck={canExec} />
                     </div>
                     <ActionForm action={executeAction} hidden={{ actionId: action.id }}>
                       <div className="form-grid">
