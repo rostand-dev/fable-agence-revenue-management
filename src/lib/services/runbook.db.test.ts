@@ -1,3 +1,4 @@
+import { todayISO } from "@/lib/dates";
 import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it } from "vitest";
 import { db, schema } from "@/db";
@@ -69,7 +70,7 @@ describe("guide pas-à-pas : avancement enregistré (US-102)", () => {
     const steps = (await getRunbook(t.tenantId, actionId)).steps.filter((s) => s.checkable);
     const results = await Promise.allSettled([
       ...steps.slice(0, 4).map((s) => setRunbookStep(as("OWNER"), actionId, s.id, true)),
-      D.execute(as("OWNER"), actionId, { scope: "Promotion posée dans l'extranet", date: "2026-11-24", proof: "REF-1" }),
+      D.execute(as("OWNER"), actionId, { scope: "Promotion posée dans l'extranet", date: todayISO(), proof: "REF-1" }),
     ]);
     const [a] = await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, actionId));
     expect(a.status).not.toBe("APPROVED");

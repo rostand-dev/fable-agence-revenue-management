@@ -1,4 +1,6 @@
 import { audienceOfKind } from "@/lib/promotions/registry";
+import { validateDeclaration, validateMismatch } from "@/lib/promotions/confirmation";
+import { getRunbook } from "./runbook";
 import { commitStrategy } from "./strategy";
 import { and, eq, gte, inArray, lte, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
@@ -154,7 +156,7 @@ async function bookedCount(propertyId: string, from: ISODate, to: ISODate) {
  * Exécution. Trois modes : écriture PriceLabs (simulée sur un logement de démonstration),
  * procédure manuelle déclarée avec preuve, ou tâche interne. Jamais d'automatisation d'extranet.
  */
-export async function execute(actor: Actor, actionId: string, declaration?: { scope: string; date: string; proof: string }) {
+export async function execute(actor: Actor, actionId: string, declaration?: { scope: string; date: string; proof: string; externalRef?: string }) {
   const a = await getAction(actor.tenantId, actionId);
   await requirePermission(actor, executePermission(a.simulation?.executionMode), "RevenueAction", a.id);
   const o = await getOpp(actor.tenantId, a.opportunityId);
@@ -173,8 +175,21 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
   if (blocked) throw new DecisionError(blocked);
   const dates: ISODate[] = a.parameters.dates ?? [];
   // les erreurs de saisie sont refusées avant tout changement d'état : une faute de frappe ne fait pas échouer l'action
-  if (mode === "MANUAL_RUNBOOK" && (!declaration || declaration.scope.trim().length < 5 || !declaration.date)) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
-  const decl = declaration ? { scope: clip(declaration.scope), date: clip(declaration.date, 10), proof: clip(declaration.proof, 1000) } : undefined;
+  // US-103 : confirmation de l'opérateur. Procédure manuelle : portée, date d'entrée en vigueur (pas dans le futur) et, pour une promotion, l'identifiant relevé dans l'extranet OU une preuve.
+  let decl: { scope: string; date: string; proof: string; externalRef: string | null } | undefined;
+  if (mode === "MANUAL_RUNBOOK") {
+    if (!declaration) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'entrée en vigueur.", "VALIDATION");
+    const v = validateDeclaration(a.type, declaration, todayISO(), a.approvedAt ? todayISO(new Date(a.approvedAt)) : undefined);
+    if (!v.ok) throw new DecisionError(v.error, "VALIDATION");
+    decl = { scope: v.value.scope, date: v.value.date, proof: v.value.proof ?? "", externalRef: v.value.externalRef };
+  } else if (declaration) decl = { scope: clip(declaration.scope), date: clip(declaration.date, 10), proof: clip(declaration.proof, 1000), externalRef: null };
+  // avancement du guide pas-à-pas (US-102) au moment de la confirmation : conservé dans l'exécution, jamais bloquant
+  const guide = mode === "MANUAL_RUNBOOK" ? await getRunbook(actor.tenantId, a.id).then((r) => ({ done: r.progress.done, total: r.progress.total })).catch(() => null) : null;
+  // retrait d'une promotion : la cible doit exister et être active AVANT de quitter « Approuvée » (un refus ne change rien)
+  if (mode === "MANUAL_RUNBOOK" && a.type === "PROMO_REMOVAL") {
+    const [target] = await db.select({ id: promotions.id }).from(promotions).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId), eq(promotions.status, "ACTIVE")));
+    if (!target) throw new DecisionError("La promotion à retirer est introuvable ou déjà terminée dans le registre : vérifiez le registre du logement avant de confirmer.", "VALIDATION");
+  }
   const baseline = await bookedCount(a.propertyId, o.stayFrom, o.stayTo);
   // écriture réelle chez PriceLabs (épic 9) : on relit l'état réel et on calcule l'écriture AVANT de quitter « Approuvée » ; un refus ici ne change rien
   const real = mode === "API_PRICELABS" && !p.isDemo;
@@ -232,25 +247,28 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
           ? { mode: "PRICELABS_API", note: "Écriture PriceLabs confirmée par relecture.", writeId: written.writeId, adapter: written.adapter, beforeHash: written.beforeHash, afterHash: written.afterHash, receipt: { method: written.receipt.method, endpoint: written.receipt.endpoint, status: written.receipt.status, requestHash: written.receipt.requestHash, sentAt: written.receipt.sentAt }, plan: written.plan, remoteBefore: written.before, remoteAfter: written.after, previousOverrides: written.previousOverrides, before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline }
           : { mode: "DEMO_SIMULATED", note: "Écriture PriceLabs simulée sur le logement de démonstration.", before: before.map((d) => ({ date: d.date, priceCents: d.priceCents, minStay: d.minStay, rule: d.rule })), previousBasePriceCents: prevBase, previousMinPriceCents: prevMin, baseline };
       } else if (mode === "MANUAL_RUNBOOK") {
-        if (!decl) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'application.");
+        if (!decl) throw new DecisionError("Déclarez la portée réellement appliquée et la date d'entrée en vigueur.", "VALIDATION");
         const ch = a.target.channel ?? a.parameters.channel;
         if (a.type === "CHANNEL_PROMO") {
           const pid = newId("promo");
-          await tx.insert(promotions).values({ id: pid, tenantId: actor.tenantId, propertyId: p.id, channel: ch, kind: a.parameters.kind, audience: audienceOfKind(a.parameters.kind), createdBy: actor.id, verifiedBy: actor.id, label: a.parameters.label ?? a.label, discountPct: a.parameters.discountPct, stayFrom: a.parameters.stayFrom, stayTo: a.parameters.stayTo, status: "ACTIVE", source: "DECLARED", verifiedAt: new Date() });
+          await tx.insert(promotions).values({ id: pid, tenantId: actor.tenantId, propertyId: p.id, channel: ch, kind: a.parameters.kind, audience: audienceOfKind(a.parameters.kind), createdBy: actor.id, verifiedBy: actor.id, label: a.parameters.label ?? a.label, discountPct: a.parameters.discountPct, stayFrom: a.parameters.stayFrom, stayTo: a.parameters.stayTo, status: "ACTIVE", source: "DECLARED", verifiedAt: new Date(), actionId: a.id, effectiveOn: decl.date, proof: decl.proof || null, externalRef: decl.externalRef, minLos: Number.isInteger(a.parameters.minLos) ? a.parameters.minLos : null });
           execution = { createdPromotionId: pid };
         } else if (a.type === "PROMO_REMOVAL") {
-          await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(), endReason: "Retirée par une action approuvée", updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId)));
+          // la promotion retirée garde la mémoire de l'opérateur : date réelle, preuve, identifiant. Introuvable ou déjà terminée : la confirmation est refusée, rien n'est inventé.
+          const ended = await tx.update(promotions).set({ status: "ENDED", endedAt: new Date(decl.date + "T12:00:00Z"), endReason: "Retirée par une action approuvée", actionId: a.id, proof: decl.proof || null, externalRef: decl.externalRef, updatedAt: new Date() }).where(and(eq(promotions.id, a.parameters.promotionId), eq(promotions.tenantId, actor.tenantId), eq(promotions.status, "ACTIVE"))).returning({ id: promotions.id });
+          if (!ended.length) throw new DecisionError("La promotion à retirer est introuvable ou déjà terminée dans le registre : vérifiez le registre du logement avant de confirmer.", "VALIDATION");
         } else if (a.type === "INVESTIGATION" && ch) {
           await tx.update(promotions).set({ verifiedAt: new Date(), verifiedBy: actor.id, updatedAt: new Date() }).where(and(eq(promotions.propertyId, p.id), eq(promotions.channel, ch), eq(promotions.status, "ACTIVE")));
         }
-        execution = { ...execution, mode: "MANUAL_DECLARED", declaredScope: decl!.scope, declaredDate: decl!.date, proof: decl!.proof || null, baseline };
+        execution = { ...execution, mode: "MANUAL_DECLARED", declaredScope: decl!.scope, declaredDate: decl!.date, proof: decl!.proof || null, externalRef: decl!.externalRef, runbook: guide, baseline };
       } else {
         execution = { mode: "INTERNAL", note: decl?.scope || "Tâche interne lancée.", baseline };
       }
       await move(tx, a.id, actor.tenantId, "EXECUTING", "EXECUTED", { execution, executedAt: new Date() });
+      if (mode === "MANUAL_RUNBOOK") await tx.update(schema.executionAlerts).set({ status: "RESOLVED", resolvedAt: new Date(), resolution: "L'action a finalement été appliquée et confirmée." }).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PROMO_MISMATCH"), ne(schema.executionAlerts.status, "RESOLVED")));
       if (mode === "API_PRICELABS") await tx.update(schema.executionAlerts).set({ status: "RESOLVED", resolvedAt: new Date(), resolution: "L'action a été écrite avec succès." }).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PRECONDITION_FAILED"), ne(schema.executionAlerts.status, "RESOLVED")));
       await audit(tx, actor.tenantId, userActor(actor.id), "action.executed", "RevenueAction", a.id, `« ${a.label} » exécutée (${execution.mode === "PRICELABS_API" ? "écriture PriceLabs confirmée par relecture" : execution.mode === "DEMO_SIMULATED" ? "écriture simulée, démonstration" : execution.mode === "MANUAL_DECLARED" ? "procédure manuelle déclarée" : "tâche interne"}).`,
-        { code: o.code, actionType: a.type, mode: execution.mode, declaredScope: execution.declaredScope ?? null, declaredDate: execution.declaredDate ?? null, proof: execution.proof ?? null,
+        { code: o.code, actionType: a.type, mode: execution.mode, declaredScope: execution.declaredScope ?? null, declaredDate: execution.declaredDate ?? null, proof: execution.proof ?? null, externalRef: execution.externalRef ?? null, runbook: execution.runbook ?? null,
           ...(execution.mode === "PRICELABS_API" ? { writeId: execution.writeId, receipt: execution.receipt, adapter: execution.adapter, beforeHash: execution.beforeHash, afterHash: execution.afterHash } : {}) });
     });
   } catch (e) {
@@ -277,6 +295,31 @@ export async function execute(actor: Actor, actionId: string, declaration?: { sc
     }
     throw e instanceof WriteError ? new DecisionError(e.message) : e;
   }
+}
+
+/**
+ * L'état réel de l'extranet diffère de l'action approuvée (US-103, blueprint Annexe B, étape 8) : on s'arrête, on n'improvise rien.
+ * L'action reste « approuvée » (rien n'a été posé ni consigné au registre), un incident est ouvert (alerte + journal d'audit) et les rôles qui décident le voient.
+ * Rejouable : une seconde déclaration du même écart ne crée pas une seconde alerte.
+ */
+export async function reportMismatch(actor: Actor, actionId: string, noteRaw: unknown) {
+  const a = await getAction(actor.tenantId, actionId);
+  await requirePermission(actor, executePermission(a.simulation?.executionMode), "RevenueAction", a.id);
+  if (a.simulation?.executionMode !== "MANUAL_RUNBOOK") throw new DecisionError("Un écart ne se signale que sur une procédure manuelle.");
+  if (a.status !== "APPROVED") throw new DecisionError("Seule une action approuvée, pas encore confirmée, peut être arrêtée pour écart.");
+  const v = validateMismatch(noteRaw);
+  if (!v.ok) throw new DecisionError(v.error, "VALIDATION");
+  const o = await getOpp(actor.tenantId, a.opportunityId);
+  await db.transaction(async (tx) => {
+    await audit(tx, actor.tenantId, userActor(actor.id), "action.mismatch_reported", "RevenueAction", a.id, `${actor.name} a arrêté « ${a.label} » : l'état réel de l'extranet diffère de l'action approuvée.`, { code: o.code, actionType: a.type, note: v.value });
+  });
+  await raiseAlert({ tenantId: actor.tenantId, propertyId: a.propertyId, actionId: a.id, kind: "PROMO_MISMATCH", dedupeKey: `MISMATCH:${a.id}`, title: `« ${a.label} » arrêtée : l'extranet ne correspond pas à l'action approuvée`, detail: `${v.value} Rien n'a été appliqué ni inscrit au registre. Corrigez le registre ou relancez la revue, puis confirmez ou rejetez l'action.` });
+  // raiseAlert avale ses erreurs : on s'assure que l'incident existe vraiment, sinon le signalement est refusé (rien ne doit sembler arrêté sans incident)
+  const open = await db.select({ id: schema.executionAlerts.id }).from(schema.executionAlerts).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PROMO_MISMATCH"), ne(schema.executionAlerts.status, "RESOLVED")));
+  if (!open.length) throw new DecisionError("L'incident n'a pas pu être ouvert : réessayez le signalement.");
+  // course avec une confirmation passée entre-temps : l'action n'est plus à arrêter, l'incident est refermé
+  const [now] = await db.select({ status: schema.revenueActions.status }).from(schema.revenueActions).where(and(eq(schema.revenueActions.id, a.id), eq(schema.revenueActions.tenantId, actor.tenantId)));
+  if (now?.status !== "APPROVED") await db.update(schema.executionAlerts).set({ status: "RESOLVED", resolvedAt: new Date(), resolution: "L'action a été confirmée entre-temps." }).where(and(eq(schema.executionAlerts.tenantId, actor.tenantId), eq(schema.executionAlerts.actionId, a.id), eq(schema.executionAlerts.kind, "PROMO_MISMATCH"), ne(schema.executionAlerts.status, "RESOLVED")));
 }
 
 /** Vérification : relecture de l'état réel. Pour une procédure manuelle, c'est une seconde relecture déclarée. */

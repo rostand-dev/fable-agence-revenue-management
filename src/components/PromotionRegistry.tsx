@@ -67,6 +67,9 @@ function Card({ p, listings, canManage, canVerify }: { p: PromotionListItem; lis
         <div><dt>Audience</dt><dd>{AUDIENCE_LABEL[p.audience] ?? p.audience}</dd></div>
         <div><dt>Annonce</dt><dd>{listing ? listingName(listing) : p.listingId ? "annonce supprimée" : "toutes les annonces du canal"}</dd></div>
         {p.externalRef && <div><dt>Identifiant</dt><dd>{p.externalRef}</dd></div>}
+        {p.effectiveOn && <div><dt>En vigueur depuis</dt><dd>{fr(p.effectiveOn)}</dd></div>}
+        {p.proof && <div><dt>Preuve</dt><dd data-testid="promo-proof">{p.proof}</dd></div>}
+        {p.actionId && <div><dt>Origine</dt><dd>Action approuvée, confirmée par l'opérateur</dd></div>}
         <div><dt>Dernière vérification</dt><dd>{p.view.state === "ENDED" ? <span className="muted">terminée{p.endedAt ? ` le ${fmtDay(p.endedAt.toISOString().slice(0, 10))}` : ""}{p.endReason ? ` — ${p.endReason}` : ""}</span>
           : p.view.ageDays === null ? <Vq>jamais</Vq> : p.view.freshness === "STALE" ? <Vq kind="obsolete">il y a {p.view.ageDays} j</Vq> : p.view.ageDays === 0 ? "aujourd'hui" : `il y a ${p.view.ageDays} j`}</dd></div>
       </dl>

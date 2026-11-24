@@ -1,3 +1,4 @@
+import { todayISO } from "@/lib/dates";
 import { and, eq } from "drizzle-orm";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { db, schema } from "@/db";
@@ -42,7 +43,7 @@ describe("cycle de décision : chaque étape est tracée dans la même transacti
     expect(approved?.payload).toMatchObject({ code: o.code, candidateIndex: i, actionType: c.type, verdict: c.audit.verdict });
     expect((await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.id, actionId)))[0].status).toBe("APPROVED");
 
-    const prov = c.executionMode === "API_PRICELABS" ? undefined : { scope: "Portée déclarée pour le test", date: "2026-11-20", proof: "" };
+    const prov = c.executionMode === "API_PRICELABS" ? undefined : { scope: "Portée déclarée pour le test", date: todayISO(), proof: "", externalRef: "REF-TEST-1" };
     await D.execute(t.actor, actionId, prov);
     await D.verify(t.actor, actionId);
     await D.rollback(t.actor, actionId, "Test de retour arrière");

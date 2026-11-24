@@ -63,3 +63,16 @@ Blueprint E10 (P1) : US-100 (registre des promotions actives), US-101 (compilate
 - Aucune variable d'environnement. La table `runbook_steps` est ajoutée à la liste des tables protégées par RLS (`src/db/tenant.ts`).
 
 **Tests** : étapes par type et par canal, avancement (`runbook.test.ts`) ; service sur base réelle : cocher, rejeu, décocher, audit, droits, étape inconnue ou non cochable, autre espace, action déclarée (`runbook.db.test.ts`) ; couverture d'audit ; isolation RLS de la nouvelle table ; E2E navigateur sur trois largeurs : cocher, rechargement, décocher, consigne non cochable (`promotions-guide.spec.ts`).
+
+## US-103 — Confirmation de l'opérateur
+
+**Objectif** : après avoir appliqué l'action dans l'extranet, l'opérateur confirme ce qu'il a réellement fait ; l'application n'en croit pas un simple clic.
+
+- **Règles de confirmation** : une portée réellement appliquée, une date d'entrée en vigueur (jamais dans le futur), et un identifiant de l'extranet **ou** une preuve. La date ne peut pas précéder l'approbation de l'action ; une portée ou une preuve trop longue est refusée (jamais tronquée). La preuve est conservée comme texte, jamais comme lien suivi par l'application. L'avancement du guide pas-à-pas est enregistré mais ne bloque pas la confirmation.
+- **Écart constaté** : le formulaire « Signaler un écart » arrête l'action (elle reste approuvée), ouvre un incident `PROMO_MISMATCH` (gravité WARNING) et écrit l'événement d'audit `action.mismatch_reported`. Une confirmation réussie ultérieure referme l'incident.
+- **Registre** : la promotion créée porte désormais `actionId`, `effectiveOn`, `proof` et `externalRef`; elles s'affichent dans le registre du logement (« En vigueur depuis », « Preuve », « Origine »).
+- **Retrait d'une promotion** : la cible doit exister et être active avant tout changement d'état (sinon refus, l'action reste approuvée) ; elle garde la date réelle, la preuve et l'identifiant.
+- **Migration** : `0030_us_103_confirmation_operateur` (idempotente, rejouée deux fois en CI) ; index unique sur `promotions.action_id` : une action ne crée qu'une promotion.
+- **Reste à traiter (existant avant l'US)** : le contrôle de doublon du registre n'est pas appliqué à la promotion créée par une action `CHANNEL_PROMO`.
+- **Tests** : unitaires (`confirmation.test.ts`), base de données (`confirmation.db.test.ts`), e2e sur trois largeurs (`promotions-confirmation.spec.ts`), fixture partagée `e2e/helpers/dossier.ts`.
+- **Variables d'environnement** : aucune ajoutée.

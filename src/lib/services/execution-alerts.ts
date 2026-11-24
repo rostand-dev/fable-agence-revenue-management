@@ -21,6 +21,7 @@ export const ALERT_KINDS = {
   STUCK: { severity: "CRITICAL", label: "Exécution bloquée" },
   STUCK_WRITE: { severity: "CRITICAL", label: "Écriture restée en préparation" },
   UNREADABLE: { severity: "WARNING", label: "Relecture impossible" },
+  PROMO_MISMATCH: { severity: "WARNING", label: "Écart constaté dans l'extranet" },
 } as const;
 export type AlertKind = keyof typeof ALERT_KINDS;
 export const isAlertKind = (k: string): k is AlertKind => k in ALERT_KINDS;

@@ -21,7 +21,11 @@ export async function approveAction(_: FormState, fd: FormData) { return run((a)
 export async function rejectAction(_: FormState, fd: FormData) { return run((a) => D.reject(a, s(fd, "opportunityId"), s(fd, "comment"))); }
 export async function deferAction(_: FormState, fd: FormData) { return run((a) => D.defer(a, s(fd, "opportunityId"), 3)); }
 export async function reopenAction(_: FormState, fd: FormData) { return run((a) => D.reopen(a, s(fd, "opportunityId"))); }
-export async function executeAction(_: FormState, fd: FormData) { return run((a) => D.execute(a, s(fd, "actionId"), fd.has("scope") ? { scope: s(fd, "scope"), date: s(fd, "date"), proof: s(fd, "proof") } : undefined)); }
+export async function executeAction(_: FormState, fd: FormData) {
+  // US-103 : le bouton « Signaler un écart » arrête l'action au lieu de la confirmer
+  if (fd.get("mismatch") === "1") return run((a) => D.reportMismatch(a, s(fd, "actionId"), s(fd, "scope")), "Écart signalé : l'action est arrêtée, rien n'a été appliqué ni inscrit au registre.");
+  return run((a) => D.execute(a, s(fd, "actionId"), fd.has("scope") ? { scope: s(fd, "scope"), date: s(fd, "date"), proof: s(fd, "proof"), externalRef: s(fd, "externalRef") } : undefined));
+}
 export async function verifyAction(_: FormState, fd: FormData) { return run((a) => D.verify(a, s(fd, "actionId"))); }
 export async function rollbackAction(_: FormState, fd: FormData) { return run((a) => D.rollback(a, s(fd, "actionId"), s(fd, "reason"))); }
 export async function acknowledgeAlertAction(_: FormState, fd: FormData) { return run((a) => D.acknowledge(a, s(fd, "alertId")), "Alerte prise en compte."); }

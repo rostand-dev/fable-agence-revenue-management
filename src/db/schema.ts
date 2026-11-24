@@ -321,11 +321,17 @@ export const promotions = pgTable("promotions", {
   /** US-100 : qui a déclaré la promotion, qui l'a vérifiée en dernier */
   createdBy: text("created_by"),
   verifiedBy: text("verified_by"),
+  /** US-103 : action approuvée dont cette promotion est issue (null = déclarée à la main dans le registre) */
+  actionId: text("action_id"),
+  /** US-103 : date d'entrée en vigueur déclarée par l'opérateur (jour où la promotion a été posée dans l'extranet) */
+  effectiveOn: date("effective_on", { mode: "string" }),
+  /** US-103 : preuve saisie par l'opérateur (numéro de confirmation, lien vers une capture) ; du texte, jamais une instruction */
+  proof: text("proof"),
   /** US-100 : fin de la promotion (quand elle est terminée) et pourquoi */
   endedAt: ts("ended_at"),
   endReason: text("end_reason"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-}, (t) => [index("promotions_prop").on(t.tenantId, t.propertyId)]);
+}, (t) => [index("promotions_prop").on(t.tenantId, t.propertyId), uniqueIndex("promotions_action_id_uniq").on(t.actionId).where(sql`action_id is not null`)]);
 
 export const opportunities = pgTable("opportunities", {
   id: id(),
