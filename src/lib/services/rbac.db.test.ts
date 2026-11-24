@@ -181,7 +181,7 @@ describe("API REST : approuver et rejeter (US-084)", () => {
   it("le commentaire reste exigé pour une option à valider (400)", async () => {
     current = as("REVENUE_MANAGER");
     let found: { id: string; i: number } | null = null;
-    for (const o of await open()) { const i = (o.candidates as Candidate[]).findIndex((c) => c.audit.verdict !== "REJECT" && D.commentRequired(c) && c.type !== "NO_ACTION"); if (i >= 0) { found = { id: o.id, i }; break; } }
+    for (const o of await open()) { const i = (o.candidates as Candidate[]).findIndex((c) => c.audit.verdict !== "REJECT" && D.commentRequired(c, o.playbook) && c.type !== "NO_ACTION"); if (i >= 0) { found = { id: o.id, i }; break; } }
     if (!found) return; // la démonstration du jour n'en comporte pas : le contrôle reste couvert par decisions.db.test.ts
     const r = await approveRoute(req("/x", { candidate: found.i }), ctx(found.id));
     expect(r.status).toBe(400);

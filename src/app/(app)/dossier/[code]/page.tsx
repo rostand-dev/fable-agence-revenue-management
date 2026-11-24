@@ -11,6 +11,7 @@ import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
 import { needsComment } from "@/components/SitCard";
+import { approvalRequirement } from "@/lib/engine/approval";
 import { deterministicAnalysis, type MarketAnalysis } from "@/lib/agents/market-analysis";
 import type { IndependentReview } from "@/lib/agents/independent-review";
 import { deterministicOpinions, STANCE_LABEL, type AgentOpinion, type StrategistId } from "@/lib/agents/strategist-opinions";
@@ -345,11 +346,11 @@ export default async function Dossier({ params, searchParams }: { params: Promis
               <Banner role="veto" title="Option rejetée par l'auditeur">Elle ne peut pas être approuvée. {c.audit.rules.find((r) => r.outcome === "FAIL")?.detail}</Banner>
             ) : (
               <ActionForm action={approveAction} hidden={{ opportunityId: o.id, candidate: idx }}>
-                {needsComment(c) && (
+                {needsComment(c, o.playbook) && (
                   <div className="field" style={{ marginBottom: 14 }}>
                     <label htmlFor="comment">Commentaire d'approbation <span className="req" aria-hidden="true">*</span></label>
                     <textarea id="comment" name="comment" className="note" required minLength={8} aria-describedby="comment-help" />
-                    <span className="help" id="comment-help">Obligatoire : {c.risk === "HIGH" ? "action à risque élevé" : "l'auditeur demande une validation humaine"}. Indiquez ce qui fonde votre accord ; il est consigné au journal.</span>
+                    <span className="help" id="comment-help">Obligatoire : {approvalRequirement(c, o.playbook).reasons.join(" ; ")}. Indiquez ce qui fonde votre accord ; il est consigné au journal.</span>
                   </div>
                 )}
                 <div className="decision-primary">

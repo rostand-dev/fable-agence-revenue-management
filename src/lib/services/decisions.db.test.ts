@@ -35,7 +35,7 @@ describe("cycle de décision : chaque étape est tracée dans la même transacti
     const pick = (await approvable("API_PRICELABS")) ?? (await approvable("INTERNAL"));
     expect(pick, "aucun dossier approuvable dans la démonstration").not.toBeNull();
     const { o, i, c } = pick!;
-    const needsComment = D.commentRequired(c);
+    const needsComment = D.commentRequired(c, o.playbook);
     const actionId = (await D.approve(t.actor, o.id, i, needsComment ? "Validé après relecture du dossier." : "Ok"))!;
     const approved = (await types({ category: "APPROVAL" })).find((e) => e.entityId === actionId);
     expect(approved?.type).toBe("action.approved");
@@ -62,7 +62,7 @@ describe("cycle de décision : chaque étape est tracée dans la même transacti
     }
     if (!pick) return; // la démonstration ne propose pas toujours ce type d'action
     const { o, i, c } = pick;
-    const actionId = (await D.approve(t.actor, o.id, i, D.commentRequired(c) ? "Validé après relecture du dossier." : "Ok"))!;
+    const actionId = (await D.approve(t.actor, o.id, i, D.commentRequired(c, o.playbook) ? "Validé après relecture du dossier." : "Ok"))!;
     await D.execute(t.actor, actionId, undefined);
     const prop = o.propertyId;
     const rows = () => db.select().from(schema.strategyVersions).where(eq(schema.strategyVersions.propertyId, prop));
@@ -89,7 +89,7 @@ describe("cycle de décision : chaque étape est tracée dans la même transacti
     expect(pick).not.toBeNull();
     const { o, i, c } = pick!;
     vi.mocked(audit.recordAudit).mockImplementationOnce(async () => { throw new Error("journal indisponible"); });
-    await expect(D.approve(t.actor, o.id, i, D.commentRequired(c) ? "Validé après relecture." : "")).rejects.toThrow(/journal indisponible|Failed query/);
+    await expect(D.approve(t.actor, o.id, i, D.commentRequired(c, o.playbook) ? "Validé après relecture." : "")).rejects.toThrow(/journal indisponible|Failed query/);
     const [after] = await db.select().from(schema.opportunities).where(eq(schema.opportunities.id, o.id));
     expect(after.status).toBe("OPEN");
     expect((await db.select().from(schema.revenueActions).where(eq(schema.revenueActions.opportunityId, o.id))).length).toBe(0);

@@ -12,6 +12,7 @@ import { db, newId, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { assertTransition, type ActionState } from "../engine/stateMachine";
 import type { Candidate } from "../engine/types";
+import { approvalRequirement, MIN_COMMENT_LENGTH } from "../engine/approval";
 import { baseApprovalBlock, STRUCTURAL_COUNTED_STATUSES } from "../engine/structural";
 import { executionBlock, providerOfTarget } from "../integrations/capabilities";
 import { flagFor } from "./flags";
@@ -70,7 +71,7 @@ async function getAction(tenantId: string, id: string) {
   if (!a) throw new DecisionError("Action introuvable.", "NOT_FOUND");
   return a;
 }
-export function commentRequired(c: Candidate): boolean { return c.audit.verdict === "NEEDS_HUMAN" || c.risk === "HIGH" || c.risk === "CRITICAL"; }
+export function commentRequired(c: Candidate, playbook?: string | null): boolean { return approvalRequirement(c, playbook).commentRequired; }
 
 /** Approbation : seule une option non rejetée par l'auditeur peut être approuvée, et jamais par un agent. */
 /** Droit de décider, exposé pour les actions de portée large (revue, réinstallation de la démonstration) et les routes d'API. */
@@ -84,7 +85,8 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
   const c = o.candidates[candidateIndex] as Candidate | undefined;
   if (!c) throw new DecisionError("Option inconnue.", "VALIDATION");
   if (c.audit.verdict === "REJECT") throw new DecisionError("Cette option est rejetée par l'auditeur : elle ne peut pas être approuvée.");
-  if (commentRequired(c) && comment.trim().length < 8) throw new DecisionError("Un commentaire est obligatoire pour cette option (risque élevé ou validation demandée par l'auditeur).", "VALIDATION");
+  const need = approvalRequirement(c, o.playbook);
+  if (need.commentRequired && comment.trim().length < MIN_COMMENT_LENGTH) throw new DecisionError(`Un commentaire est obligatoire pour cette option (${need.reasons.join(" ; ")}).`, "VALIDATION");
   if (c.type === "NO_ACTION") {
     await db.transaction(async (tx) => {
       await moveOpp(tx, actor.tenantId, o.id, ["OPEN"], { status: "DECIDED", decidedAt: new Date(), decision: "NO_ACTION", selected: candidateIndex, deferUntil: c.reviewAt ?? null });
