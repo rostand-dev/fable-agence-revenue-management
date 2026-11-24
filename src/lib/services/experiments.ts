@@ -116,16 +116,19 @@ export async function loadStayNights(tenantId: string, propertyId: string, stay:
 
 /**
  * La source des réservations est-elle assez récente pour qu'une absence de réservation veuille dire quelque chose ? (blueprint §7.4 : réservations < 24 h)
- * Démonstration : toujours (données synthétiques). Logement relié à SuperHote : dernière lecture réussie et récente. Sans liaison SuperHote, aucune date
- * de synchronisation n'existe : rien n'est opposé (saisie manuelle ou autre source), la limite est dite dans la documentation.
+ * Démonstration : toujours (données synthétiques). Logement relié à SuperHote (ou, à défaut, à PriceLabs) : dernière lecture réussie et récente. Sans aucune liaison,
+ * aucune date de synchronisation n'existe : rien n'est opposé (saisie manuelle), la limite est dite dans « Méthode » et la documentation.
  */
 export async function reservationsFreshFor(tenantId: string, propertyId: string, now = new Date()): Promise<boolean> {
-  const [p] = await db.select({ isDemo: schema.properties.isDemo, superhote: schema.properties.superhote }).from(schema.properties).where(and(eq(schema.properties.id, propertyId), eq(schema.properties.tenantId, tenantId)));
+  const [p] = await db.select({ isDemo: schema.properties.isDemo, superhote: schema.properties.superhote, pricelabs: schema.properties.pricelabs }).from(schema.properties).where(and(eq(schema.properties.id, propertyId), eq(schema.properties.tenantId, tenantId)));
   if (!p || p.isDemo) return true;
+  // SuperHote fait foi pour les réservations ; sans SuperHote, PriceLabs les porte (même règle que le rythme de synchronisation, cadence.ts)
   const sh = p.superhote as { rentalId?: string; lastSync?: { ok?: boolean; at?: string } } | null;
-  if (!sh?.rentalId) return true;
-  if (sh.lastSync?.ok === false) return false;
-  return freshnessOf("RESERVATIONS", sh.lastSync?.at, now).state === "FRESH";
+  const pl = p.pricelabs as { listingId?: string; lastSync?: { ok?: boolean; at?: string } } | null;
+  const src = sh?.rentalId ? sh.lastSync : pl?.listingId ? pl.lastSync : undefined;
+  if (src === undefined && !sh?.rentalId && !pl?.listingId) return true; // aucune source reliée : saisie manuelle, rien n'est opposé (limite dite dans « Méthode »)
+  if (src?.ok === false) return false;
+  return freshnessOf("RESERVATIONS", src?.at, now).state === "FRESH";
 }
 
 /**
@@ -139,7 +142,8 @@ export async function countOverlapping(tenantId: string, x: Pick<ExperimentRow, 
   const myFrom = x.observeFrom ?? x.effectiveOn, myTo = x.observeTo ?? "9999-12-31";
   return rows.filter((o) => {
     if (!o.stayFrom || !o.stayTo || !(o.stayFrom < x.stayTo! && x.stayFrom! < o.stayTo)) return false;
-    const oTo = o.observeTo ?? "9999-12-31";
+    // sans fin connue : une expérience pas encore mesurée reste ouverte ; une expérience déjà mesurée (héritée) s'est arrêtée à son entrée en vigueur
+    const oTo = o.observeTo ?? (o.status === "MEASURED" ? o.effectiveOn : "9999-12-31");
     return o.effectiveOn < myTo && myFrom < oTo;
   }).length;
 }
@@ -169,7 +173,7 @@ export async function measureExperiment(tx: Exec, a: { id: string; tenantId: str
   const metrics = { baselinePerDay: baseline?.pickup?.perDay ?? null, baselineWindow: baseline?.window ?? null, stay: bstay ?? null, observedNights: result.observed?.nights ?? null, observedPerDay: result.observed?.perDay ?? null, observationDays: result.observationDays, expectedNights: result.expectedNights, deltaNights: result.deltaNights, relativeChange: result.relativeChange, baseNetPerNight: result.baseNetPerNight, observedNetPerNight: result.observedNetPerNight, comparableYearNights: baseline?.comparable.available ? baseline.comparable.pickupNights : null };
   await tx.insert(experimentMeasurements).values({
     id: newId("mes"), tenantId: a.tenantId, propertyId: a.propertyId, experimentId: x.id, actionId: a.id, outcome: result.outcome, reasons: result.reasons, observeFrom: observation?.from ?? null, observeTo: observation?.to ?? null,
-    metrics, summary: result.summary, interpretation: result.interpretation, confidence: result.confidence, legacy: false, measuredAt: now,
+    metrics, summary: result.summary, interpretation: result.interpretation, confidence: result.confidence, legacy, measuredAt: now,
   }).onConflictDoNothing({ target: experimentMeasurements.experimentId });
   return { result, experimentId: x.id, legacy };
 }

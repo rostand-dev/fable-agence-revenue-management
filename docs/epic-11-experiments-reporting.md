@@ -57,10 +57,18 @@ Chaque US est livrée par sa propre PR, fusionnée seulement quand la CI est ver
    - **Non concluant** (jamais deviné) : baseline héritée ou insuffisante, séjours déjà passés, observation de moins de 3 jours, **réservations non synchronisées récemment** (une absence de réservation ne prouve rien si la source est en retard), **autre action mêlée** (même logement, séjours et observation qui se recoupent : effets non séparables, blueprint §6.4).
    - **Positif** : au moins 2 nuits de plus que ce que la référence laissait attendre ET +25 % ou plus ; **négatif** : au moins 2 nuits de moins ET −25 % ou moins ; sinon **neutre**.
    - **Dilution** : un résultat positif en volume dont le net par nuit baisse de plus de 15 % (net connu des deux côtés) passe à **neutre** — le gain en volume n'est pas démontré en revenu.
-2. **Table `experiment_measurements`** (migration `0032`, idempotente) : une mesure finale par expérience, **immuable** (déclencheur : ni modification ni suppression), résultat, motifs, chiffres comparés, fenêtres. Les actions déjà refermées avant l'épic reçoivent une mesure « héritée ».
+2. **Table `experiment_measurements`** (migration `0032`, idempotente) : une mesure finale par expérience, **immuable** (déclencheur contre toute modification ; pas de suppression autre que la cascade avec le logement ou l'action : le rôle applicatif n'a pas le droit de supprimer), résultat, motifs, chiffres comparés, fenêtres. Les actions déjà refermées avant l'épic reçoivent une mesure « héritée ».
 3. **Planificateur** : `measureDueActions` s'appuie sur l'expérience (fenêtre d'observation figée à la vérification) et écrit la mesure dans la même transaction que la fermeture de l'action ; `revenue_actions.measurement` reste alimenté pour les écrans existants. Événement d'audit `experiment.measured` enrichi.
 4. **Affichage** : résultat et motifs dans le dossier, l'historique et le bilan ; glossaire.
 5. Tests unitaires de la classification (bornes exactes), base de données (mesure, immuabilité, chevauchement, fraîcheur), E2E sur trois largeurs.
+
+**Livré et précisions issues de la relecture.**
+- Mesure : `measureExperiment` (service) lit les nuits vendues des séjours visés, la fraîcheur des réservations et les chevauchements, appelle `classifyOutcome` (module pur) et écrit la mesure dans la transaction de clôture. `revenue_actions.measurement` (JSON) reste alimenté pour les écrans existants : **source de vérité des chiffres = `experiment_measurements`**, le JSON en est la copie pour l'affichage (à lire dans la table pour les rapports).
+- Fraîcheur des réservations : SuperHote fait foi ; à défaut PriceLabs ; démonstration toujours fraîche ; un logement sans aucune source reliée (saisie manuelle) n'a pas de date de synchronisation : rien n'est opposé, limite dite dans « Méthode ».
+- Chevauchement : une expérience pas encore mesurée compte tant qu'elle est ouverte ; une expérience héritée déjà mesurée, sans fin d'observation, s'arrête à son entrée en vigueur ; annulées exclues. Les séjours comparés sont ceux du dossier (choix prudent).
+- Mesures héritées : `legacy = true` (migration, démonstration et mesure d'une action sans référence figée).
+- Seuils : 2 nuits et 25 % d'écart, 3 jours d'observation, dilution à −15 % de net par nuit ; avec très peu de nuits attendues (2 nuits d'écart), le résultat reste de confiance « faible » et dit qu'il s'agit d'une corrélation.
+- **Déploiement** : migration `0032_us_111_mesures` (idempotente, rétro-remplissage des actions déjà refermées), aucune variable d'environnement.
 
 ## US-112 — Rapport mensuel certifié par les métriques
 

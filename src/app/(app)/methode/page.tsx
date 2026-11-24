@@ -156,7 +156,7 @@ export default async function Methode() {
         <ul className="muted" style={{ paddingLeft: 18, display: "grid", gap: 6 }}>
           <li><strong>Positif</strong> ou <strong>négatif</strong> : au moins {MIN_DELTA_NIGHTS} nuits d'écart avec l'attendu et au moins {Math.round(MIN_RELATIVE_CHANGE * 100)} % d'écart relatif. Sinon, <strong>neutre</strong>.</li>
           <li><strong>Dilution</strong> : si les nuits en plus se vendent à un net par nuit plus bas de plus de {Math.round(DILUTION_THRESHOLD * 100)} %, le résultat reste neutre.</li>
-          <li><strong>Non concluant</strong> (jamais deviné) : référence insuffisante ou absente, observation de moins de {MIN_OBSERVATION_DAYS} jours, réservations non synchronisées récemment, ou autre action sur les mêmes séjours observée en même temps.</li>
+          <li><strong>Non concluant</strong> (jamais deviné) : référence insuffisante ou absente, observation de moins de {MIN_OBSERVATION_DAYS} jours, réservations non synchronisées récemment (SuperHote, ou PriceLabs à défaut ; un logement sans aucune source reliée n'a pas de date de synchronisation à opposer), ou autre action sur les mêmes séjours observée en même temps.</li>
           <li>Aucune période témoin : un résultat positif décrit ce qui s'est passé après l'action, pas ce qu'elle a causé. L'<Term id="effet-incremental">effet incrémental</Term> reste inconnu.</li>
         </ul>
       </section>

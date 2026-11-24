@@ -51,6 +51,13 @@ BEGIN
 EXCEPTION WHEN others THEN RETURN NULL;
 END;
 $f$ LANGUAGE plpgsql;--> statement-breakpoint
+CREATE OR REPLACE FUNCTION pg_temp.ns_safe_ts(t text) RETURNS timestamptz AS $f$
+BEGIN
+	IF t IS NULL OR t !~ '^\d{4}-\d{2}-\d{2}' THEN RETURN NULL; END IF;
+	RETURN t::timestamptz;
+EXCEPTION WHEN others THEN RETURN NULL;
+END;
+$f$ LANGUAGE plpgsql;--> statement-breakpoint
 -- Actions refermées avant l'épic 11 : expérience « héritée » (sans référence figée) et mesure reprise telle quelle, jamais recalculée. Rejouable (une seule expérience par action, une seule mesure par expérience).
 INSERT INTO "experiments" ("id", "tenant_id", "property_id", "action_id", "opportunity_id", "status", "effective_on", "stay_from", "stay_to", "baseline_from", "baseline_to", "observe_from", "observe_to", "baseline")
 SELECT 'exp_' || replace(gen_random_uuid()::text, '-', ''), a."tenant_id", a."property_id", a."id", a."opportunity_id", 'MEASURED',
@@ -67,7 +74,7 @@ SELECT 'mes_' || replace(gen_random_uuid()::text, '-', ''), e."tenant_id", e."pr
 	COALESCE(NULLIF(a."measurement" ->> 'observed', ''), 'Mesure antérieure au suivi des expériences.'),
 	COALESCE(NULLIF(a."measurement" ->> 'interpretation', ''), 'Résultat repris tel quel : aucune référence n''avait été figée.'),
 	COALESCE(NULLIF(a."measurement" ->> 'confidence', ''), 'faible'), true,
-	COALESCE(CASE WHEN (a."measurement" ->> 'measuredAt') ~ '^\d{4}-\d{2}-\d{2}' THEN (a."measurement" ->> 'measuredAt')::timestamptz END, a."updated_at")
+	COALESCE(pg_temp.ns_safe_ts(a."measurement" ->> 'measuredAt'), a."updated_at")
 FROM "experiments" e
 JOIN "revenue_actions" a ON a."id" = e."action_id"
 WHERE a."status" = 'CLOSED' AND a."measurement" IS NOT NULL AND NOT EXISTS (SELECT 1 FROM "experiment_measurements" m WHERE m."experiment_id" = e."id");--> statement-breakpoint

@@ -82,6 +82,7 @@ describe("mesure d'une expérience (US-111)", () => {
     const m = (await getMeasurementOfAction(t.tenantId, a2))!;
     expect(m.outcome).toBe("INCONCLUSIVE");
     expect(m.reasons).toContain("LEGACY");
+    expect(m.legacy).toBe(true); // une mesure sans référence figée est marquée héritée : le rapport et l'historique peuvent la distinguer
     expect((m.metrics as any).observedNights).toBeNull();
     expect((await getExperimentOfAction(t.tenantId, a2))!.status).toBe("MEASURED");
   });
@@ -105,6 +106,15 @@ describe("garde-fous de la mesure (US-111)", () => {
     expect(await reservationsFreshFor(t.tenantId, p.id)).toBe(true);
     await real({ rentalId: "42" });
     expect(await reservationsFreshFor(t.tenantId, p.id)).toBe(false);
+    // sans SuperHote, PriceLabs porte les réservations : sa lecture en échec ou ancienne rend la mesure non fiable
+    const pl = (lastSync: any) => db.update(schema.properties).set({ isDemo: false, superhote: null, pricelabs: { listingId: "pl-1", lastSync } as any }).where(eq(schema.properties.id, p.id));
+    await pl({ ok: true, at: new Date(Date.now() - 3_600_000).toISOString() });
+    expect(await reservationsFreshFor(t.tenantId, p.id)).toBe(true);
+    await pl({ ok: true, at: new Date(Date.now() - 3 * 86_400_000).toISOString() });
+    expect(await reservationsFreshFor(t.tenantId, p.id)).toBe(false);
+    await pl({ ok: false, at: new Date().toISOString() });
+    expect(await reservationsFreshFor(t.tenantId, p.id)).toBe(false);
+    await db.update(schema.properties).set({ pricelabs: null }).where(eq(schema.properties.id, p.id));
     await real(null);
     expect(await reservationsFreshFor(t.tenantId, p.id)).toBe(true);
     await db.update(schema.properties).set({ isDemo: true }).where(eq(schema.properties.id, p.id));
@@ -132,6 +142,9 @@ describe("garde-fous de la mesure (US-111)", () => {
     await mk("ov4", { effectiveOn: addDays(x.effectiveOn, 30), observeFrom: addDays(x.effectiveOn, 30), observeTo: addDays(x.effectiveOn, 37) });
     expect(await countOverlapping(t.tenantId, probe)).toBe(n0 + 1);
     await mk("ov5", { status: "AWAITING_VERIFICATION", observeFrom: null, observeTo: null });
+    expect(await countOverlapping(t.tenantId, probe)).toBe(n0 + 2);
+    // une expérience héritée déjà mesurée, sans fin d'observation, ne mêle plus rien après son entrée en vigueur
+    await mk("ov6", { status: "MEASURED", effectiveOn: addDays(x.effectiveOn, -60), observeFrom: null, observeTo: null });
     expect(await countOverlapping(t.tenantId, probe)).toBe(n0 + 2);
     expect(await countOverlapping(other.tenantId, { ...probe, propertyId: probe.propertyId })).toBe(0);
     expect(await countOverlapping(t.tenantId, { ...probe, stayFrom: null, stayTo: null })).toBe(0);
