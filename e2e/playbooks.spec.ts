@@ -47,8 +47,8 @@ test("Méthode : les règles de l'auditeur distinguent veto et validation humain
   const section = page.getByTestId("regles-auditeur");
   await expect(section).toBeVisible();
   const rules = section.locator("li.playbook");
-  // 12 règles par règles de l'auditeur + INDEPENDENT_REVIEW (seconde lecture, US-073)
-  await expect(rules).toHaveCount(13);
+  // 12 règles de base + INDEPENDENT_REVIEW (seconde lecture, US-073) + STRUCTURAL_LOCK et MAX_VARIATION_7D (verrou structurant et plafond de 7 jours)
+  await expect(rules).toHaveCount(15);
   const floor = rules.filter({ hasText: "HARD_FLOOR" });
   await floor.locator("summary").click();
   await expect(floor).toContainText("L'option est rejetée (veto).");

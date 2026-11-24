@@ -7,6 +7,7 @@ import { percentileAfter, sellProbability } from "./demand";
 import { cumulativeDiscountPct, simulateStack, UnknownEconomics } from "./economics";
 import { leadTimes } from "./metrics";
 import type { AuditContext } from "./audit";
+import type { BaseChange, StructuralHold } from "./structural";
 import type { Channel, Day, EconomicModel, Promo, Resa, StackResult, Strategy } from "./types";
 import { CHANNEL_LABEL } from "./types";
 
@@ -30,6 +31,10 @@ export type EngineInput = {
   markups?: Partial<Record<Channel, number | null>>;
   /** Origine du prix du calendrier : SuperHote fait foi dès qu'il est rattaché et lisible ; sinon prix recommandé PriceLabs. */
   priceSource?: "SUPERHOTE" | "PRICELABS";
+  /** Variations du prix de base approuvées ou exécutées sur les 7 derniers jours (plafond cumulé, §11.3). Absent = aucune connue. */
+  recentBaseChanges?: BaseChange[];
+  /** Une modification du prix de base est déjà approuvée, écrite ou en observation (verrou structurant, §6.4). */
+  structuralHold?: StructuralHold | null;
 };
 
 export type Ctx = EngineInput & {

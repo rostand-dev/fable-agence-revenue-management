@@ -5,6 +5,7 @@ import { strategyFloorWindow } from "./seasons";
 import { euro } from "../format";
 import type { ISODate } from "../dates";
 import { policyCodes, verdictOf } from "./policy";
+import { cumulativeBaseVariation, MAX_BASE_VARIATION_7D_PCT, type BaseChange, type StructuralHold } from "./structural";
 import { evaluateStacking, overlapsWindow, promoKind, STACK_STATUS, type InPlayPromo } from "../stacking/rules";
 
 export type AuditContext = {
@@ -19,6 +20,10 @@ export type AuditContext = {
   promos: Promo[];
   /** Nuits visées par l'option, [from, to[ : seules les promotions qui les recoupent entrent en jeu */
   window: { from: ISODate; to: ISODate };
+  /** Variations du prix de base des 7 derniers jours (plafond cumulé, §11.3). Absent = aucune connue. */
+  recentBaseChanges?: BaseChange[];
+  /** Une modification du prix de base est déjà en cours (verrou structurant, §6.4). Absent ou null = levier libre. */
+  structuralHold?: StructuralHold | null;
 };
 
 type Draft = Omit<Candidate, "audit">;
@@ -113,7 +118,18 @@ export function auditCandidate(c: Draft, ctx: AuditContext): AuditVerdict {
     const lowersMin = typeof p.minPriceCents === "number" && typeof p.previousMinPriceCents === "number" ? p.minPriceCents < p.previousMinPriceCents : (c.priceChangePct ?? 0) < 0;
     if (c.type === "MIN_PRICE_CHANGE" && lowersMin) add("MIN_PRICE_DOWN", "Baisse du prix minimum", "WARN", "Baisse du prix minimum PriceLabs : validation commentée requise, et approbation du propriétaire ou du mandat.");
   }
-  if (c.type === "BASE_PRICE_CHANGE") add("STRUCTURAL", "Action structurelle", "WARN", "Modification du prix de base : une seule hypothèse structurante à la fois, commentaire obligatoire.");
+  if (c.type === "BASE_PRICE_CHANGE") {
+    add("STRUCTURAL", "Action structurelle", "WARN", "Modification du prix de base : une seule hypothèse structurante à la fois, commentaire obligatoire.");
+    const hold = ctx.structuralHold;
+    add("STRUCTURAL_LOCK", "Verrou structurant", hold ? "FAIL" : "PASS",
+      hold ? `Une modification du prix de base est déjà en cours${hold.since ? " depuis le " + hold.since.split("-").reverse().join("/") : ""} : attendre la fin de son observation ou son retour arrière avant d'en tester une autre.` : "Aucune autre modification du prix de base en cours.");
+    const change = typeof c.parameters.changePct === "number" ? c.parameters.changePct : (c.priceChangePct ?? 0);
+    const unknownPast = (ctx.recentBaseChanges ?? []).some((x) => x.changePct === MAX_BASE_VARIATION_7D_PCT);
+    const total = cumulativeBaseVariation(ctx.recentBaseChanges ?? [], change);
+    const fmt = (x: number) => x.toFixed(1).replace(".", ",");
+    add("MAX_VARIATION_7D", "Variation maximale sur 7 jours", total > MAX_BASE_VARIATION_7D_PCT + 0.01 ? "FAIL" : "PASS",
+      total > MAX_BASE_VARIATION_7D_PCT + 0.01 ? `${fmt(total)} % cumulés sur 7 jours avec cette option, au-delà du plafond de ${MAX_BASE_VARIATION_7D_PCT} %.${unknownPast ? " Une variation passée est inconnue : elle est comptée au plafond." : ""}` : `${fmt(total)} % cumulés sur 7 jours, dans le plafond de ${MAX_BASE_VARIATION_7D_PCT} %.`);
+  }
   if (c.nightsTouched > 14 && c.type !== "BASE_PRICE_CHANGE") add("SCOPE", "Portée en nuits", "WARN", `${c.nightsTouched} nuits touchées pour un maximum de 14 sans validation renforcée.`);
   else if (c.nightsTouched > 0) add("SCOPE", "Portée en nuits", "PASS", `${c.nightsTouched} nuit${c.nightsTouched > 1 ? "s" : ""} touchée${c.nightsTouched > 1 ? "s" : ""}.`);
 

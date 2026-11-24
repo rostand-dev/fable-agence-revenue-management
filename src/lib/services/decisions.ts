@@ -12,6 +12,7 @@ import { db, newId, schema } from "@/db";
 import { addDays, todayISO, type ISODate } from "../dates";
 import { assertTransition, type ActionState } from "../engine/stateMachine";
 import type { Candidate } from "../engine/types";
+import { baseApprovalBlock, STRUCTURAL_COUNTED_STATUSES } from "../engine/structural";
 import { executionBlock, providerOfTarget } from "../integrations/capabilities";
 import { flagFor } from "./flags";
 import { recordAudit } from "../audit/log";
@@ -105,6 +106,14 @@ export async function approve(actor: Actor, opportunityId: string, candidateInde
     const [ig] = prov ? await db.select().from(integrations).where(and(eq(integrations.tenantId, actor.tenantId), eq(integrations.provider, prov))) : [];
     const blocked = executionBlock(c.executionMode, { actionType: c.type, provider: prov, isDemo: !!p?.isDemo, killSwitch: !!ig?.killSwitch, flagOff: (await flagFor(actor.tenantId, "write.api", { propertyId: o.propertyId, provider: prov })).reason });
     if (blocked) throw new DecisionError(blocked + " Relancez la revue une fois la cause levée, ou utilisez la procédure manuelle.");
+  }
+  // le verdict d'audit date de la détection : une autre modification du prix de base a pu être approuvée depuis (blueprint §6.4, §11.3)
+  if (c.type === "BASE_PRICE_CHANGE" && p?.status !== "SHADOW") {
+    const baseActs = await db.select({ type: revenueActions.type, status: revenueActions.status, approvedAt: revenueActions.approvedAt, createdAt: revenueActions.createdAt, parameters: revenueActions.parameters }).from(revenueActions)
+      .where(and(eq(revenueActions.propertyId, o.propertyId), eq(revenueActions.type, "BASE_PRICE_CHANGE"), inArray(revenueActions.status, [...STRUCTURAL_COUNTED_STATUSES])));
+    const change = typeof (c.parameters as any)?.changePct === "number" ? (c.parameters as any).changePct : (c.priceChangePct ?? 0);
+    const block = baseApprovalBlock(baseActs, change, todayISO());
+    if (block) throw new DecisionError(block);
   }
   const id = newId("act");
   await db.transaction(async (tx) => {

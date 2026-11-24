@@ -5,6 +5,7 @@ import { addDays, todayISO, type ISODate } from "../dates";
 import { reviewProperty, type EngineInput } from "../engine/detect";
 import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig } from "../engine/scoring";
 import { dedupeOpportunities, groupKeys, openingDecision } from "../engine/lifecycle";
+import { groupCooldownUntil, recentBaseChanges, STRUCTURAL_COUNTED_STATUSES, structuralHold } from "../engine/structural";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
 import { resolveTargets } from "../agents/llm-config";
 import { openBudget } from "../agents/runner";
@@ -40,7 +41,7 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   const [p] = await db.select().from(properties).where(and(eq(properties.id, propertyId), eq(properties.tenantId, tenantId)));
   if (!p) return null;
   const to = addDays(today, 90);
-  const [cal, mkt, resas, promos, ints, acts] = await Promise.all([
+  const [cal, mkt, resas, promos, ints, acts, baseActs] = await Promise.all([
     db.select().from(calendarDays).where(and(eq(calendarDays.propertyId, p.id), gte(calendarDays.date, today), lte(calendarDays.date, to))),
     db.select().from(marketDays).where(and(eq(marketDays.propertyId, p.id), gte(marketDays.date, today), lte(marketDays.date, to))),
     db.select().from(reservations).where(eq(reservations.propertyId, p.id)),
@@ -49,6 +50,9 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     db.select({ from: opportunities.stayFrom, to: opportunities.stayTo, params: revenueActions.parameters, type: revenueActions.type }).from(revenueActions)
       .innerJoin(opportunities, eq(opportunities.id, revenueActions.opportunityId))
       .where(and(eq(revenueActions.propertyId, p.id), inArray(revenueActions.status, ACTIVE_ACTION))),
+    // prix de base : verrou structurant et plafond cumulé sur 7 jours (blueprint §6.4, §11.3)
+    db.select({ type: revenueActions.type, status: revenueActions.status, approvedAt: revenueActions.approvedAt, createdAt: revenueActions.createdAt, parameters: revenueActions.parameters }).from(revenueActions)
+      .where(and(eq(revenueActions.propertyId, p.id), eq(revenueActions.type, "BASE_PRICE_CHANGE"), inArray(revenueActions.status, [...STRUCTURAL_COUNTED_STATUSES]))),
   ]);
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
@@ -72,6 +76,8 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
     resas: resas.map((r) => ({ channel: r.channel, checkIn: r.checkIn, checkOut: r.checkOut, nights: r.nights, grossRoomCents: r.grossRoomCents, commissionCents: r.commissionCents, paymentFeeCents: r.paymentFeeCents, bookedAt: r.bookedAt, status: r.status }) satisfies Resa),
     promos: promos.map((x) => ({ id: x.id, channel: x.channel as Channel, kind: x.kind, label: x.label, discountPct: x.discountPct, stayFrom: x.stayFrom, stayTo: x.stayTo, verifiedAt: x.verifiedAt }) satisfies Promo),
     capabilities,
+    recentBaseChanges: recentBaseChanges(baseActs, today),
+    structuralHold: structuralHold(baseActs),
     activeRanges: acts.filter((a) => a.type !== "MIN_PRICE_CHANGE").map((a) => { const ds: string[] | undefined = a.params?.dates; return ds?.length ? { from: ds[0], to: addDays(ds[ds.length - 1], 1) } : { from: a.from, to: a.to }; }),
   };
 }
@@ -174,6 +180,8 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       }
       const decision = openingDecision(prev, o.playbook, now);
       if (decision.action === "SKIP") { resting++; continue; } // période de repos du playbook, ou dossier différé
+      // groupe de repos (PB-02, PB-11, PB-12 : même levier) : une décision sur l'un met les autres au repos, sauf pour un dossier déjà ouvert que l'on rafraîchit
+      if (decision.action === "CREATE" && groupCooldownUntil(existing, o.playbook, now)) { resting++; continue; }
       const row = { ...oppRow(o, scoring), groupKey: groups[idx] };
       // US-071 : constats de l'analyste marché. Une analyse par modèle n'est refaite que si les faits ont changé (la revue est fréquente, le budget est borné).
       const prevAnalysis = prev?.signals?.marketAnalysis as MarketAnalysis | undefined;
