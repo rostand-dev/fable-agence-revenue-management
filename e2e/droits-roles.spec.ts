@@ -42,11 +42,16 @@ test("Analyste : lecture seule dans la boîte d'opportunités, le dossier et l'h
     await expect(page.getByTestId("journal-reserve")).toContainText("Journal réservé");
     await expectNoHorizontalOverflow(page, "historique sans journal");
 
-    await page.goto("/reglages#droits");
+    await page.goto("/parametres/compte#droits");
     const droits = page.getByTestId("droits");
     await expect(droits).toContainText("Analyste");
     await expect(droits.getByRole("row", { name: /Approuver, rejeter/ })).toContainText("Non autorisé");
-    await expectNoHorizontalOverflow(page, "réglages : droits");
+    await expectNoHorizontalOverflow(page, "compte : droits");
+
+    await page.goto("/parametres/demo");
+    await expect(page.locator(".content")).toContainText("La réinstallation est réservée aux rôles qui décident.");
+    await expect(page.getByRole("button", { name: /Réinstaller la démonstration/ })).toHaveCount(0);
+    await expectNoHorizontalOverflow(page, "démonstration en lecture seule");
   } finally { await deleteUser(u.id); }
 });
 

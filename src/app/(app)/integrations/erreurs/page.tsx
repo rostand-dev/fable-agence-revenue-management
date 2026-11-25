@@ -19,7 +19,7 @@ export default async function IngestionErrors() {
   const e = await listIngestionErrors(user.tenantId);
   const nothing = e.total === 0 && e.readFailures.length === 0;
   return (
-    <Page title="Erreurs d'ingestion" sub="Réservations SuperHote" crumbs={[{ label: "Configuration" }, { label: "Intégrations", href: "/integrations" }, { label: "Erreurs d'ingestion" }]}>
+    <Page title="Erreurs d'ingestion" sub="Réservations SuperHote" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Intégrations", href: "/integrations" }, { label: "Erreurs d'ingestion" }]}>
       <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href="/integrations"><Icon name="back" />Retour aux intégrations</Link></p>
       <div className="page-head">
         <h1>Réservations SuperHote qui n'ont pas pu être appliquées</h1>

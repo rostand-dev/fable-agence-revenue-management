@@ -23,7 +23,7 @@ export default async function Proprietaires() {
   const user = await requireUser();
   const owners = await listOwners(user.tenantId);
   return (
-    <Page title="Propriétaires" sub={`${owners.length} propriétaire${owners.length > 1 ? "s" : ""}`} crumbs={[{ label: "Configuration" }, { label: "Propriétaires" }]}>
+    <Page title="Propriétaires" sub={`${owners.length} propriétaire${owners.length > 1 ? "s" : ""}`} crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Propriétaires" }]}>
       <div className="page-head">
         <h1>Propriétaires</h1>
         <p>Chaque logement appartient à un propriétaire : vous, une société, ou un client dont vous gérez le bien. Le propriétaire par défaut reçoit les logements créés sans choix.</p>

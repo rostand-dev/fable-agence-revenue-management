@@ -79,7 +79,7 @@ export default async function Modeles({ searchParams }: { searchParams: Promise<
   const rate = usdEurRate();
   const total = costs.reduce((a, c) => a + c.currentEur, 0);
   return (
-    <Page title="Modèles de langage" sub="Disponibilité, prix, qualification et coûts" crumbs={[{ label: "Configuration" }, { label: "Modèles" }]}>
+    <Page title="Modèles de langage" sub="Disponibilité, prix, qualification et coûts" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "IA & modèles" }]}>
       <div className="page-head"><h1>Modèles de langage</h1><p>Le routeur choisit, parmi vos fournisseurs, le modèle le moins cher qui convient à chaque tâche. Chaque agent peut aussi être réglé à la main dans sa fiche : un choix manuel prime toujours.</p></div>
       {(prix === "valide" || prix === "refuse") && <div data-testid="prix-decide" style={{ margin: "0 0 16px" }}><Banner role="sain" title={prix === "valide" ? "Nouveau prix validé" : "Changement de prix refusé : l'ancien prix reste en vigueur"} /></div>}
       <CapBanner cap={cap} link={false} />
