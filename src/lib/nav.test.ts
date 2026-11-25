@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestorIds, buildNav, currentNodeId, menuProperties, PROPERTY_SECTIONS, propertyIdOf, sectionHref, type NavNode } from "./nav";
+import { ancestorIds, buildNav, currentNodeId, menuProperties, PROPERTY_SECTIONS, propertyIdOf, sectionHref, type NavNode, hasPriceBadge } from "./nav";
 
 const props = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}`, name: `Logement ${i + 1}`, status: "ACTIVE" }));
 const flat = (nodes: NavNode[]): NavNode[] => nodes.flatMap((n) => [n, ...flat(n.children ?? [])]);
@@ -52,5 +52,12 @@ describe("navigation", () => {
     expect(currentNodeId("/parametres", null)).toBe("parametres");
     expect(ancestorIds(g, "alertes")).toEqual([]);
     expect(ancestorIds(g, null)).toEqual([]);
+  });
+});
+
+describe("pastille des prix", () => {
+  it("remonte du Catalogue jusqu'à « Paramètres », et nulle part ailleurs", () => {
+    const items = buildNav([]).flatMap((g) => g.items);
+    expect(items.filter(hasPriceBadge).map((n) => n.id)).toEqual(["parametres"]);
   });
 });

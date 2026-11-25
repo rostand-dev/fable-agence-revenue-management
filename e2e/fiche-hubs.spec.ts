@@ -22,7 +22,13 @@ test("Vue d'ensemble : indicateurs, trois rubriques, trois situations au plus ; 
   await page.goto(href);
   await expect(page.locator(".content .synth .metric")).toHaveCount(4);
   const hubs = page.getByRole("list", { name: "Rubriques du logement" });
-  await expect(hubs.getByRole("link")).toHaveCount(3);
+  await expect(hubs.locator(".hub-card-head")).toHaveCount(3);
+  // chaque rubrique propose un raccourci vers chacun de ses écrans ouvrables ; le calendrier et l'historique suivent
+  const raccourcis = (rubrique: string) => page.getByRole("list", { name: `Raccourcis : ${rubrique}` }).getByRole("link");
+  await expect(raccourcis("Stratégie & prix")).toHaveText(["Stratégie en vigueur", "Canaux et promotions", "Compilateur"]);
+  await expect(raccourcis("Économie")).toHaveText(["Planchers par canal"]);
+  await expect(raccourcis("Données & connexions")).toHaveText(["SuperHote", "PriceLabs", "Annonces", "Qualité des données"]);
+  await expect(page.getByRole("list", { name: "Autres écrans du logement" }).getByRole("link")).toHaveText(["Calendrier 90 jours", "Historique du logement"]);
   expect(await page.locator(".content ul.timeline > li").count()).toBeLessThanOrEqual(3);
   await expect(page.getByRole("tablist", { name: "Sections du logement" })).toHaveCount(0);
   // démonstration : rien à modifier ni à supprimer
@@ -145,6 +151,10 @@ test("Logement réel : « À faire » mène aux écrans, « Gérer le logement �
     await expect(page.getByTestId("hub-card-couts")).toContainText("manquante");
     await expect(page.getByTestId("hub-card-planchers")).toContainText("Non calculés");
 
+    await page.goto(`/logements/${id}`);
+    await expect(page.getByRole("list", { name: "Autres écrans du logement" }).getByRole("link")).toHaveText(["Calendrier 90 jours", "Historique du logement", "Modifier le dossier", "Supprimer le logement"]);
+    await page.goto(`/logements/${id}?tab=hub-economie`);
+
     await page.getByText("Gérer le logement").click();
     await expect(page.getByRole("link", { name: "Supprimer", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
@@ -154,7 +164,7 @@ test("Logement réel : « À faire » mène aux écrans, « Gérer le logement �
     await expectNoHorizontalOverflow(page, "menu de gestion");
     await page.screenshot({ path: info.outputPath("gerer.png") });
     await info.attach("gerer", { path: info.outputPath("gerer.png"), contentType: "image/png" });
-    await page.getByRole("link", { name: "Modifier le dossier" }).click();
+    await page.locator(".manage-menu").getByRole("link", { name: "Modifier le dossier" }).click();
     await expect(page).toHaveURL(new RegExp(`/logements/${id}/modifier`));
     expect(errors).toEqual([]);
   } finally {

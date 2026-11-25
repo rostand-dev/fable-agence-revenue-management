@@ -99,7 +99,8 @@ describe("US-073 : seconde lecture indépendante dans la revue (base réelle, fa
     mode = "invent";
     await expireAll(); await clearRuns();
     await runDailyReview(t.tenantId, "MANUAL");
-    for (const o of await open()) { const r = reviewOf(o); if (r) { expect(r.mode).toBe("DETERMINISTIC"); expect(r.concern).toBe(false); expect(JSON.stringify(r)).not.toContain("987"); } }
+    // le montant inventé entier, pas « 987 » seul : les millisecondes d'un horodatage de la trace peuvent le contenir
+    for (const o of await open()) { const r = reviewOf(o); if (r) { expect(r.mode).toBe("DETERMINISTIC"); expect(r.concern).toBe(false); expect(JSON.stringify(r)).not.toMatch(/987\s?654/); } }
     const rs = await runs();
     expect(rs.length).toBeGreaterThan(0);
     for (const x of rs) expect(x).toMatchObject({ mode: "DETERMINISTIC", fallbackReason: "INVALID_OUTPUT" });

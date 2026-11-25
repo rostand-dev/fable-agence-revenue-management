@@ -70,7 +70,7 @@ test("Mobile : cinq entrées en barre basse, feuille « Plus » en accordéon", 
   const plus = bar.getByRole("button", { name: "Plus" });
   await plus.click();
   const sheet = page.getByRole("dialog", { name: "Tous les écrans" });
-  await expect(sheet.locator("summary")).toHaveText(["Analyse", "Agence IA", "Paramètres"]);
+  await expect(sheet.locator("summary")).toHaveText([/^Analyse/, /^Agence IA/, /^Paramètres/]); // la pastille des prix, s'il y en a, suit le libellé
   await expect(sheet.getByRole("link", { name: "Historique des décisions" })).toBeHidden();
   await sheet.locator("summary", { hasText: "Analyse" }).click();
   await expectNoHorizontalOverflow(page, "feuille Plus");
@@ -96,7 +96,8 @@ test("Tablette : premier niveau en rangée, un groupe ouvre la feuille filtrée"
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto("/portefeuille");
   const nav = page.locator(".navbar");
-  await expect(nav.locator(".navbar-link")).toHaveCount(7);
+  // sept rubriques, et le chevron des sous-écrans à côté de « Paramètres »
+  await expect(nav.locator(".navbar-link")).toHaveCount(8);
   await expectNoHorizontalOverflow(page, "rangée tablette");
   await nav.getByRole("button", { name: "Agence IA" }).click();
   const sheet = page.getByRole("dialog", { name: "Agence IA" });

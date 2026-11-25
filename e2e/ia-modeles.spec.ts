@@ -1,7 +1,8 @@
 import { expect, test } from "@playwright/test";
 import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
-import { hasDatabase } from "./helpers/roles";
+import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
+import { httpCredentials } from "./helpers/env";
 
 // Hub « IA & modèles » : quatre cartes avec leur état et leur origine, anciennes ancres, Intégrations sans les clés. Trois formats d'écran.
 const CARTES = [["cles", "Clés fournisseurs"], ["agents", "Agents"], ["budget", "Budget"], ["catalogue", "Catalogue des modèles"]] as const;
@@ -81,24 +82,50 @@ test("Menu : le troisième niveau n'apparaît que dans la branche ouverte", asyn
   await expect(rail.getByRole("link", { name: "Budget", exact: true })).toHaveAttribute("aria-current", "page");
 });
 
-test("Mobile : la feuille « Plus » montre les quatre écrans IA quand la branche est ouverte", async ({ page }) => {
+test("Tablette : « Paramètres » mène à son accueil, son chevron ouvre ses sous-écrans", async ({ page }, info) => {
+  test.skip(info.project.name !== "bureau", "une seule passe à 768 px");
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto("/portefeuille");
+  const rangee = page.getByRole("navigation", { name: "Navigation du cockpit" });
+  const chevron = rangee.getByRole("button", { name: "Sous-menu Paramètres" });
+  const sheet = page.getByRole("dialog", { name: "Paramètres" });
+  // à toutes les largeurs de tablette, « Paramètres » et son chevron se voient sans faire défiler la rangée
+  for (const width of [900, 1023, 768]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await expect(rangee.getByRole("link", { name: /^Paramètres/ })).toBeInViewport({ ratio: 1 });
+    await expect(chevron).toBeInViewport({ ratio: 1 });
+  }
+  await expect(async () => { if (!(await sheet.isVisible())) await chevron.click(); await expect(sheet).toBeVisible({ timeout: 1000 }); }).toPass();
+  for (const n of ["Compte & sécurité", "Clés fournisseurs", "Agents", "Budget", "Catalogue"]) await expect(sheet.getByRole("link", { name: new RegExp(`^${n}`) })).toBeVisible();
+  await expectNoHorizontalOverflow(page, "tablette, feuille Paramètres");
+  await capture(page, "tablette-feuille-parametres");
+  await sheet.getByRole("link", { name: /^Budget/ }).click();
+  await expect(page).toHaveURL(/\/modeles\/budget$/);
+  await expect(sheet).toBeHidden();
+  await rangee.getByRole("link", { name: /^Paramètres/ }).click();
+  await expect(page).toHaveURL(/\/parametres$/);
+});
+
+test("Mobile : la feuille « Plus » mène aux quatre écrans IA depuis n'importe quel écran", async ({ page }) => {
   test.skip(page.viewportSize()!.width >= 768, "barre basse : mobile seulement");
-  await page.goto("/modeles/cles");
+  await page.goto("/portefeuille");
   const plus = page.getByRole("navigation", { name: "Navigation principale" }).getByRole("button", { name: "Plus" });
   const sheet = page.getByRole("dialog", { name: "Tous les écrans" });
   await expect(async () => { if (!(await sheet.isVisible())) await plus.click(); await expect(sheet).toBeVisible({ timeout: 1000 }); }).toPass();
-  await expect(sheet.getByRole("link", { name: /^Clés fournisseurs/ })).toHaveAttribute("aria-current", "page");
+  await sheet.locator("summary", { hasText: "Paramètres" }).click();
+  for (const n of ["Clés fournisseurs", "Agents", "Budget", "Catalogue"]) await expect(sheet.getByRole("link", { name: new RegExp(`^${n}`) })).toBeVisible();
   await expectNoHorizontalOverflow(page, "feuille Plus, branche IA");
   await capture(page, "feuille-ia");
   await sheet.getByRole("link", { name: /^Budget/ }).click();
   await expect(page).toHaveURL(/\/modeles\/budget$/);
 });
 
-test("Prix à valider : pastille dans le menu et sur la carte Catalogue", async ({ page }, info) => {
+test("Prix à valider : pastille dans le menu (trois largeurs, tous les comptes) et sur la carte Catalogue", async ({ page, browser, baseURL }, info) => {
   // écrit un relevé de prix en attente, partagé par tous les comptes : un seul format suffit, sur base éphémère
   test.skip(!hasDatabase() || !!process.env.E2E_BASE_URL?.trim() || info.project.name !== "bureau", "base locale, un seul format");
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL }); await db.connect();
   const id = "price_e2e_hub";
+  test.setTimeout(120_000);
   try {
     await db.query("delete from llm_price_snapshots where id = $1 or (model_id = 'gpt-6-luna' and status = 'PENDING')", [id]);
     await db.query("insert into llm_models (model_id, provider, label, tier) values ('gpt-6-luna','openai','GPT-6 Luna','eco') on conflict (model_id) do nothing");
@@ -108,6 +135,47 @@ test("Prix à valider : pastille dans le menu et sur la carte Catalogue", async 
     const rail = page.getByRole("navigation", { name: "Navigation du cockpit" });
     await expect(rail.getByRole("link", { name: /Catalogue/ }).getByRole("img", { name: /prix à valider/ })).toBeVisible();
     await capture(page, "hub-prix");
+    // tablette et mobile : la pastille remonte sur la rubrique repliée, puis se lit sur « Catalogue »
+    const pastille = /prix à valider/;
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await page.goto("/portefeuille");
+    for (const width of [900, 1023, 768]) {
+      await page.setViewportSize({ width, height: 1024 });
+      await expect(rail.getByRole("link", { name: /^Paramètres/ }).getByRole("img", { name: pastille })).toBeInViewport({ ratio: 1 });
+      await expect(rail.getByRole("button", { name: "Sous-menu Paramètres" })).toBeInViewport({ ratio: 1 });
+    }
+    await expectNoHorizontalOverflow(page, "rangée tablette avec pastille");
+    const feuille = page.getByRole("dialog", { name: "Paramètres" });
+    await expect(async () => { if (!(await feuille.isVisible())) await rail.getByRole("button", { name: "Sous-menu Paramètres" }).click(); await expect(feuille).toBeVisible({ timeout: 1000 }); }).toPass();
+    await expect(feuille.getByRole("link", { name: /^Catalogue/ }).getByRole("img", { name: pastille })).toBeVisible();
+    await capture(page, "tablette-prix");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/portefeuille");
+    const plus = page.getByRole("navigation", { name: "Navigation principale" }).getByRole("button", { name: /Plus/ });
+    await expect(plus.getByRole("img", { name: pastille })).toBeVisible();
+    const tous = page.getByRole("dialog", { name: "Tous les écrans" });
+    await expect(async () => { if (!(await tous.isVisible())) await plus.click(); await expect(tous).toBeVisible({ timeout: 1000 }); }).toPass();
+    const titre = tous.locator("summary", { hasText: "Paramètres" });
+    await expect(titre.getByRole("img", { name: pastille })).toBeVisible();
+    await titre.click();
+    await expect(titre.getByRole("img", { name: pastille })).toBeHidden();
+    await expect(tous.getByRole("link", { name: /^Catalogue/ }).getByRole("img", { name: pastille })).toBeVisible();
+    await capture(page, "mobile-prix");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    // un autre compte voit la pastille aussi, sans pouvoir décider
+    const autre = await createRoleUser("ANALYST", `prix${Date.now().toString(36)}`);
+    const contexte = await browser.newContext({ baseURL, storageState: { cookies: [], origins: [] }, httpCredentials, viewport: { width: 1280, height: 800 }, locale: "fr-FR" });
+    try {
+      const q = await contexte.newPage();
+      await q.goto("/connexion");
+      await q.getByLabel("Adresse e-mail").fill(autre.email);
+      await q.getByLabel("Mot de passe").fill(autre.password);
+      await q.getByRole("button", { name: "Se connecter" }).click();
+      await q.waitForURL((u) => !u.pathname.startsWith("/connexion"), { timeout: 15_000 });
+      await q.goto("/modeles");
+      await expect(q.getByRole("navigation", { name: "Navigation du cockpit" }).getByRole("link", { name: /^Catalogue|IA & modèles/ }).getByRole("img", { name: /prix en attente de l'exploitant/ }).first()).toBeVisible();
+      await expect(q.getByTestId("hub-card-catalogue")).toContainText("en attente de l'exploitant");
+    } finally { await contexte.close(); await deleteUser(autre.id); }
     // la décision ramène au Catalogue avec sa confirmation
     await page.goto("/modeles/catalogue");
     await page.getByTestId("model-gpt-6-luna").getByRole("button", { name: "Refuser" }).click();
