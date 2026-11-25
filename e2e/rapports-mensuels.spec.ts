@@ -6,7 +6,10 @@ import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
 
 // US-112 : rapport mensuel certifié : préparer, retoucher (nombre inventé refusé), certifier, figé, nouvelle version, lecture seule.
 // Trois largeurs, sans débordement. Les trois projets tournent en parallèle sur le même logement : chacun travaille sur son propre mois.
+// Dans une largeur, les tests partagent ce mois et le vident avant et après : ils passent l'un après l'autre (sinon l'un supprime ou certifie le rapport de l'autre).
 test.skip(!hasDatabase(), "DATABASE_URL absent : espace de test non modifiable sur cet environnement");
+// « default » : dans l'ordre, par un seul processus, malgré `fullyParallel` ; contrairement à « serial », un échec n'empêche pas les tests suivants.
+test.describe.configure({ mode: "default" });
 
 function monthValue(offset: number): string {
   const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - offset);

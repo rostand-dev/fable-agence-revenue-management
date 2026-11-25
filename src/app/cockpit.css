@@ -1632,8 +1632,23 @@ table.cascade .delta-neu { color: var(--quiet); }
     background: var(--line-strong);
   }
   .navbar .rail-count { margin-left: 2px; }
+  .navbar-more { justify-content: center; min-width: 44px; margin-left: -10px; }
   .navbar-chevron { display: inline-flex; transform: rotate(90deg); }
   .navbar-chevron .od-icon { --od-icon-size: 12px; }
+}
+/* tablettes : sans les icônes et en plus serré, les sept rubriques tiennent sans défilement et « Paramètres » (avec sa pastille) reste visible */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .navbar { gap: 0; padding: 0 8px; scroll-padding-inline: 8px; }
+  .navbar-link { gap: 5px; padding: 0 7px; font-size: 13px; }
+  .navbar-link [data-icon] { display: none; }
+  .navbar-sep { margin: 12px 3px; }
+  .navbar-more { margin-left: 0; padding: 0; }
+}
+/* largeur la plus étroite : encore resserré, pour les polices système larges et les compteurs à deux chiffres */
+@media (min-width: 768px) and (max-width: 839px) {
+  .navbar { padding: 0 4px; scroll-padding-inline: 4px; }
+  .navbar-link { gap: 4px; padding: 0 5px; font-size: 12.5px; }
+  .navbar-sep { margin: 12px 2px; }
 }
 
 /* --- mobile : barre basse de cinq cibles ; mobile et tablette : feuille des rubriques repliées --- */
@@ -1780,6 +1795,11 @@ table.cascade .delta-neu { color: var(--quiet); }
   .nav-sheet-sub { padding-left: 52px; font-size: 13.5px; }
   .nav-sheet-link .rail-count { margin-left: auto; }
   .nav-sheet-link .rail-count + .nav-sheet-here { margin-left: 0; }
+  /* la rubrique dépliée montre la pastille sur l'écran concerné : pas de doublon sur son titre */
+  .nav-sheet-group summary .rail-count { margin-left: auto; }
+  .nav-sheet-group summary .rail-count + .nav-sheet-chevron { margin-left: 0; }
+  .nav-sheet-group[open] > summary .rail-count { display: none; }
+  .nav-sheet-group[open] > summary .rail-count + .nav-sheet-chevron { margin-left: auto; }
   .nav-sheet-here {
     margin-left: auto;
     font-size: 11.5px;
@@ -1943,7 +1963,11 @@ table.cascade .delta-neu { color: var(--quiet); }
 .alert-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .alert-actions form { margin: 0; }
 .rail-count-alert { color: var(--attention-ink); font-weight: 700; }
-@media (max-width: 767px) { .bottombar-count-alert { background: #be123c; } }
+@media (max-width: 767px) {
+  .bottombar-count-alert { background: #be123c; }
+  /* prix en attente de l'exploitant : pastille en contour, rien à faire pour ce compte */
+  .bottombar-count-wait { background: var(--bg, #04050a); color: var(--quiet); box-shadow: inset 0 0 0 1px var(--quiet); }
+}
 
 /* US-100 : registre des promotions (cartes, faits, formulaires). Une colonne sur mobile, jamais de défilement horizontal. */
 .promo-card { padding: 16px; }
@@ -1996,7 +2020,16 @@ table.cascade .delta-neu { color: var(--quiet); }
 .hub-card-text { font-size: 13px; color: var(--quiet); }
 .hub-card-foot { margin-top: auto; font-size: 12px; color: var(--faint); }
 .hub-card .state { max-width: 100%; white-space: normal; text-align: left; }
-@media (hover: hover) { .hub-card:hover { border-color: var(--blue); } }
+@media (hover: hover) { a.hub-card:hover, .hub-card-open:has(.hub-card-head:hover) { border-color: var(--blue); } }
+.hub-card-head { display: flex; flex-direction: column; gap: 8px; align-self: stretch; color: inherit; text-decoration: none; }
+.hub-card-head:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.hub-shortcuts { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.hub-card-open .hub-shortcuts { margin-top: auto; padding-top: 4px; }
+.hub-shortcuts a { display: inline-flex; align-items: center; min-height: 44px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; color: var(--ink); text-decoration: none; }
+.hub-shortcuts a:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+@media (hover: hover) { .hub-shortcuts a:hover { border-color: var(--blue); } }
+.hub-others { margin-top: 12px; }
+.hub-others a.hub-shortcut-danger { color: var(--amber-ink); border-color: rgb(251 191 36 / 38%); }
 
 .todo-card { margin: 0 0 16px; border: 1px solid var(--line); border-left: 3px solid var(--amber); border-radius: 10px; background: rgb(255 255 255 / 2.5%); }
 .todo-card > summary { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 16px; cursor: pointer; list-style: none; font-weight: 640; font-size: 14.5px; }

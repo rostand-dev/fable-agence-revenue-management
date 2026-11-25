@@ -1,21 +1,22 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { createContext, Suspense, useContext, useEffect, useRef, useState } from "react";
+import { createContext, Fragment, Suspense, useContext, useEffect, useRef, useState } from "react";
 import { Icon, Logo } from "./Icon";
 import { logoutAction } from "@/app/actions/auth";
-import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, propertyIdOf, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
+import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, hasPriceBadge, propertyIdOf, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
 
-type Counts = { open: number; alerts: number; prices: number };
-const NavCtx = createContext<Counts & { openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, prices: 0, openSheet: () => {} });
+/** `pricesDecide` : ce compte valide les prix (exploitant) ; les autres voient la pastille en gris, « en attente de l'exploitant ». */
+type Counts = { open: number; alerts: number; prices: number; pricesDecide: boolean };
+const NavCtx = createContext<Counts & { openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, prices: 0, pricesDecide: false, openSheet: () => {} });
 const STORAGE_KEY = "nuitsignal.menu.ouvert";
 const alertsLabel = (n: number) => `${n} alerte${n > 1 ? "s" : ""} à traiter`;
-const pricesLabel = (n: number) => `${n} prix à valider`;
+const pricesLabel = (n: number, decide: boolean) => `${n} prix ${decide ? "à valider" : "en attente de l'exploitant"}`;
 
 function Count({ badge, counts, className = "rail-count" }: { badge?: NavBadge; counts: Counts; className?: string }) {
   if (badge === "open" && counts.open > 0) return <span className={className}>{counts.open}</span>;
   if (badge === "alerts" && counts.alerts > 0) return <span className={`${className} ${className}-alert`} role="img" aria-label={alertsLabel(counts.alerts)}>{counts.alerts}</span>;
-  if (badge === "prices" && counts.prices > 0) return <span className={`${className} ${className}-alert`} role="img" aria-label={pricesLabel(counts.prices)}>{counts.prices}</span>;
+  if (badge === "prices" && counts.prices > 0) return <span className={`${className} ${className}-${counts.pricesDecide ? "alert" : "wait"}`} role="img" aria-label={pricesLabel(counts.prices, counts.pricesDecide)}>{counts.prices}</span>;
   return null;
 }
 
@@ -46,7 +47,7 @@ function RailTree({ properties, tab, counts }: { properties: NavProperty[]; tab:
     const open = !!n.children && isOpen(n.id);
     const panel = `nav-${n.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
     const cls = `rail-link rail-level-${level}${n.action ? " rail-action" : ""}${trail.includes(n.id) ? " is-trail" : ""}`;
-    const inner = <>{n.icon && <span data-icon><Icon name={n.icon} /></span>}<span className="rail-text">{n.label}</span><Count badge={n.badge} counts={counts} /></>;
+    const inner = <>{n.icon && <span data-icon><Icon name={n.icon} /></span>}<span className="rail-text">{n.label}</span><Count badge={n.badge ?? (!open && hasPriceBadge(n) ? "prices" : undefined)} counts={counts} /></>;
     return (
       <li key={n.id}>
         <div className="rail-row">
@@ -81,7 +82,7 @@ function RailWithTab(props: { properties: NavProperty[]; counts: Counts }) {
 const foldedNodes = (groups: NavGroup[]) => groups.flatMap((g) => g.items).filter((n) => FOLDED_NODES.includes(n.id));
 
 /** Une seule source de navigation (lib/nav), trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
-export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; prices?: number; properties?: NavProperty[]; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
+export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, properties = [], demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; prices?: number; pricesDecide?: boolean; properties?: NavProperty[]; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
   const path = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -114,7 +115,7 @@ export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = fa
     return () => large.removeEventListener("change", onChange);
   }, []);
 
-  const counts = { open, alerts, prices };
+  const counts = { open, alerts, prices, pricesDecide };
   const groups = buildNav(properties, propertyIdOf(path));
   const current = currentNodeId(path, null);
   const trail = ancestorIds(groups, current);
@@ -129,6 +130,11 @@ export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = fa
     { href: "/alertes", icon: "alert", label: "Alertes", id: "alertes", badge: "alerts" as const },
   ];
   const shown = foldedNodes(groups).filter((n) => !sheetGroup || n.id === sheetGroup);
+  const sheetLink = (c: NavNode, sub = false) => (
+    <Link key={c.id} className={sub ? "nav-sheet-link nav-sheet-sub" : "nav-sheet-link"} href={c.href!} aria-current={current === c.id ? "page" : undefined}>
+      <span>{c.label}</span><Count badge={c.badge} counts={counts} />{current === c.id && <span className="nav-sheet-here">écran courant</span>}
+    </Link>
+  );
 
   return (
     <NavCtx.Provider value={{ ...counts, openSheet }}>
@@ -150,6 +156,7 @@ export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = fa
         ))}
         <button type="button" className="bottombar-link" aria-haspopup="dialog" aria-current={inFolded ? "true" : undefined} onClick={(e) => openSheet("", e.currentTarget)}>
           <span data-icon><Icon name="sliders" /></span><span className="bottombar-label">Plus</span>
+          <Count badge={foldedNodes(groups).some(hasPriceBadge) ? "prices" : undefined} counts={counts} className="bottombar-count" />
         </button>
       </nav>
       <dialog className="nav-sheet" ref={sheet} aria-labelledby="nav-sheet-title"
@@ -163,17 +170,15 @@ export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = fa
           {shown.map((n) => (
             // la clé change à chaque ouverture : le groupe courant (ou demandé) est déplié, les autres repliés
             <details className="nav-sheet-group" key={`${n.id}:${sheetGroup ?? "fermee"}:${path}`} open={n.id === sheetGroup || n.id === current || trail.includes(n.id)}>
-              <summary><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><span className="nav-sheet-chevron" aria-hidden="true"><Icon name="caret" /></span></summary>
+              <summary><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={hasPriceBadge(n) ? "prices" : undefined} counts={counts} /><span className="nav-sheet-chevron" aria-hidden="true"><Icon name="caret" /></span></summary>
               {n.href && <Link className="nav-sheet-link" href={n.href} aria-current={current === n.id ? "page" : undefined}><span>Tous les {n.label.toLowerCase()}</span>{current === n.id && <span className="nav-sheet-here">écran courant</span>}</Link>}
-              {/* un troisième niveau (IA & modèles) n'apparaît que lorsque sa branche est celle de l'écran courant */}
-              {n.children?.flatMap((c) => [{ node: c, sub: false }, ...(c.id === current || trail.includes(c.id) ? (c.children ?? []).map((g) => ({ node: g, sub: true })) : [])]).map(({ node: c, sub }) => {
-                const cur = current === c.id;
-                return (
-                  <Link key={c.id} className={sub ? "nav-sheet-link nav-sheet-sub" : "nav-sheet-link"} href={c.href!} aria-current={cur ? "page" : undefined}>
-                    <span>{c.label}</span><Count badge={c.badge} counts={counts} />{cur && <span className="nav-sheet-here">écran courant</span>}
-                  </Link>
-                );
-              })}
+              {/* le troisième niveau (écrans de « IA & modèles ») est listé en retrait, groupé sous le nom de sa rubrique */}
+              {n.children?.map((c) => (
+                <Fragment key={c.id}>
+                  {sheetLink(c)}
+                  {c.children && <div role="group" aria-label={c.label}>{c.children.map((g) => sheetLink(g, true))}</div>}
+                </Fragment>
+              ))}
             </details>
           ))}
           {!sheetGroup && (demo ? (
@@ -198,7 +203,7 @@ export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = fa
 /** Rangée de navigation tablette (premier niveau seulement), placée entre la barre de titre et le fil d'Ariane. */
 export function TabletNav() {
   const path = usePathname();
-  const { open, alerts, prices, openSheet } = useContext(NavCtx);
+  const { openSheet, ...counts } = useContext(NavCtx);
   const groups = buildNav([], null);
   const current = currentNodeId(path, null);
   // sur une fiche logement, c'est « Logements » qui reste allumé
@@ -209,9 +214,17 @@ export function TabletNav() {
         <span key={g.label} style={{ display: "contents" }}>
           {i > 0 && <span className="navbar-sep" aria-hidden="true" />}
           {g.items.map((n) => {
-            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge} counts={{ open, alerts, prices }} /></>;
-            return n.href
-              ? <Link key={n.id} className="navbar-link" href={n.href} aria-current={active === n.id ? (current === n.id ? "page" : "true") : undefined}>{inner}</Link>
+            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge ?? (FOLDED_NODES.includes(n.id) && hasPriceBadge(n) ? "prices" : undefined)} counts={counts} /></>;
+            const link = n.href && <Link key={n.id} className="navbar-link" href={n.href} aria-current={active === n.id ? (current === n.id ? "page" : "true") : undefined}>{inner}</Link>;
+            // rubrique repliée avec sa propre page : le libellé y mène, le chevron ouvre la liste de ses sous-écrans
+            if (link && n.children && FOLDED_NODES.includes(n.id)) return (
+              <span key={n.id} style={{ display: "contents" }}>
+                {link}
+                <button type="button" className="navbar-link navbar-more" aria-haspopup="dialog" aria-label={`Sous-menu ${n.label}`} onClick={(e) => openSheet(n.id, e.currentTarget)}><span className="navbar-chevron" aria-hidden="true"><Icon name="caret" /></span></button>
+              </span>
+            );
+            return link
+              ? link
               : <button key={n.id} type="button" className="navbar-link" aria-haspopup="dialog" aria-current={active === n.id ? "true" : undefined} onClick={(e) => openSheet(n.id, e.currentTarget)}>{inner}<span className="navbar-chevron" aria-hidden="true"><Icon name="caret" /></span></button>;
           })}
         </span>

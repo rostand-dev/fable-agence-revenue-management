@@ -8,9 +8,9 @@ import { hasDatabase } from "./helpers/roles";
  * Inventaire des écrans : aucun écran ne doit disparaître quand la navigation change.
  * 1. chaque page de l'application est inscrite ici (contrôle sur les fichiers `page.tsx`) ;
  * 2. chaque écran répond ;
- * 3. chaque écran s'atteint depuis l'accueil en 3 clics au plus, sur ordinateur comme sur mobile. Un « clic » est un lien suivi vers un écran :
- *    déplier une rubrique du menu, ouvrir la feuille « Plus » ou la feuille des sections d'une fiche ne change pas d'écran et ne compte pas
- *    (le geste réel de ces feuilles est vérifié dans navigation-menu.spec.ts et fiche-hubs.spec.ts).
+ * 3. chaque écran s'atteint depuis l'accueil en 3 clics au plus, sur ordinateur, tablette et mobile. Tout geste compte : suivre un lien (1),
+ *    mais aussi déplier une rubrique de la colonne, ouvrir la feuille « Plus » ou un sous-menu de la rangée tablette, la feuille des sections
+ *    d'une fiche ou un bloc replié (1 de plus chacun). Les gestes réels de ces feuilles sont vérifiés dans navigation-menu.spec.ts et fiche-hubs.spec.ts.
  */
 const MAX_CLICS = 3;
 
@@ -58,7 +58,7 @@ async function seed(page: Page, tag: string, ids: string[]) {
   const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   try {
     // le logement réel est daté « dans le futur » : il reste parmi les logements récents du menu même quand d'autres tests en créent en parallèle
-    // (un par largeur, soit trois au plus pour cinq places)
+    // (un par largeur, tablette comprise, soit quatre au plus pour cinq places)
     await c.query("update properties set created_at = now() + interval '1 day' where id = $1", [ids[0]]);
     // modèle économique complet et rapprochement avec un écart : les liens « saisons » et « écarts » n'apparaissent qu'à cette condition
     const economics = { origin: "OWNER", channels: { AIRBNB: { commissionPct: 3, paymentFeePct: 0 }, BOOKING: { commissionPct: 15, paymentFeePct: 0 } }, cleaningFeeChargedCents: 4000, cleaningCostCents: 3500, linenCostCents: 800,
@@ -68,6 +68,23 @@ async function seed(page: Page, tag: string, ids: string[]) {
     await c.query("update properties set status = 'SHADOW', economics = $2::jsonb, economics_version = 1, superhote = $3::jsonb, pricelabs = $4::jsonb where id = $1", [ids[0], JSON.stringify(economics), JSON.stringify(superhote), JSON.stringify({ apiKeyEnc: "x", listingId: `inv-${ids[0]}`, listingName: "Annonce E2E" })]);
   } finally { await c.end(); }
   return { reel: ids[0], brouillon: ids[1] };
+}
+/** Mois terminé, `offset` mois en arrière : chaque largeur a le sien, distinct de ceux de rapports-mensuels.spec.ts. */
+function monthValue(offset: number): string {
+  const d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - offset);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+/** Un brouillon de rapport, sans lequel l'écran d'un rapport n'existe pas. */
+async function prepareRapport(page: Page, mois: string) {
+  await page.goto("/rapports");
+  await page.getByLabel("Mois à rapporter").selectOption(mois);
+  await page.getByRole("button", { name: "Préparer ou actualiser le rapport" }).click();
+  await expect(page.getByText("Rapport préparé")).toBeVisible();
+}
+async function removeRapport(mois: string) {
+  const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
+  // brouillons des logements de démonstration seulement : rien de réel n'est touché
+  try { await c.query("delete from monthly_reports where month = $1 and status = 'DRAFT' and property_id in (select id from properties where is_demo)", [mois]); } finally { await c.end(); }
 }
 /** Restes d'un essai interrompu : logements de ce test vieux de plus d'une heure (le logement réel est daté un jour plus tard). */
 async function purge() {
@@ -79,23 +96,67 @@ async function remove(ids: string[]) {
   try { await c.query("delete from properties where id = any($1)", [ids]); } finally { await c.end(); }
 }
 
-/** Liens que la personne peut suivre : menu adapté à la largeur et contenu de la page. */
-async function liens(page: Page): Promise<string[]> {
+type Lien = { href: string; gestes: number };
+/** Liens que la personne peut suivre (menu adapté à la largeur et contenu de la page), avec le nombre de gestes nécessaires avant de pouvoir toucher chacun. */
+async function liens(page: Page): Promise<Lien[]> {
   return page.evaluate(() => {
     const w = window.innerWidth;
     const menus = w >= 1024 ? [".rail"] : w >= 768 ? [".navbar", ".nav-sheet"] : [".bottombar", ".nav-sheet"];
     const sel = [...menus, ".content", ".fn"].map((s) => `${s} a[href]`).join(",");
-    // la feuille des sections d'une fiche n'existe pas en grand écran
-    return Array.from(document.querySelectorAll<HTMLAnchorElement>(sel)).filter((a) => !(w >= 1024 && a.closest(".section-switcher"))).map((a) => a.getAttribute("href")!).filter((h) => h.startsWith("/"));
+    /** Un geste par élément replié à ouvrir : branche de la colonne, feuille, bloc dépliable. Null : lien impossible à montrer. */
+    const gestes = (a: HTMLAnchorElement): number | null => {
+      const touchable = (el: Element | null | undefined) => {
+        if (!el || !el.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return false;
+        const r = el.getBoundingClientRect();
+        return r.right > 0 && r.left < w;
+      };
+      const feuille = a.closest("dialog.nav-sheet");
+      if (feuille) {
+        const sections = !!feuille.closest(".section-switcher");
+        if (sections && w >= 1024) return null;
+        // tablette : le chevron d'une rubrique ouvre sa feuille déjà dépliée ; mobile : « Plus » puis, au besoin, la rubrique
+        if (!sections && w >= 768) {
+          const titre = a.closest("details")?.querySelector("summary > span:not([data-icon]):not([class])")?.textContent;
+          const ouvre = Array.from(document.querySelectorAll(".navbar button")).find((b) => b.getAttribute("aria-label") === `Sous-menu ${titre}` || b.textContent?.trim() === titre);
+          return touchable(ouvre) ? 1 : null;
+        }
+        const declencheur = sections ? feuille.parentElement?.querySelector(".section-switcher-btn") : Array.from(document.querySelectorAll(".bottombar button")).at(-1);
+        if (!touchable(declencheur)) return null;
+        const bloc = a.closest("details");
+        return bloc && !bloc.open ? 2 : 1;
+      }
+      let n = 0;
+      for (let el: HTMLElement | null = a.parentElement; el; el = el.parentElement) {
+        // le titre d'un bloc replié reste touchable ; son contenu demande de l'ouvrir
+        if (el instanceof HTMLDetailsElement && !el.open && a.closest("summary")?.parentElement !== el) n++;
+        else if (el.matches("ul.rail-sub[hidden]")) n++;
+        else if (el.hidden) return null;
+      }
+      // lien masqué à cette largeur (autre présentation du même menu) : on ne le compte pas
+      if (n === 0 && !touchable(a)) return null;
+      return n;
+    };
+    return Array.from(document.querySelectorAll<HTMLAnchorElement>(sel)).flatMap((a) => {
+      const href = a.getAttribute("href")!, g = href.startsWith("/") ? gestes(a) : null;
+      return g === null ? [] : [{ href, gestes: g }];
+    });
   });
 }
 
-test("Inventaire : chaque écran répond et s'atteint depuis l'accueil en 3 clics au plus", async ({ page }, info) => {
+test("Inventaire : chaque écran répond et s'atteint depuis l'accueil en 3 clics au plus", async ({ page }, info) => parcours(page, info.project.name));
+test("Inventaire (tablette) : chaque écran s'atteint depuis l'accueil en 3 clics au plus à 768 px", async ({ page }, info) => {
+  test.skip(info.project.name !== "bureau", "une seule passe à 768 px");
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await parcours(page, "tablette");
+});
+async function parcours(page: Page, largeur: string) {
   test.setTimeout(240_000);
   const db = hasDatabase();
   const ids: string[] = [];
+  const mois = monthValue(({ bureau: 8, tablette: 9, "mobile-390": 10, "mobile-360": 11 } as Record<string, number>)[largeur] ?? 12);
   try {
-    const own = db ? await seed(page, `${info.project.name}-${Date.now().toString(36)}`, ids) : null;
+    const own = db ? await seed(page, `${largeur}-${Date.now().toString(36)}`, ids) : null;
+    if (db) await prepareRapport(page, mois);
     // on ne suit que les logements de démonstration et les nôtres : ceux des autres tests peuvent disparaître en cours de parcours
     await page.goto("/logements");
     const demos = await page.locator('.content a[href^="/logements/"]:has(.demo-pill)').evaluateAll((as) => as.map((a) => a.getAttribute("href")!.split("/")[2]));
@@ -120,34 +181,38 @@ test("Inventaire : chaque écran répond et s'atteint depuis l'accueil en 3 clic
     const depth = new Map<string, number>([["/", 0]]);
     // un écran peut être visité sur un logement de démonstration puis sur le nôtre : leurs liens diffèrent
     const visited = new Set<string>();
-    let frontier = ["/"];
+    // parcours par nombre de gestes croissant : un lien peut en coûter plusieurs, il rejoint alors une file plus lointaine
+    const files = new Map<number, string[]>([[0, ["/"]]]);
     for (let d = 0; d < MAX_CLICS; d++) {
-      const next: string[] = [];
-      for (const href of frontier) {
+      for (const href of files.get(d) ?? []) {
+        const k0 = classify(href) ?? href;
+        const visit = `${k0}|${own && href.includes(own.reel) ? "sien" : "autre"}`;
+        if (visited.has(visit)) continue;
+        visited.add(visit);
         const res = await page.goto(href);
         expect(res?.status(), `${href} : statut HTTP`).toBeLessThan(400);
         await expect(page).not.toHaveURL(/\/connexion/);
         for (const l of await liens(page)) {
-          const k = classify(l);
-          if (!k) continue;
-          if (!depth.has(k)) depth.set(k, d + 1);
-          const sien = own && l.includes(own.reel);
-          const visit = `${k}|${sien ? "sien" : "autre"}`;
-          if (!visited.has(visit)) { visited.add(visit); next.push(l); }
+          const k = classify(l.href);
+          const total = d + 1 + l.gestes;
+          if (!k || total > MAX_CLICS) continue;
+          if (total < (depth.get(k) ?? Infinity)) depth.set(k, total);
+          if (total < MAX_CLICS) files.set(total, [...(files.get(total) ?? []), l.href]);
         }
       }
-      frontier = next;
     }
     const manquants: string[] = [];
     for (const s of SCREENS) {
-      // données absentes : logement réel non créable (environnement distant), ou aucun rapport préparé
+      // données absentes (environnement distant) : logement réel non créable, ou aucun rapport préparé
       if (!db && (s.needs === "propriete" || s.needs === "brouillon")) continue;
-      if (s.needs === "rapport" && !depth.has(keyOf(s))) continue;
+      if (!db && s.needs === "rapport" && !depth.has(keyOf(s))) continue;
       if (!depth.has(keyOf(s))) manquants.push(keyOf(s));
     }
     expect(manquants, `écrans hors de portée en ${MAX_CLICS} clics`).toEqual([]);
-  } finally { if (ids.length) await remove(ids); }
-});
+  } finally {
+    try { if (ids.length) await remove(ids); } finally { if (db) await removeRapport(mois); }
+  }
+}
 
 test("Inventaire : les écrans à onglet répondent aussi quand on les ouvre directement", async ({ page }) => {
   await page.goto("/logements");

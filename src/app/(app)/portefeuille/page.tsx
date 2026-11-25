@@ -105,7 +105,7 @@ export default async function Portefeuille() {
         <div className="synth synth-fit" data-testid="pf-kpi">
           <Metric label="Occupation · 3 derniers mois" value={occ.rate !== null ? pct(occ.rate) : <Vq>inconnue</Vq>} source={occ.rate !== null ? `${occ.nights} nuits vendues sur ${occ.available} disponibles · ${occ.properties} logement${occ.properties > 1 ? "s" : ""} avec historique` : "Aucun historique de réservations lu"} />
         </div>
-        <p className="foot">Le détail par logement, le revenu net et sa tendance sont dans chaque fiche logement. <Link href="/bilan">Bilan mensuel</Link></p>
+        <p className="foot">Le détail par logement, le revenu net et sa tendance sont dans chaque fiche logement. <Link href="/bilan">Bilan mensuel</Link> · <Link href="/rapports">Rapports mensuels</Link></p>
       </section>
 
       <section className="section" aria-labelledby="pf-integr">

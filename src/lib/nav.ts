@@ -84,6 +84,9 @@ export function buildNav(properties: NavProperty[], currentPropertyId: string | 
   ];
 }
 
+/** Vrai si ce nœud ou l'un de ses descendants porte la pastille des prix : une rubrique repliée la reprend, pour qu'elle reste visible. */
+export const hasPriceBadge = (n: NavNode): boolean => n.badge === "prices" || !!n.children?.some(hasPriceBadge);
+
 const within = (path: string, base: string) => path === base || path.startsWith(base + "/");
 
 /** Nœud du menu qui correspond à l'écran courant (chemin et onglet), ou null. */
@@ -115,5 +118,5 @@ export function ancestorIds(groups: NavGroup[], id: string | null): string[] {
   return walk(groups.flatMap((g) => g.items), []) ?? [];
 }
 
-/** Rubriques repliées dans la feuille « Plus » (mobile) et dans la rangée tablette (où une rubrique qui a sa propre page, comme Paramètres, y mène directement). */
+/** Rubriques repliées dans la feuille « Plus » (mobile) et dans la rangée tablette. Sur tablette, une rubrique qui a sa propre page (Paramètres) y mène directement, et un chevron à côté ouvre la feuille de ses sous-écrans. */
 export const FOLDED_NODES = ["analyse", "agence-ia", "parametres"];
