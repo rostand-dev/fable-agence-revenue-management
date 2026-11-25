@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
-import { db, schema } from "@/db";
+import { db, newId, schema } from "@/db";
 import { recordAudit } from "@/lib/audit/log";
 import { userActor, type AuditType } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
@@ -10,6 +10,11 @@ import { AGENTS } from "@/lib/agents/registry";
 import { LlmError } from "@/lib/agents/llm";
 import { isProviderKey, listProviderModels, loadOwnerKeys, PROVIDER_LABEL, type OwnerKey } from "@/lib/agents/owner-keys";
 import { catalogById, type ProviderKey } from "@/lib/llm-registry/catalog";
+import { runBench } from "@/lib/llm-registry/bench";
+import { benchPreflight } from "@/lib/llm-registry/bench-guard";
+import { parseMonthlyCapEur, setMonthlyCapEur, usdToEur } from "@/lib/llm-registry/cap";
+import { BENCH_AGENT_ID } from "@/lib/llm-registry/bench-guard";
+import { rejectPendingPrice, validatePendingPrice } from "@/lib/llm-registry/price-validation";
 import { refreshAvailabilityForKey } from "@/lib/llm-registry/sync";
 import { requireUser } from "@/lib/auth";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
@@ -158,5 +163,65 @@ export async function saveAgentModelAction(_: FormState, fd: FormData): Promise<
     await audit(u.tenantId, u.id, "llm.model_saved", `${u.name} change le modèle de ${agent.title}.`, { agentId, model: model || null });
     revalidatePath("/", "layout");
     return { ok: model ? "Modèle enregistré." : "Cet agent repasse en mode automatique." };
+  });
+}
+
+/** Plafond mensuel de dépense des modèles, en euros. Vide = aucun plafond. À 100 %, les agents repassent en mode déterministe jusqu'au 1er du mois suivant (UTC). */
+export async function saveMonthlyCapAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  return run(async () => {
+    const p = parseMonthlyCapEur(txt(fd, "cap"));
+    if (!p.ok) return { error: p.error };
+    await setMonthlyCapEur(u.tenantId, p.value);
+    await audit(u.tenantId, u.id, "llm.cap_saved", p.value === null ? `${u.name} retire le plafond mensuel de dépense des modèles.` : `${u.name} fixe le plafond mensuel de dépense des modèles à ${p.value.toLocaleString("fr-FR")} €.`, { capEur: p.value });
+    revalidatePath("/", "layout");
+    return { ok: p.value === null ? "Plafond retiré : aucune limite de dépense." : `Plafond enregistré : ${p.value.toLocaleString("fr-FR")} € par mois.` };
+  });
+}
+
+/** Validation en un clic du nouveau prix d'un modèle (ou refus : le prix validé reste en vigueur). Le prix en attente ne sert à aucun calcul avant validation. */
+export async function decidePriceAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  return run(async () => {
+    const modelId = txt(fd, "modelId"), accept = txt(fd, "decision") === "valider";
+    const m = catalogById(modelId);
+    if (!m) return { error: "Modèle inconnu." };
+    const done = accept ? await validatePendingPrice(modelId, u.id) : await rejectPendingPrice(modelId, u.id);
+    if (!done) return { error: "Il n'y a plus de changement de prix à traiter pour ce modèle (déjà traité ?)." };
+    await audit(u.tenantId, u.id, accept ? "llm.price_validated" : "llm.price_rejected", `${u.name} ${accept ? "valide" : "refuse"} le changement de prix de ${m.label}.`, { modelId });
+    revalidatePath("/", "layout");
+    return { ok: accept ? `Nouveau prix de ${m.label} validé.` : `Changement de prix de ${m.label} refusé : l'ancien prix reste en vigueur.` };
+  });
+}
+
+/**
+ * Bouton « Tester ce modèle » : banc sur cas synthétiques (aucune donnée de logement envoyée) avec LA clé du propriétaire.
+ * Le coût estimé est montré avant le clic ; le coût réel est tracé (agent_runs, ligne « banc ») et compte dans le plafond mensuel.
+ * Refusé si le prix est inconnu (coût non chiffrable), si le plafond est atteint ou serait dépassé, ou si la cadence est dépassée.
+ */
+export async function benchModelAction(_: FormState, fd: FormData): Promise<FormState> {
+  const u = await requireUser();
+  return run(async () => {
+    const pre = await benchPreflight(u.tenantId, txt(fd, "modelId"));
+    if (!pre.ok) return { error: pre.error };
+    const { model: m, key, estimateUsd } = pre;
+    const t0 = Date.now(), runId = newId("run");
+    // la ligne de trace est posée AVANT le test : un second clic ou un second onglet voit le test en cours (cadence) ; elle est complétée ensuite avec le coût réel
+    await db.insert(schema.agentRuns).values({
+      id: runId, tenantId: u.tenantId, agentId: BENCH_AGENT_ID, operation: "bench", mode: "LLM", model: m.modelId, provider: m.provider,
+      summary: `Test de ${m.label} en cours.`, costEstimatedUsd: String(Math.round(estimateUsd * 1e6) / 1e6), durationMs: 0,
+    });
+    const out = await runBench({ modelId: m.modelId, apiKey: key.apiKey, evaluatedBy: u.id });
+    // coût réel tracé dans tous les cas (même interrompu) : il compte dans le plafond du mois
+    const costUsd = out.costUsd ?? null;
+    await db.update(schema.agentRuns).set({
+      summary: out.ok ? `Test de ${m.label} : ${out.results.filter((r) => r.status === "QUALIFIED").length} tâche(s) qualifiée(s) sur ${out.results.length}.` : `Test de ${m.label} interrompu.`,
+      costUsd: costUsd === null ? null : String(Math.round(costUsd * 1e6) / 1e6), durationMs: Date.now() - t0, error: out.ok ? null : out.error,
+    }).where(eq(schema.agentRuns.id, runId));
+    if (!out.ok) return { error: out.error };
+    const okN = out.results.filter((r) => r.status === "QUALIFIED").length;
+    await audit(u.tenantId, u.id, "llm.bench_run", `${u.name} teste ${m.label} : ${okN} tâche${okN > 1 ? "s" : ""} qualifiée${okN > 1 ? "s" : ""} sur ${out.results.length}.`, { modelId: m.modelId, results: out.results, costUsd });
+    revalidatePath("/", "layout");
+    return { ok: `Test terminé : ${okN} tâche${okN > 1 ? "s" : ""} qualifiée${okN > 1 ? "s" : ""} sur ${out.results.length}.${costUsd === null ? "" : ` Coût réel ≈ ${usdToEur(costUsd).toLocaleString("fr-FR", { maximumFractionDigits: 4 })} €.`}` };
   });
 }

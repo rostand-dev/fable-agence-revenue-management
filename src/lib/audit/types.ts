@@ -85,6 +85,10 @@ export const AUDIT_TYPES = {
   "llm.models_saved": { category: "CONFIGURATION", label: "Modèles par agent enregistrés" },
   "llm.model_saved": { category: "CONFIGURATION", label: "Modèle d'un agent modifié" },
   "llm.models_refreshed": { category: "CONFIGURATION", label: "Liste des modèles actualisée" },
+  "llm.price_validated": { category: "CONFIGURATION", label: "Changement de prix d'un modèle validé" },
+  "llm.price_rejected": { category: "CONFIGURATION", label: "Changement de prix d'un modèle refusé" },
+  "llm.cap_saved": { category: "CONFIGURATION", label: "Plafond mensuel de dépense des modèles modifié" },
+  "llm.bench_run": { category: "CONFIGURATION", label: "Test d'un modèle lancé" },
   // intégrations
   "integration.kill_switch_on": { category: "INTEGRATION", label: "Coupe-circuit activé" },
   "integration.kill_switch_off": { category: "INTEGRATION", label: "Coupe-circuit levé" },

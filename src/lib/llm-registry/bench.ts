@@ -26,6 +26,10 @@ import { computeCostUsd } from "./prices";
 import { getPriceBook } from "./pricebook";
 import { PROFILES } from "./profiles";
 
+/** Au plus un test par modèle toutes les 15 minutes, et 6 par heure pour l'espace : un test appelle de vrais modèles avec la clé du propriétaire, donc il coûte. */
+export const BENCH_MODEL_COOLDOWN_MIN = 15;
+export const BENCH_HOURLY_LIMIT = 6;
+
 /** Seuil de réussite pour être (ou rester) qualifié. */
 export const QUALIFY_THRESHOLD = 0.95;
 /** Cas maximum par tâche (coût borné et prévisible). */
@@ -97,7 +101,7 @@ export function benchVerdict(ok: number, total: number): { status: "QUALIFIED" |
 
 export type BenchOutcome =
   | { ok: true; results: { task: PromptId; ok: number; total: number; status: "QUALIFIED" | "SUSPENDED"; score: number }[]; costUsd: number | null }
-  | { ok: false; error: string };
+  | { ok: false; error: string; /** coût déjà engagé avant l'interruption (null = prix inconnu) */ costUsd?: number | null };
 
 /**
  * Lance le banc d'un modèle avec LA clé de la personne qui clique, sur des cas synthétiques. Une panne du fournisseur (clé refusée, réseau, quota) ne compte pas comme un échec du modèle :
@@ -118,7 +122,7 @@ export async function runBench(input: { modelId: string; apiKey: string; evaluat
     for (const c of cases) {
       const r = await generateJson([{ provider, apiKey: input.apiKey, model: m.modelId, source: "utilisateur" }], { task, system: PROMPTS[task].system, user: c.user, schema: c.schema, maxTokens: PROMPTS[task].maxTokens, maxAttempts: 2 });
       const providerFailure = r.meta.tried.some((t) => t.outcome === "PROVIDER_ERROR");
-      if (providerFailure && !r.ok) return { ok: false, error: `Banc interrompu : ${r.message.replace(/ Repli déterministe\.$/, "")} Aucun résultat enregistré.` };
+      if (providerFailure && !r.ok) { const c0 = computeCostUsd(book.get(m.modelId)?.price, r.meta.inputTokens, r.meta.outputTokens); return { ok: false, error: `Banc interrompu : ${r.message.replace(/ Repli déterministe\.$/, "")} Aucun résultat enregistré.`, costUsd: costUsd === null || c0 === null ? null : costUsd + c0 }; }
       if (r.ok) ok++;
       const c1 = computeCostUsd(book.get(m.modelId)?.price, r.meta.inputTokens, r.meta.outputTokens);
       costUsd = costUsd === null || c1 === null ? null : costUsd + c1;

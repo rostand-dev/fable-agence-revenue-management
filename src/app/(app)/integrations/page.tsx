@@ -2,6 +2,8 @@ import { killSwitchAction } from "@/app/actions/settings";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Banner, Recap, State, Vq } from "@/components/ui";
+import { CapBanner } from "@/components/CapBanner";
+import { getCapState } from "@/lib/llm-registry/cap-state";
 import { LlmKeyPanel } from "@/components/LlmKeyPanel";
 import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
@@ -18,7 +20,7 @@ const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 export default async function Integrations({ searchParams }: { searchParams: Promise<{ llm?: string }> }) {
   const { llm } = await searchParams;
   const user = await requireUser();
-  const [llmStatus, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
+  const [llmStatus, cap, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), getCapState(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
   return (
     <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Configuration" }, { label: "Intégrations" }]}>
       <div className="page-head">
@@ -64,6 +66,7 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
             </article>
           );
         })}
+        <CapBanner cap={cap} />
         <LlmKeyPanel status={llmStatus} />
       </div>
     </Page>
