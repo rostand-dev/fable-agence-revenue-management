@@ -26,6 +26,7 @@ test("Modèles : l'écran affiche plafond, coûts par agent et modèles du catal
 });
 
 test("Modèles : fixer puis retirer le plafond mensuel ; une saisie invalide est refusée avec un message clair", async ({ page }) => {
+  test.skip(!!process.env.E2E_BASE_URL?.trim(), "sur la Preview (E2E_BASE_URL) on ne modifie pas les réglages d'un espace partagé : la saisie est couverte par la CI sur base éphémère");
   await page.goto("/modeles");
   const f = page.locator("#plafond");
   await f.getByLabel("Plafond mensuel (€)").fill("-5");
