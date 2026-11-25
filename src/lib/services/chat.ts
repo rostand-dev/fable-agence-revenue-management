@@ -24,7 +24,7 @@ function deterministicAnswer(agentId: AgentId, q: string, o: typeof opportunitie
     if (/preuve|source|donn[ée]e/.test(t)) return "Pièces du dossier : " + (o.diagnosis.evidence as any[]).map((e) => `${e.label} — ${e.value} (${e.source})`).join(" ; ") + ".";
     if (/risque|plancher|audit|veto/.test(t)) return `Verdict de l'auditeur sur l'option retenue : ${sel.audit.verdict === "APPROVE" ? "conforme" : sel.audit.verdict === "REJECT" ? "rejetée" : "validation commentée requise"}. ` + sel.audit.rules.map((r) => `${r.label} : ${r.detail}`).join(" ");
     if (/pourquoi|expliqu|cause|raison/.test(t)) return `${o.narrative?.summary ?? ""} ${o.narrative?.recommendation ?? ""} Diagnostic : ${o.diagnosis.primaryLabel}. ${o.diagnosis.confidenceNote}`;
-    return `Je peux répondre ici sur quatre points du dossier ${o.code} : pourquoi cette recommandation, ce qui se passe en cas d'inaction, les preuves, et l'avis de l'auditeur. Les réponses libres demandent une clé API (voir Paramètres › Intégrations) ; sans elle, je m'en tiens aux faits du dossier.`;
+    return `Je peux répondre ici sur quatre points du dossier ${o.code} : pourquoi cette recommandation, ce qui se passe en cas d'inaction, les preuves, et l'avis de l'auditeur. Les réponses libres demandent une clé API (voir Paramètres › IA & modèles › Clés fournisseurs) ; sans elle, je m'en tiens aux faits du dossier.`;
   }
   if (/fais|rôle|mission|sers/.test(t)) return `${a.mission} Mes droits : ${a.rights}`;
   if (/limite|jamais|interdit/.test(t)) return "Mes limites : " + a.limits.join(" ; ") + ".";

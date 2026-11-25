@@ -3,7 +3,7 @@ import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 
 // Pages principales d'un propriétaire connecté : elles s'ouvrent, affichent un titre et tiennent dans l'écran (bureau, 390 px et 360 px).
-const PAGES = ["/", "/logements", "/equipe", "/bilan", "/historique", "/integrations", "/glossaire", "/methode", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo"];
+const PAGES = ["/", "/logements", "/equipe", "/bilan", "/historique", "/integrations", "/glossaire", "/methode", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo", "/modeles", "/modeles/cles", "/modeles/agents", "/modeles/budget", "/modeles/catalogue"];
 
 for (const path of PAGES) {
   test(`page ${path} : s'ouvre, titre visible, sans débordement`, async ({ page }) => {

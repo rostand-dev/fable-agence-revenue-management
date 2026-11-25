@@ -20,8 +20,8 @@ export async function benchPreflight(tenantId: string, modelId: string, now: Dat
   const m = catalogById(modelId);
   if (!m) return { ok: false, error: "Modèle inconnu." };
   const key = (await loadOwnerKeys(tenantId)).get(m.provider);
-  if (!key) return { ok: false, error: `Saisissez d'abord votre clé API ${PROVIDER_LABEL[m.provider]} dans Intégrations : le test utilise votre clé.` };
-  if (!key.models.some((x) => x.id === m.modelId)) return { ok: false, error: `${m.label} ne figure pas dans la liste de votre clé. Actualisez la liste des modèles dans Intégrations.` };
+  if (!key) return { ok: false, error: `Saisissez d'abord votre clé API ${PROVIDER_LABEL[m.provider]} dans IA & modèles › Clés fournisseurs : le test utilise votre clé.` };
+  if (!key.models.some((x) => x.id === m.modelId)) return { ok: false, error: `${m.label} ne figure pas dans la liste de votre clé. Actualisez la liste des modèles dans IA & modèles › Clés fournisseurs.` };
   const est = await estimateBenchCostUsd(m.modelId);
   if (est.costUsd === null || est.maxUsd === null) return { ok: false, error: "Le prix de ce modèle n'est pas connu : le coût du test ne peut pas être chiffré, il n'est donc pas lancé." };
   const cap = await getCapState(tenantId, now);

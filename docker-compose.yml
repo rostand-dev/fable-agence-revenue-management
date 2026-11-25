@@ -24,7 +24,7 @@ services:
       # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, et les clés de modèles Anthropic, OpenAI, Mistral des propriétaires). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
       - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
       # Facultatif : modèle Anthropic de démarrage du routeur. Utilisé avec la clé Anthropic du propriétaire tant qu'aucun modèle n'est qualifié pour une tâche (« démarrage sans régression »).
-      # Le serveur ne détient aucune clé de modèle : chaque propriétaire saisit les siennes (Anthropic, OpenAI, Mistral) dans Intégrations.
+      # Le serveur ne détient aucune clé de modèle : chaque propriétaire saisit les siennes (Anthropic, OpenAI, Mistral) dans Paramètres › IA & modèles › Clés fournisseurs.
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
       # Facultatif : adresse de l'API Mistral (tests avec un faux serveur). Défaut : https://api.mistral.ai.
       - MISTRAL_API_BASE=${MISTRAL_API_BASE:-https://api.mistral.ai}

@@ -19,7 +19,7 @@ export default async function Equipe() {
     <Page title="Équipe IA" sub="Huit postes · un agent par poste" crumbs={[{ label: "Équipe" }]}>
       <div className="page-head">
         <h1>Votre agence</h1>
-        <p>Huit postes, comme dans une agence de revenue management. Chacun a une mission, des droits et des limites. Le prénom se modifie dans <Link href="/parametres/compte#equipe-ia">Paramètres › Compte &amp; sécurité</Link>, le rôle ne change pas. Aucun agent n'est mis en avant par la couleur.</p>
+        <p>Huit postes, comme dans une agence de revenue management. Chacun a une mission, des droits et des limites. Le prénom se modifie dans <Link href="/modeles/agents#equipe-ia">Paramètres › IA &amp; modèles › Agents</Link>, le rôle ne change pas. Aucun agent n'est mis en avant par la couleur.</p>
       </div>
       <div className="roster">
         {AGENTS.map((a) => {

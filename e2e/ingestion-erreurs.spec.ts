@@ -34,7 +34,7 @@ test("Erreurs d'ingestion : rejeu, mise à l'écart et lectures en échec, lisib
   await seed("c", `E${rid}3`, { id: "illisible" }, 1, "Charge utile illisible (e2e)");
 
   await page.goto("/integrations");
-  await expect(page.getByTestId("ingestion-link")).toContainText("Erreurs d'ingestion SuperHote (");
+  await expect(page.getByTestId("ingestion-link")).toContainText(/[1-9]\d* à traiter/);
   await page.getByTestId("ingestion-link").getByRole("link").click();
   await expect(page).toHaveURL(/\/integrations\/erreurs/);
 

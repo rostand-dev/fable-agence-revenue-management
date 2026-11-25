@@ -8,7 +8,8 @@ import { benchPreflight, BENCH_AGENT_ID } from "./bench-guard";
 import { monthlySpendUsd, setMonthlyCapEur } from "./cap";
 import { agentCosts, modelsOverview } from "./overview";
 import { invalidatePriceBook } from "./pricebook";
-import { rejectPendingPrice, validatePendingPrice } from "./price-validation";
+import { getSpendState } from "./cap-state";
+import { pendingPriceCount, rejectPendingPrice, validatePendingPrice } from "./price-validation";
 import { seedCatalog, syncPrices } from "./sync";
 
 const NOW = new Date();
@@ -193,5 +194,23 @@ describe("garanties de la relecture (base réelle)", () => {
     await setMonthlyCapEur(t.tenantId, 100);
     await run(t.tenantId, { costUsd: String(100 / 0.92 - p.estimateUsd * 1.5) }); // reste 1,5 × l'estimation : passe en nominal, pas au pire cas
     expect(await benchPreflight(t.tenantId, "claude-haiku-5-5")).toMatchObject({ ok: false, error: expect.stringContaining("jusqu'à") });
+  });
+});
+
+describe("hub IA & modèles (base réelle)", () => {
+  beforeEach(() => setup());
+  it("la dépense du mois affichée n'est pas nulle quand aucun plafond n'est fixé", async () => {
+    const t = await makeTenant("hub-depense");
+    await run(t.tenantId, { costUsd: "12" });
+    const s = await getSpendState(t.tenantId);
+    expect(s).toMatchObject({ capEur: null, level: "none" });
+    expect(s.spentEur).toBeGreaterThan(0);
+  });
+  it("compte les modèles du catalogue dont un prix attend une décision", async () => {
+    expect(await pendingPriceCount()).toBe(0);
+    await db.insert(schema.llmPriceSnapshots).values({ id: newId("price"), modelId: "gpt-6-luna", inputUsdPerMtok: "9", outputUsdPerMtok: "18", source: "test", status: "PENDING" });
+    expect(await pendingPriceCount()).toBe(1);
+    await rejectPendingPrice("gpt-6-luna", "system");
+    expect(await pendingPriceCount()).toBe(0);
   });
 });
