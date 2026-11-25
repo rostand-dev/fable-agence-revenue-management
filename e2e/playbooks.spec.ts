@@ -88,3 +88,20 @@ test("Méthode : les règles de l'auditeur distinguent veto et validation humain
   await section.screenshot({ path: test.info().outputPath("auditeur.png") });
   await test.info().attach("auditeur", { path: test.info().outputPath("auditeur.png"), contentType: "image/png" });
 });
+
+// Calibrage : la page Méthode confronte chaque playbook à ses décisions réelles, sans débordement.
+test("Méthode : le calibrage liste les 13 playbooks avec verdict et tendance, sans débordement", async ({ page }) => {
+  await page.goto("/methode");
+  const section = page.getByTestId("calibrage");
+  await expect(section).toBeVisible();
+  const lines = section.locator("li.calibrage-line");
+  await expect(lines).toHaveCount(13);
+  await expect(lines.first()).toContainText("PB-01");
+  await expect(section).toContainText("taux d'approbation inconnu");
+  await expect(lines.first()).toHaveAttribute("data-verdict", /.+/);
+  await expect(lines.first()).toHaveAttribute("data-trend", /.+/);
+  await expectNoHorizontalOverflow(page, "méthode : calibrage");
+  await section.scrollIntoViewIfNeeded();
+  await section.screenshot({ path: test.info().outputPath("calibrage.png") });
+  await test.info().attach("calibrage", { path: test.info().outputPath("calibrage.png"), contentType: "image/png" });
+});
