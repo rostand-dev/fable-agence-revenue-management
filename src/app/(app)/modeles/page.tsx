@@ -5,6 +5,7 @@ import { fmtEur } from "@/lib/llm-registry/cap-message";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Banner, Recap, State, Vq } from "@/components/ui";
+import { isLlmAdmin } from "@/lib/llm-registry/admin";
 import { PROVIDER_LABEL } from "@/lib/agents/owner-keys";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
@@ -22,7 +23,7 @@ const TIER = { eco: "Économique", intermediaire: "Intermédiaire", premium: "Pr
 const usd = (v: number) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(v);
 const price = (p: PriceEntry) => `${usd(p.inputPerMtok)} entrée · ${usd(p.outputPerMtok)} sortie`;
 
-function ModelCard({ r }: { r: ModelRow }) {
+function ModelCard({ r, admin }: { r: ModelRow; admin: boolean }) {
   const m = r.model, bench = r.benchEstimateUsd;
   return (
     <article className="stratum" data-testid={`model-${m.modelId}`} data-state={r.state}>
@@ -42,23 +43,25 @@ function ModelCard({ r }: { r: ModelRow }) {
         {r.pending && (
           <div data-testid="price-pending">
             <Banner role="attention" title="Nouveau prix détecté : à valider">
-              <p style={{ margin: "0 0 10px" }}>{r.price ? <>Le prix passerait de <strong>{price(r.price)}</strong> à <strong>{price(r.pending)}</strong>.</> : <>Premier prix relevé : <strong>{price(r.pending)}</strong>.</>} Tant qu'il n'est pas validé, il ne sert à aucun calcul de coût ni de plafond.</p>
-              <ActionForm action={decidePriceAction} hidden={{ modelId: m.modelId }}>
+              <p style={{ margin: 0 }}>{r.price ? <>Le prix passerait de <strong>{price(r.price)}</strong> à <strong>{price(r.pending)}</strong>.</> : <>Premier prix relevé : <strong>{price(r.pending)}</strong>.</>} Tant qu'il n'est pas validé, il ne sert à aucun calcul de coût ni de plafond.</p>
+            </Banner>
+            {admin ? (
+              <ActionForm action={decidePriceAction} hidden={{ modelId: m.modelId, snapshotId: r.pendingId ?? "" }} style={{ marginTop: 10 }}>
                 <div className="btn-row">
                   <Submit name="decision" value="valider" icon="check" pendingLabel="Validation…">Valider le nouveau prix</Submit>
                   <Submit name="decision" value="refuser" className="btn btn-ghost" icon="cross" pendingLabel="Refus…">Refuser</Submit>
                 </div>
               </ActionForm>
-            </Banner>
+            ) : <p className="muted" style={{ margin: "10px 0 0" }}>La validation est réservée à l'exploitant de la plateforme : ce prix est partagé par tous les comptes.</p>}
           </div>
         )}
-        {r.hasKey && r.available && r.tasksTotal > 0 && (
+        {r.hasKey && r.available && r.tasksTotal > 0 && r.state !== "deprecie" && r.state !== "prix_a_verifier" && (
           <ActionForm action={benchModelAction} hidden={{ modelId: m.modelId }}>
             <p className="muted" style={{ margin: "0 0 10px" }}>
               Le test appelle ce modèle avec <strong>votre clé</strong> sur des cas synthétiques (aucune donnée de logement n'est envoyée) : {r.benchCalls} appel{r.benchCalls > 1 ? "s" : ""}, seuil de qualification {Math.round(QUALIFY_THRESHOLD * 100)} %.{" "}
-              {bench === null ? <strong>Coût non chiffrable : le prix est inconnu, le test est refusé.</strong> : <>Coût estimé : <strong data-testid="bench-estimate">≈ {fmtEur(usdToEur(bench))}</strong>, compté dans votre plafond.</>}
+              {bench === null ? <strong>Coût non chiffrable : le prix est inconnu, le test est refusé.</strong> : <>Coût estimé : <strong data-testid="bench-estimate">≈ {fmtEur(usdToEur(bench))}</strong> (au plus {fmtEur(usdToEur(r.benchMaxUsd ?? bench))} si des corrections sont nécessaires), compté dans votre plafond.</>}
             </p>
-            <Submit className="btn" icon="signal" pendingLabel="Test en cours (quelques minutes)…">Tester ce modèle</Submit>
+            {admin ? <Submit className="btn" icon="signal" pendingLabel="Test en cours (quelques minutes)…">Tester ce modèle</Submit> : <span className="muted">Le lancement d'un test est réservé à l'exploitant de la plateforme : son verdict est partagé par tous les comptes.</span>}
           </ActionForm>
         )}
       </div>
@@ -66,8 +69,10 @@ function ModelCard({ r }: { r: ModelRow }) {
   );
 }
 
-export default async function Modeles() {
+export default async function Modeles({ searchParams }: { searchParams: Promise<{ prix?: string }> }) {
+  const { prix } = await searchParams;
   const user = await requireUser();
+  const admin = isLlmAdmin(user.email);
   const [cap, rows, costs] = await Promise.all([getCapState(user.tenantId), modelsOverview(user.tenantId), agentCosts(user.tenantId)]);
   const sorted = [...rows].sort((a, b) => ORDER.indexOf(a.state) - ORDER.indexOf(b.state));
   const count = (s: ModelState) => rows.filter((r) => r.state === s).length;
@@ -76,13 +81,14 @@ export default async function Modeles() {
   return (
     <Page title="Modèles de langage" sub="Disponibilité, prix, qualification et coûts" crumbs={[{ label: "Configuration" }, { label: "Modèles" }]}>
       <div className="page-head"><h1>Modèles de langage</h1><p>Le routeur choisit, parmi vos fournisseurs, le modèle le moins cher qui convient à chaque tâche. Chaque agent peut aussi être réglé à la main dans sa fiche : un choix manuel prime toujours.</p></div>
+      {(prix === "valide" || prix === "refuse") && <div data-testid="prix-decide" style={{ margin: "0 0 16px" }}><Banner role="sain" title={prix === "valide" ? "Nouveau prix validé" : "Changement de prix refusé : l'ancien prix reste en vigueur"} /></div>}
       <CapBanner cap={cap} link={false} />
 
       <section className="section" id="plafond" style={{ marginTop: 0 }}>
         <h2>Plafond mensuel de dépense</h2>
         <p className="section-note">À 80 % une alerte s'affiche, à 100 % les agents repassent en mode déterministe jusqu'au 1er du mois suivant (UTC). La dépense est comptée en dollars au prix validé de chaque modèle, puis convertie au taux ci-dessous. Un appel dont le prix est inconnu n'est pas chiffré.</p>
         <Recap rows={[
-          ["Dépensé ce mois-ci", `${fmtEur(cap.spentEur)}${cap.capEur === null ? "" : ` sur ${fmtEur(cap.capEur)} (${Math.round((cap.ratio ?? 0) * 100)} %)`}`, true],
+          ["Dépensé ce mois-ci", `${fmtEur(cap.spentEur)}${cap.capEur === null ? "" : ` sur ${fmtEur(cap.capEur)} (${Math.floor((cap.ratio ?? 0) * 100)} %)`}`, true],
           ["Taux appliqué", `1 $ = ${rate.toLocaleString("fr-FR", { maximumFractionDigits: 4 })} € (variable d'environnement LLM_USD_EUR_RATE)`, true],
         ]} />
         <ActionForm action={saveMonthlyCapAction} style={{ marginTop: 16, maxWidth: 420 }}>
@@ -100,17 +106,17 @@ export default async function Modeles() {
         <p className="section-note">Tendance : rythme journalier de ce mois comparé à celui du mois précédent (écart de moins de 15 % = stable). Les appels dont le prix est inconnu sont comptés à part, jamais chiffrés.</p>
         <div className="table-wrap"><table className="econ">
           <caption className="visually-hidden">Coût des modèles ce mois-ci, par agent</caption>
-          <thead><tr><th scope="col">Agent</th><th scope="col">Appels</th><th scope="col">Ce mois-ci</th><th scope="col">Mois précédent</th><th scope="col">Tendance</th></tr></thead>
+          <thead><tr><th scope="col">Agent</th><th scope="col" className="num">Appels</th><th scope="col" className="num">Ce mois-ci</th><th scope="col" className="num">Mois précédent</th><th scope="col">Tendance</th></tr></thead>
           <tbody>
             {costs.map((c) => (
               <tr key={c.agentId} data-agent={c.agentId}>
                 <th scope="row">{c.title}</th>
-                <td>{c.calls}{c.unpricedCalls ? ` (dont ${c.unpricedCalls} sans prix)` : ""}</td>
-                <td>{fmtEur(c.currentEur)}</td><td>{fmtEur(c.previousEur)}</td><td>{TREND_LABEL[c.trend]}</td>
+                <td className="num" style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{c.calls}{c.unpricedCalls ? ` (dont ${c.unpricedCalls} sans prix)` : ""}</td>
+                <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtEur(c.currentEur)}</td><td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtEur(c.previousEur)}</td><td>{TREND_LABEL[c.trend]}</td>
               </tr>
             ))}
           </tbody>
-          <tfoot><tr><th scope="row">Total</th><td></td><td>{fmtEur(total)}</td><td></td><td></td></tr></tfoot>
+          <tfoot><tr><th scope="row">Total</th><td></td><td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{fmtEur(total)}</td><td></td><td></td></tr></tfoot>
         </table></div>
       </section>
 
@@ -122,7 +128,7 @@ export default async function Modeles() {
           {" "}Les clés se saisissent dans <Link href="/integrations#llm-keys">Intégrations</Link>.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 340px), 1fr))", gap: 16 }}>
-          {sorted.map((r) => <ModelCard key={r.model.modelId} r={r} />)}
+          {sorted.map((r) => <ModelCard key={r.model.modelId} r={r} admin={admin} />)}
         </div>
       </section>
     </Page>

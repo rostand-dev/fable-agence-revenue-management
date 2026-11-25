@@ -148,3 +148,50 @@ describe("test d'un modèle : contrôles préalables (base réelle)", () => {
     expect(await benchPreflight(t.tenantId, "claude-sonnet-5-5", now)).toMatchObject({ ok: false, error: expect.stringContaining("tests par heure") });
   });
 });
+
+describe("garanties de la relecture (base réelle)", () => {
+  beforeEach(() => setup());
+
+  it("la validation ne porte que sur le relevé vu : un relevé plus récent n'est pas validé par un clic sur l'ancien", async () => {
+    const t = await makeTenant("rl-releve"); await setOwnerKey(t.tenantId);
+    const d1 = { ...LITELLM, "claude-haiku-5-5": { input_cost_per_token: 2e-6, output_cost_per_token: 1e-5 } };
+    await syncPrices({ fetchImpl: fetchWith(d1), now: NOW, env: {}, keys: async () => ({}) });
+    const vu = (await modelsOverview(t.tenantId)).find((r) => r.model.modelId === "claude-haiku-5-5")!.pendingId!;
+    const d2 = { ...LITELLM, "claude-haiku-5-5": { input_cost_per_token: 9e-6, output_cost_per_token: 1e-5 } };
+    await syncPrices({ fetchImpl: fetchWith(d2), now: NOW, env: {}, keys: async () => ({}) });
+    expect(await validatePendingPrice("claude-haiku-5-5", "usr_t", new Date(), vu)).toBe(false);
+    const apres = (await modelsOverview(t.tenantId)).find((r) => r.model.modelId === "claude-haiku-5-5")!;
+    expect(apres.price?.inputPerMtok).toBe(1); expect(apres.pending?.inputPerMtok).toBe(9);
+    expect(await validatePendingPrice("claude-haiku-5-5", "usr_t", new Date(), apres.pendingId!)).toBe(true);
+  });
+
+  it("un prix refusé par l'exploitant n'est pas signalé de nouveau à la synchronisation suivante ; un autre prix l'est", async () => {
+    const t = await makeTenant("rl-refus"); await setOwnerKey(t.tenantId);
+    const d = { ...LITELLM, "claude-haiku-5-5": { input_cost_per_token: 2e-6, output_cost_per_token: 1e-5 } };
+    await syncPrices({ fetchImpl: fetchWith(d), now: NOW, env: {}, keys: async () => ({}) });
+    expect(await rejectPendingPrice("claude-haiku-5-5", "usr_t")).toBe(true);
+    await syncPrices({ fetchImpl: fetchWith(d), now: NOW, env: {}, keys: async () => ({}) });
+    expect((await modelsOverview(t.tenantId)).find((r) => r.model.modelId === "claude-haiku-5-5")!.pending, "même prix : pas de nouveau signalement").toBeNull();
+    const d3 = { ...LITELLM, "claude-haiku-5-5": { input_cost_per_token: 3e-6, output_cost_per_token: 1e-5 } };
+    await syncPrices({ fetchImpl: fetchWith(d3), now: NOW, env: {}, keys: async () => ({}) });
+    expect((await modelsOverview(t.tenantId)).find((r) => r.model.modelId === "claude-haiku-5-5")!.pending?.inputPerMtok).toBe(3);
+  });
+
+  it("un test en cours ou interrompu (coût inconnu) compte dans la dépense du mois pour son estimation, pas à zéro", async () => {
+    const t = await makeTenant("rl-depense");
+    await run(t.tenantId, { agentId: BENCH_AGENT_ID, operation: "bench", costUsd: null, costEstimatedUsd: "2.500000" });
+    await run(t.tenantId, { agentId: "direction", costUsd: null, costEstimatedUsd: "9.000000" }); // un appel d'agent sans prix reste à zéro
+    expect(await monthlySpendUsd(t.tenantId)).toBeCloseTo(2.5, 6);
+    await run(t.tenantId, { agentId: BENCH_AGENT_ID, operation: "bench", costUsd: "1.000000", costEstimatedUsd: "2.500000" });
+    expect(await monthlySpendUsd(t.tenantId)).toBeCloseTo(3.5, 6);
+  });
+
+  it("l'estimation du test est le cas le plus probable, le contrôle du plafond utilise le pire cas (corrections comprises)", async () => {
+    const t = await makeTenant("rl-max"); await setOwnerKey(t.tenantId);
+    const p = await benchPreflight(t.tenantId, "claude-haiku-5-5"); if (!p.ok) throw new Error("ok attendu");
+    expect(p.maxUsd).toBeCloseTo(p.estimateUsd * 2, 8);
+    await setMonthlyCapEur(t.tenantId, 100);
+    await run(t.tenantId, { costUsd: String(100 / 0.92 - p.estimateUsd * 1.5) }); // reste 1,5 × l'estimation : passe en nominal, pas au pire cas
+    expect(await benchPreflight(t.tenantId, "claude-haiku-5-5")).toMatchObject({ ok: false, error: expect.stringContaining("jusqu'à") });
+  });
+});

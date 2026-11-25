@@ -23,7 +23,7 @@ describe("tendance du coût (rythme journalier, mois en cours contre mois préc�
   it("dépense sans mois précédent : croissante", () => expect(costTrend(1, 0, now)).toBe("croissante"));
   it("dépense qui s'arrête : décroissante", () => expect(costTrend(0, 3.1, now)).toBe("decroissante"));
   it("même rythme : stable ; la bande est de 15 %", () => {
-    expect(costTrend(15, 31, now)).toBe("stable");        // 1 $/j contre 1 $/j
+    expect(costTrend(14.5, 31, now)).toBe("stable");      // 1 $/j contre 1 $/j (14,5 jours écoulés)
     expect(costTrend(16.5, 31, now)).toBe("stable");      // +10 %
     expect(costTrend(18, 31, now)).toBe("croissante");    // +20 %
     expect(costTrend(12, 31, now)).toBe("decroissante");  // −20 %

@@ -14,3 +14,7 @@ describe("alerte du plafond mensuel", () => {
     for (const spent of [100, 140]) expect(a(100, spent)).toMatchObject({ level: "reached", title: expect.stringContaining("atteint"), body: expect.stringContaining("déterministe") });
   });
 });
+
+describe("arrondis", () => {
+  it("99,6 % s'affiche 99 %, jamais 100 % tant que le plafond n'est pas atteint", () => expect(a(100, 99.6)?.title).toContain("99 %"));
+});

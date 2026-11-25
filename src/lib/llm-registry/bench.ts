@@ -29,6 +29,8 @@ import { PROFILES } from "./profiles";
 /** Au plus un test par modèle toutes les 15 minutes, et 6 par heure pour l'espace : un test appelle de vrais modèles avec la clé du propriétaire, donc il coûte. */
 export const BENCH_MODEL_COOLDOWN_MIN = 15;
 export const BENCH_HOURLY_LIMIT = 6;
+/** Tentatives par cas (une correction possible) : le coût réel d'un test peut aller jusqu'à ce multiple de l'estimation à une tentative. */
+export const BENCH_MAX_ATTEMPTS = 2;
 
 /** Seuil de réussite pour être (ou rester) qualifié. */
 export const QUALIFY_THRESHOLD = 0.95;
@@ -59,7 +61,17 @@ function inputFor(key: string): EngineInput {
 export type BenchCase = { user: string; schema: z.ZodType<unknown> };
 
 /** Cas synthétiques d'une tâche : dossiers des deux logements de démonstration, dans un ordre fixe. */
+const casesCache = new Map<string, BenchCase[]>();
+/** Les cas sont fixes (logements de démonstration, date figée) : calculés une fois par tâche. */
 export function benchCases(task: PromptId, max = MAX_CASES_PER_TASK): BenchCase[] {
+  const k = `${task}:${max}`;
+  const hit = casesCache.get(k);
+  if (hit) return hit;
+  const built = buildBenchCases(task, max);
+  casesCache.set(k, built);
+  return built;
+}
+function buildBenchCases(task: PromptId, max: number): BenchCase[] {
   const out: BenchCase[] = [];
   const opps: { o: DetectedOpportunity; name: string }[] = [];
   for (const key of ["chatillon", "evry"]) for (const o of reviewProperty(inputFor(key)).opportunities) opps.push({ o, name: buildDemo(TODAY).find((x) => x.key === key)!.name });
@@ -80,17 +92,17 @@ export function tasksFor(modelId: string): PromptId[] {
 }
 
 /** Coût estimé du banc d'un modèle (USD), montré avant le clic ; null si le prix du modèle est inconnu (jamais inventé). */
-export async function estimateBenchCostUsd(modelId: string): Promise<{ costUsd: number | null; calls: number }> {
+export async function estimateBenchCostUsd(modelId: string): Promise<{ costUsd: number | null; maxUsd: number | null; calls: number }> {
   const book = await getPriceBook(), price = book.get(modelId)?.price;
   let total = 0, calls = 0;
   for (const t of tasksFor(modelId)) {
     const n = benchCases(t).length, p = PROFILES[t];
     calls += n;
     const one = computeCostUsd(price, p.estInputTokens, p.estOutputTokens);
-    if (one === null) return { costUsd: null, calls: 0 };
+    if (one === null) return { costUsd: null, maxUsd: null, calls: 0 };
     total += n * one;
   }
-  return { costUsd: total, calls };
+  return { costUsd: total, maxUsd: total * BENCH_MAX_ATTEMPTS, calls };
 }
 
 /** Statut d'un banc : pur et testable. */
@@ -120,7 +132,7 @@ export async function runBench(input: { modelId: string; apiKey: string; evaluat
     const cases = benchCases(task);
     let ok = 0;
     for (const c of cases) {
-      const r = await generateJson([{ provider, apiKey: input.apiKey, model: m.modelId, source: "utilisateur" }], { task, system: PROMPTS[task].system, user: c.user, schema: c.schema, maxTokens: PROMPTS[task].maxTokens, maxAttempts: 2 });
+      const r = await generateJson([{ provider, apiKey: input.apiKey, model: m.modelId, source: "utilisateur" }], { task, system: PROMPTS[task].system, user: c.user, schema: c.schema, maxTokens: PROMPTS[task].maxTokens, maxAttempts: BENCH_MAX_ATTEMPTS });
       const providerFailure = r.meta.tried.some((t) => t.outcome === "PROVIDER_ERROR");
       if (providerFailure && !r.ok) { const c0 = computeCostUsd(book.get(m.modelId)?.price, r.meta.inputTokens, r.meta.outputTokens); return { ok: false, error: `Banc interrompu : ${r.message.replace(/ Repli déterministe\.$/, "")} Aucun résultat enregistré.`, costUsd: costUsd === null || c0 === null ? null : costUsd + c0 }; }
       if (r.ok) ok++;

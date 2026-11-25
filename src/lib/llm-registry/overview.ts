@@ -38,9 +38,12 @@ export type ModelRow = {
   evaluatedAt: Date | null;
   price: PriceEntry | null;
   pending: PriceEntry | null;
+  /** Relevé de prix en attente (celui que la personne voit et valide) */
+  pendingId: string | null;
   state: ModelState;
   /** Coût estimé du banc (USD), null = prix inconnu */
   benchEstimateUsd: number | null;
+  benchMaxUsd: number | null;
   benchCalls: number;
 };
 
@@ -76,9 +79,9 @@ export async function modelsOverview(tenantId: string): Promise<ModelRow[]> {
     rows.push({
       model: m, lifecycle, retiresAt: reg?.retiresAt ?? null, hasKey: !!key, available, tasksTotal: total, tasksQualified: qualified, tasksSuspended: suspended,
       evaluatedAt: mine.reduce<Date | null>((a, q) => (!a || q.evaluatedAt > a ? q.evaluatedAt : a), null),
-      price: v ? snapshotToPrice(v) : null, pending: p ? snapshotToPrice(p) : null,
+      price: v ? snapshotToPrice(v) : null, pending: p ? snapshotToPrice(p) : null, pendingId: p?.id ?? null,
       state: modelState({ lifecycle, hasPending: !!p, available, tasksTotal: total, tasksQualified: qualified, tasksSuspended: suspended }),
-      benchEstimateUsd: est.costUsd, benchCalls: est.calls,
+      benchEstimateUsd: est.costUsd, benchMaxUsd: est.maxUsd, benchCalls: est.calls,
     });
   }
   return rows;
@@ -94,7 +97,7 @@ export const TREND_BAND = 0.15;
  */
 export function costTrend(currentUsd: number, previousUsd: number, now: Date): Trend {
   if (currentUsd <= 0 && previousUsd <= 0) return "aucun";
-  const dayOfMonth = now.getUTCDate();
+  const dayOfMonth = Math.max((now.getTime() - monthStart(now).getTime()) / 86400_000, 1 / 24); // jours écoulés (fractionnaires) : le 1er à 00:30 ne fausse pas le rythme
   const prevDays = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0)).getUTCDate();
   const cur = currentUsd / dayOfMonth, prev = previousUsd / prevDays;
   if (prev <= 0) return "croissante";

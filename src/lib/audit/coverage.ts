@@ -52,7 +52,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   saveAgentModelAction: { events: ["llm.model_saved"] },
   saveMonthlyCapAction: { events: ["llm.cap_saved"] },
   decidePriceAction: { events: ["llm.price_validated", "llm.price_rejected"] },
-  benchModelAction: { events: ["llm.bench_run"] },
+  benchModelAction: { events: ["llm.bench_run", "llm.bench_failed"] },
   // actions/onboarding.ts
   saveLogementAction: { events: ["property.created"] },
   saveReglesAction: { events: ["property.rules_saved"] },

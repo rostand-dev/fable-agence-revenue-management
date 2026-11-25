@@ -19,3 +19,12 @@ describe("plafond mensuel en euros", () => {
   });
   it("conversion dollar → euro au taux fixe", () => { expect(usdToEur(10, 0.92)).toBe(9.2); });
 });
+
+import { parseMonthlyCapEur as parseCap } from "./cap-state";
+describe("saisie du plafond avec espaces", () => {
+  it("espaces et espaces insécables ignorés, virgule décimale acceptée", () => {
+    expect(parseCap("1 000")).toEqual({ ok: true, value: 1000 });
+    expect(parseCap("1 000,50")).toEqual({ ok: true, value: 1000.5 });
+    expect(parseCap("1 000")).toEqual({ ok: true, value: 1000 });
+  });
+});
