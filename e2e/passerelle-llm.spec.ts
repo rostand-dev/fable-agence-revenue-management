@@ -16,7 +16,8 @@ test("Intégrations : la carte des modèles de langage propose une clé par four
     await expect(s.locator(`input[name="apiKey"]`)).toBeVisible();
   }
   // compte de démo de la CI : clé Anthropic enregistrée (factice) ; les autres fournisseurs sont modifiés par le test suivant (état partagé entre les 3 formats d'écran : on ne l'assert pas ici)
-  await expect(carte.locator('section[data-provider="anthropic"]')).toContainText("Votre clé");
+  // sur la Preview (E2E_BASE_URL) il n'y a ni faux serveur ni clé de démo : on ne vérifie que l'affichage
+  if (!process.env.E2E_BASE_URL?.trim()) await expect(carte.locator('section[data-provider="anthropic"]')).toContainText("Votre clé");
   await expectNoHorizontalOverflow(page, "intégrations : modèles de langage");
   await carte.scrollIntoViewIfNeeded();
   await carte.screenshot({ path: test.info().outputPath("llm-carte.png") });
@@ -29,6 +30,7 @@ const PROVIDER_BY_PROJECT: Record<string, "openai" | "mistral"> = { bureau: "ope
 test("Intégrations : saisir puis supprimer une clé de fournisseur", async ({ page }, info) => {
   const provider = PROVIDER_BY_PROJECT[info.project.name];
   test.skip(!provider, "ce format d'écran n'a pas de fournisseur dédié");
+  test.skip(!!process.env.E2E_BASE_URL?.trim(), "la vérification de la clé exige le faux serveur de modèle (absent de la Preview : elle interrogerait le vrai fournisseur)");
   const key = `sk-e2e-${provider}-0123456789abcdef`;
   await page.goto("/integrations");
   const s = page.locator(`section[data-provider="${provider}"]`);
