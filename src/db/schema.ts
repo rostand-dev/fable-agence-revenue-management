@@ -483,7 +483,8 @@ export const featureFlags = pgTable("feature_flags", {
 
 /** Clé API LLM propre à chaque propriétaire (chiffrée) + cache de la liste des modèles que cette clé peut utiliser */
 export const llmCredentials = pgTable("llm_credentials", {
-  tenantId: text("tenant_id").primaryKey().references(() => tenants.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id, { onDelete: "cascade" }),
+  /** anthropic | openai | mistral : une clé par propriétaire ET par fournisseur */
   provider: text("provider").notNull().default("anthropic"),
   apiKeyEnc: text("api_key_enc").notNull(),
   keyHint: text("key_hint").notNull(),
@@ -491,7 +492,7 @@ export const llmCredentials = pgTable("llm_credentials", {
   modelsFetchedAt: ts("models_fetched_at"),
   verifiedAt: ts("verified_at"),
   updatedAt: ts("updated_at").notNull().defaultNow(),
-});
+}, (t) => [primaryKey({ columns: [t.tenantId, t.provider] })]);
 
 export const reviewRuns = pgTable("review_runs", {
   id: id(),
@@ -825,3 +826,22 @@ export const llmSyncRuns = pgTable("llm_sync_runs", {
   /** Compteurs et erreurs par étape (prix, disponibilité) */
   stats: jsonb("stats").$type<any>().notNull().default({}),
 }, (t) => [index("llm_sync_started").on(t.startedAt)]);
+
+/** Routeur LLM : aptitude d'un modèle pour une tâche (partagée par tous les comptes : le comportement d'un modèle ne dépend pas de la clé). Absence de ligne = « non évalué ». */
+export const llmQualifications = pgTable("llm_qualifications", {
+  modelId: text("model_id").notNull().references(() => llmModels.modelId, { onDelete: "cascade" }),
+  /** Identifiant de prompt de la tâche (ex. direction.explain_action) */
+  task: text("task").notNull(),
+  /** QUALIFIED | SUSPENDED */
+  status: text("status").notNull(),
+  /** Taux de réussite du dernier banc d'évaluation (0 à 1) */
+  benchScore: numeric("bench_score", { precision: 5, scale: 4 }),
+  benchCases: integer("bench_cases"),
+  /** Pourquoi : banc d'évaluation insuffisant, ou échecs observés en production */
+  reason: text("reason"),
+  /** Détail du dernier banc ou du dernier contrôle de production */
+  details: jsonb("details").$type<any>(),
+  evaluatedAt: ts("evaluated_at").notNull().defaultNow(),
+  /** Compte ayant lancé le banc (aucune donnée de logement n'y est envoyée) ; « system » pour une suspension automatique */
+  evaluatedBy: text("evaluated_by"),
+}, (t) => [primaryKey({ columns: [t.modelId, t.task] })]);

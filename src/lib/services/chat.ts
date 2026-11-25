@@ -3,7 +3,8 @@ import { db, newId, schema } from "@/db";
 import { AGENT_BY_ID, agentName, type AgentId } from "../agents/registry";
 import { callLlm, HOUSE_RULES, PROMPT_VERSION, type LlmConfig, type LlmResult } from "../agents/llm";
 import { trimToLastSentence } from "../agents/text";
-import { resolveLlm } from "../agents/llm-config";
+import { resolveRouting } from "../agents/llm-config";
+import { costOfTried, getPriceBook } from "../llm-registry/pricebook";
 import { fmtPeriod } from "../dates";
 import { signedEuro } from "../format";
 import type { Candidate } from "../engine/types";
@@ -49,7 +50,10 @@ export async function prepareChat(tenantId: string, agentIdRaw: string, opportun
   const history = (await db.select().from(chatMessages).where(and(eq(chatMessages.tenantId, tenantId), eq(chatMessages.agentId, agentId), opportunityId ? eq(chatMessages.opportunityId, opportunityId) : isNull(chatMessages.opportunityId))).orderBy(desc(chatMessages.createdAt)).limit(8)).reverse();
   await db.insert(chatMessages).values({ id: newId("msg"), tenantId, agentId, opportunityId: o ? opportunityId : null, role: "user", content: question });
   const fallback = deterministicAnswer(agentId, question, o);
-  const llm = await resolveLlm(tenantId, agentId);
+  // routeur : modèle économique de la clé Anthropic du propriétaire (le chat est en flux, Anthropic seulement), ou son choix manuel ; plafond mensuel atteint = mode règles
+  const routing = await resolveRouting(tenantId, agentId, { task: "chat" });
+  const first = routing.targets[0];
+  const llm: LlmConfig | null = first && first.provider.id === "anthropic" ? { apiKey: first.apiKey, model: first.model, source: "utilisateur" } : null;
   let system = "";
   if (llm) {
     let context = `Ton poste : ${a.title}. Mission : ${a.mission}\nResponsabilités : ${a.responsibilities.join(" ; ")}\nDroits : ${a.rights}\nLimites : ${a.limits.join(" ; ")}`;
@@ -71,9 +75,12 @@ export async function prepareChat(tenantId: string, agentIdRaw: string, opportun
 export async function finishChat(c: ChatContext, r: LlmResult | null, err?: unknown): Promise<ChatAnswer> {
   let answer = c.fallback, mode: "LLM" | "DETERMINISTIC" = "DETERMINISTIC";
   if (c.llm && r) {
+    // coût réel au prix validé du jour (null si prix inconnu) : il compte dans le plafond mensuel
+    const cost = costOfTried([{ model: r.model, outcome: "OK", inputTokens: r.inputTokens ?? undefined, outputTokens: r.outputTokens ?? undefined }], await getPriceBook());
     if (r.text) { answer = r.truncated ? trimToLastSentence(r.text) : r.text; mode = "LLM"; }
     await db.insert(agentRuns).values({ id: newId("run"), tenantId: c.tenantId, agentId: c.agentId, opportunityId: c.opportunityId, operation: "chat", mode: "LLM", model: r.model, promptVersion: PROMPT_VERSION,
-      summary: r.truncated ? "Réponse à une question du propriétaire, raccourcie à la dernière phrase complète (limite de longueur atteinte)." : "Réponse à une question du propriétaire.", inputTokens: r.inputTokens, outputTokens: r.outputTokens, durationMs: r.durationMs });
+      summary: r.truncated ? "Réponse à une question du propriétaire, raccourcie à la dernière phrase complète (limite de longueur atteinte)." : "Réponse à une question du propriétaire.", inputTokens: r.inputTokens, outputTokens: r.outputTokens, durationMs: r.durationMs,
+      provider: "anthropic", costUsd: cost.costUsd === null ? null : String(cost.costUsd), priceSnapshotId: cost.snapshotId });
   } else if (c.llm && err) {
     await db.insert(agentRuns).values({ id: newId("run"), tenantId: c.tenantId, agentId: c.agentId, opportunityId: c.opportunityId, operation: "chat", mode: "DETERMINISTIC", model: c.llm.model, summary: "Réponse en repli déterministe : fournisseur LLM indisponible.", error: String((err as any)?.message ?? err).slice(0, 200) });
   }

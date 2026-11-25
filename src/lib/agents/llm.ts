@@ -7,10 +7,8 @@ import { maskPii } from "../privacy/pii";
 
 export const PROMPT_VERSION = "2026-11-v1";
 export const DEFAULT_MODEL = "claude-sonnet-5-5";
-/** Modèle par défaut du serveur : variable d'environnement, sinon constante. */
+/** Modèle de démarrage du routeur (« démarrage sans régression ») : utilisé avec la clé Anthropic du propriétaire tant qu'aucun modèle n'est qualifié. Variable d'environnement, sinon constante. */
 export function serverDefaultModel(): string { return process.env.ANTHROPIC_MODEL || DEFAULT_MODEL; }
-/** Une clé serveur existe (repli quand l'utilisateur n'a pas saisi la sienne). */
-export function serverKeyAvailable(): boolean { return !!process.env.ANTHROPIC_API_KEY; }
 
 const apiBase = () => (process.env.ANTHROPIC_API_BASE || "https://api.anthropic.com").replace(/\/$/, "");
 
@@ -18,8 +16,8 @@ export class LlmError extends Error {
   constructor(message: string, public status: number | null = null) { super(message); }
 }
 
-/** Clé + modèle effectivement utilisés pour un appel, et d'où vient la clé. */
-export type LlmConfig = { apiKey: string; model: string; source: "utilisateur" | "serveur" };
+/** Clé (celle du propriétaire) + modèle effectivement utilisés pour un appel. */
+export type LlmConfig = { apiKey: string; model: string; source: "utilisateur" };
 export type LlmModelInfo = { id: string; name: string; createdAt: string | null };
 
 function httpError(status: number, what: string): LlmError {

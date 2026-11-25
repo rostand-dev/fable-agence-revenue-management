@@ -130,3 +130,5 @@ Blueprint E7 : US-070 (passerelle multi-fournisseur à sorties JSON), US-071 (Ma
 **Mise à jour d'un golden voulue** : `npx vitest run -u src/lib/agents/agents-golden.test.ts`, puis relire le diff du fichier JSON en PR.
 
 **Déploiement.** Aucun impact : tests et CI seulement, aucune migration, aucune variable.
+
+> **Mise à jour (routeur LLM, PR 2)** : les passages ci-dessus sur la clé du serveur et le repli OpenAI du serveur sont **remplacés**. Le serveur ne détient plus aucune clé de modèle (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENAI_MODEL` supprimées) ; chaque propriétaire saisit ses clés Anthropic, OpenAI et Mistral, et ses données ne partent que vers ces fournisseurs. Voir `docs/routeur-llm.md`.

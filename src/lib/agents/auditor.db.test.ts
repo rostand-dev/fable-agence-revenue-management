@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "@/db";
 import { makeTenant } from "@/test/db";
+import { setOwnerKey } from "@/test/llm-keys";
 import { startFakeLlmServer, type FakeLlmServer } from "./fake-llm-server";
 import { e2eFakeReply } from "./fake-llm-responder";
 import type { IndependentReview } from "./independent-review";
@@ -20,8 +21,8 @@ const respond = (req: Parameters<typeof e2eFakeReply>[0]) => {
 };
 beforeAll(async () => { srv = await startFakeLlmServer(respond); t = await makeTenant("auditeur"); await seedDemo(t.tenantId); }, 120_000);
 afterAll(async () => { await srv.close(); });
-beforeEach(() => { process.env.ANTHROPIC_API_BASE = srv.url; process.env.ANTHROPIC_API_KEY = "sk-ant-serveur-de-test-0123456789"; mode = "ok"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "1000"; srv.requests.length = 0; });
-afterEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.ANTHROPIC_API_KEY; delete process.env.AGENT_MAX_CALLS_PER_REVIEW; });
+beforeEach(async () => { process.env.ANTHROPIC_API_BASE = srv.url; await setOwnerKey(t.tenantId); mode = "ok"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "1000"; srv.requests.length = 0; });
+afterEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.AGENT_MAX_CALLS_PER_REVIEW; });
 
 const open = async () => (await db.select().from(schema.opportunities).where(eq(schema.opportunities.tenantId, t.tenantId))).filter((o) => o.status === "OPEN");
 const reviewOf = (o: { signals: any }) => o.signals?.independentReview as IndependentReview | undefined;
@@ -36,7 +37,7 @@ const verdicts = async () => (await open()).map((o) => JSON.stringify([o.dedupeK
 describe("US-073 : seconde lecture indépendante dans la revue (base réelle, faux modèle)", () => {
   let baseDecisions: string[], baseVerdicts: string[];
   it("sans clé : aucune seconde lecture, aucun changement de verdict", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    await setOwnerKey(t.tenantId, null);
     await expireAll();
     await runDailyReview(t.tenantId, "MANUAL");
     baseDecisions = await decisions(); baseVerdicts = await verdicts();

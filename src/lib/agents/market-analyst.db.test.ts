@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "@/db";
 import { makeTenant } from "@/test/db";
+import { setOwnerKey } from "@/test/llm-keys";
 import { startFakeLlmServer, type FakeLlmServer } from "./fake-llm-server";
 import { e2eFakeReply } from "./fake-llm-responder";
 import type { MarketAnalysis } from "./market-analysis";
@@ -19,8 +20,8 @@ const respond = (req: Parameters<typeof e2eFakeReply>[0]) => {
 };
 beforeAll(async () => { srv = await startFakeLlmServer(respond); t = await makeTenant("analyste"); await seedDemo(t.tenantId); }, 120_000);
 afterAll(async () => { await srv.close(); });
-beforeEach(() => { process.env.ANTHROPIC_API_BASE = srv.url; process.env.ANTHROPIC_API_KEY = "sk-ant-serveur-de-test-0123456789"; mode = "ok"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "500"; srv.requests.length = 0; });
-afterEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.ANTHROPIC_API_KEY; delete process.env.AGENT_MAX_CALLS_PER_REVIEW; });
+beforeEach(async () => { process.env.ANTHROPIC_API_BASE = srv.url; await setOwnerKey(t.tenantId); mode = "ok"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "500"; srv.requests.length = 0; });
+afterEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.AGENT_MAX_CALLS_PER_REVIEW; });
 
 const opps = () => db.select().from(schema.opportunities).where(eq(schema.opportunities.tenantId, t.tenantId));
 const analysisOf = (o: { signals: any }) => o.signals?.marketAnalysis as MarketAnalysis | undefined;
@@ -86,7 +87,7 @@ describe("US-071 : l'analyste marché dans la revue (base réelle, faux modèle)
   });
 
   it("sans clé : analyse par règles et aucune trace de l'analyste", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    await setOwnerKey(t.tenantId, null);
     await expireAll();
     await db.delete(schema.agentRuns).where(and(eq(schema.agentRuns.tenantId, t.tenantId), eq(schema.agentRuns.agentId, "marche")));
     await runDailyReview(t.tenantId, "MANUAL");

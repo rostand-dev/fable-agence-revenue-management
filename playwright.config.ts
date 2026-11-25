@@ -8,7 +8,7 @@ import { httpCredentials } from "./e2e/helpers/env";
  * - E2E_HTTP_USER / E2E_HTTP_PASSWORD : identifiants HTTP Basic si l'environnement testé est protégé (Preview Coolify). Absents : aucune authentification HTTP.
  * - E2E_CHROME_PATH : chemin d'un Chrome déjà installé (poste local sans téléchargement de navigateur). Absent : Chromium de Playwright.
  * - ANTHROPIC_API_BASE : adresse du faux serveur de modèle (ex. http://127.0.0.1:4011). Si elle pointe vers cette machine, le faux serveur (scripts/fake-llm-server.ts)
- *   est lancé avant l'application, qui le lit comme elle lirait Anthropic (avec ANTHROPIC_API_KEY factice). Absente : les agents restent en repli déterministe.
+ *   est lancé avant l'application, qui le lit comme elle lirait Anthropic (avec la clé factice DEMO_ACCOUNT_LLM_KEY, enregistrée comme clé du propriétaire du compte de démo). Absente : les agents restent en repli déterministe.
  * - PRICELABS_API_BASE : adresse du faux serveur PriceLabs (ex. http://127.0.0.1:4010/v1). Si elle pointe vers cette machine, le faux serveur
  *   (scripts/fake-pricelabs-server.ts) est lancé avant l'application, qui le lit comme elle lirait PriceLabs. Absente : les tests PriceLabs sont ignorés.
  */

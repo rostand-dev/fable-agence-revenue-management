@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { db, schema } from "@/db";
 import { makeTenant } from "@/test/db";
+import { setOwnerKey } from "@/test/llm-keys";
 import { startFakeLlmServer, type FakeLlmServer } from "./fake-llm-server";
 import { e2eFakeReply } from "./fake-llm-responder";
 import type { AgentOpinion, StrategistId } from "./strategist-opinions";
@@ -21,8 +22,8 @@ const respond = (req: Parameters<typeof e2eFakeReply>[0]) => {
 };
 beforeAll(async () => { srv = await startFakeLlmServer(respond); t = await makeTenant("stratege"); await seedDemo(t.tenantId); }, 120_000);
 afterAll(async () => { await srv.close(); });
-beforeEach(() => { process.env.ANTHROPIC_API_BASE = srv.url; process.env.ANTHROPIC_API_KEY = "sk-ant-serveur-de-test-0123456789"; mode = "ok"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "1000"; srv.requests.length = 0; });
-afterEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.ANTHROPIC_API_KEY; delete process.env.AGENT_MAX_CALLS_PER_REVIEW; });
+beforeEach(async () => { process.env.ANTHROPIC_API_BASE = srv.url; await setOwnerKey(t.tenantId); mode = "ok"; process.env.AGENT_MAX_CALLS_PER_REVIEW = "1000"; srv.requests.length = 0; });
+afterEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.AGENT_MAX_CALLS_PER_REVIEW; });
 
 const open = async () => (await db.select().from(schema.opportunities).where(eq(schema.opportunities.tenantId, t.tenantId))).filter((o) => o.status === "OPEN");
 const opinionsOf = (o: { signals: any }) => (o.signals?.agentOpinions ?? {}) as Partial<Record<StrategistId, AgentOpinion>>;
@@ -34,7 +35,7 @@ const clearRuns = () => db.delete(schema.agentRuns).where(eq(schema.agentRuns.te
 describe("US-072 : stratèges dans la revue (base réelle, faux modèle)", () => {
   let baseline: string[];
   it("sans clé : avis par règles pour les options de chaque stratège, aucune trace", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    await setOwnerKey(t.tenantId, null);
     await expireAll();
     await runDailyReview(t.tenantId, "MANUAL");
     baseline = await decisions();

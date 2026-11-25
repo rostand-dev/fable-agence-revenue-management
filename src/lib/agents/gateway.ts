@@ -2,8 +2,9 @@
  * Passerelle LLM multi-fournisseur à sorties JSON (US-070, blueprint ADR-004).
  *
  * Une seule porte d'entrée pour tout ce que les agents demandent à un modèle de langage :
- *  - un FOURNISSEUR est un adaptateur minimal (`LlmProvider`) : Anthropic, OpenAI (repli du serveur, facultatif) ou scripté (tests, golden cases) ;
- *  - une CIBLE (`GatewayTarget`) = un fournisseur + une clé + un modèle ; la liste de cibles est ordonnée : en cas d'échec, la suivante prend le relais ;
+ *  - un FOURNISSEUR est un adaptateur minimal (`LlmProvider`) : Anthropic, OpenAI, Mistral ou scripté (tests, golden cases) ;
+ *  - une CIBLE (`GatewayTarget`) = un fournisseur + la clé DU PROPRIÉTAIRE chez ce fournisseur + un modèle ; la liste de cibles est ordonnée : en cas d'échec, la suivante prend le relais.
+ *    Le serveur ne détient aucune clé de modèle : une donnée n'est jamais envoyée à un fournisseur pour lequel le propriétaire n'a pas saisi sa propre clé ;
  *  - la SORTIE est toujours un objet JSON validé par un schéma Zod. Une sortie invalide déclenche une seule demande de correction, puis un changement de cible ;
  *  - tout texte envoyé est masqué avant l'appel (US-034), quel que soit le fournisseur ;
  *  - la passerelle n'échoue jamais en exception : elle renvoie `{ ok: false, kind }` et l'appelant retombe sur son repli déterministe.
@@ -15,7 +16,7 @@ import { z } from "zod";
 import { maskPii } from "../privacy/pii";
 import { callLlm, LlmError } from "./llm";
 
-export type ProviderId = "anthropic" | "openai" | "scripted";
+export type ProviderId = "anthropic" | "openai" | "mistral" | "scripted";
 export type ProviderRequest = { model: string; system: string; user: string; maxTokens: number; timeoutMs: number };
 export type ProviderReply = { text: string; inputTokens: number | null; outputTokens: number | null; truncated: boolean };
 export interface LlmProvider {
@@ -23,8 +24,8 @@ export interface LlmProvider {
   complete(apiKey: string, req: ProviderRequest): Promise<ProviderReply>;
 }
 
-/** Un fournisseur, la clé à utiliser et le modèle demandé. `source` dit d'où vient la clé (affichage et traces). */
-export type GatewayTarget = { provider: LlmProvider; apiKey: string; model: string; source: "utilisateur" | "serveur" };
+/** Un fournisseur, la clé du propriétaire et le modèle demandé. */
+export type GatewayTarget = { provider: LlmProvider; apiKey: string; model: string; source: "utilisateur" };
 
 // ───────────────────────── Fournisseurs ─────────────────────────
 
@@ -39,7 +40,7 @@ export const anthropicProvider: LlmProvider = {
 
 const openaiBase = () => (process.env.OPENAI_API_BASE || "https://api.openai.com").replace(/\/$/, "");
 
-/** OpenAI (API « chat completions », mode JSON) : repli facultatif du serveur, jamais la clé d'un propriétaire. Réservé à `generateJson`, qui masque les données personnelles avant l'appel. */
+/** OpenAI (API « chat completions », mode JSON), avec la clé du propriétaire. Réservé à `generateJson`, qui masque les données personnelles avant l'appel. */
 export const openaiProvider: LlmProvider = {
   id: "openai",
   async complete(apiKey, req) {
@@ -47,7 +48,7 @@ export const openaiProvider: LlmProvider = {
     let res: Response;
     try {
       res = await fetch(openaiBase() + "/v1/chat/completions", {
-        method: "POST", signal: ctrl.signal, cache: "no-store",
+        method: "POST", signal: ctrl.signal, cache: "no-store", redirect: "error",
         headers: { authorization: "Bearer " + apiKey, "content-type": "application/json", accept: "application/json" },
         body: JSON.stringify({ model: req.model, max_completion_tokens: req.maxTokens, response_format: { type: "json_object" }, messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }] }),
       });
@@ -65,6 +66,41 @@ export const openaiProvider: LlmProvider = {
     };
   },
 };
+
+const mistralBase = () => (process.env.MISTRAL_API_BASE || "https://api.mistral.ai").replace(/\/$/, "");
+
+/** Mistral (API « chat completions » compatible, mode JSON), avec la clé du propriétaire. Même masquage que les autres : tout passe par `generateJson`. */
+export const mistralProvider: LlmProvider = {
+  id: "mistral",
+  async complete(apiKey, req) {
+    const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), req.timeoutMs);
+    let res: Response;
+    try {
+      res = await fetch(mistralBase() + "/v1/chat/completions", {
+        method: "POST", signal: ctrl.signal, cache: "no-store", redirect: "error",
+        headers: { authorization: "Bearer " + apiKey, "content-type": "application/json", accept: "application/json" },
+        body: JSON.stringify({ model: req.model, max_tokens: req.maxTokens, response_format: { type: "json_object" }, messages: [{ role: "system", content: req.system }, { role: "user", content: req.user }] }),
+      });
+    } catch (e: any) {
+      clearTimeout(timer);
+      throw new LlmError(e?.name === "AbortError" ? "Mistral n'a pas répondu à temps." : "Mistral est injoignable depuis le serveur.");
+    }
+    if (!res.ok) { clearTimeout(timer); throw new LlmError(res.status === 401 ? "Clé API refusée par Mistral." : res.status === 429 ? "Trop de requêtes vers Mistral." : `Mistral a répondu par une erreur (HTTP ${res.status}).`, res.status); }
+    let data: any;
+    try { data = await res.json(); } catch { throw new LlmError("Réponse Mistral illisible ou trop lente."); } finally { clearTimeout(timer); }
+    const choice = data?.choices?.[0];
+    const content = choice?.message?.content;
+    // Mistral peut renvoyer le contenu en morceaux typés
+    const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((c: any) => (typeof c?.text === "string" ? c.text : "")).join("") : "";
+    return {
+      text: text.trim(),
+      inputTokens: data?.usage?.prompt_tokens ?? null, outputTokens: data?.usage?.completion_tokens ?? null, truncated: choice?.finish_reason === "length",
+    };
+  },
+};
+
+/** Adaptateur d'un fournisseur du catalogue. */
+export const providerByKey = (k: "anthropic" | "openai" | "mistral"): LlmProvider => (k === "anthropic" ? anthropicProvider : k === "openai" ? openaiProvider : mistralProvider);
 
 /**
  * Fournisseur scripté (tests, golden cases, démonstrations hors ligne) : aucune requête réseau, la réponse vient d'une fonction.
@@ -169,7 +205,7 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
   const system = maskPii(call.system) + "\n\nRéponds uniquement par UN objet JSON valide, sans texte autour ni bloc de code." + (hint ? `\nSchéma JSON attendu : ${hint}` : "");
   const user = maskPii(call.user);
   const maxAttempts = call.maxAttempts ?? 4, deadline = started + (call.deadlineMs ?? 45000), maxTokens = call.maxTokens ?? 900, timeoutMs = call.timeoutMs ?? 25000;
-  let sawInvalid = false, cut = false, ownerKeyRefused = false;
+  let sawInvalid = false, cut = false;
 
   const ask = async (t: GatewayTarget, prompt: string, row: TriedTarget): Promise<ProviderReply> => {
     if (Date.now() >= deadline) { cut = true; throw new LlmError("Délai total dépassé."); }
@@ -189,8 +225,6 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
 
   for (const t of targets) {
     if (meta.attempts >= maxAttempts) { cut = true; break; }
-    // la clé du propriétaire refusée (401/403) n'est pas une panne : ses données ne partent pas chez un autre fournisseur à son insu
-    if (ownerKeyRefused && t.source === "serveur") break;
     const row: TriedTarget = { provider: t.provider.id, model: t.model, outcome: "OK" };
     try {
       let r = await ask(t, user, row);
@@ -210,7 +244,6 @@ export async function generateJson<T>(targets: GatewayTarget[], call: JsonCall<T
       row.outcome = v.outcome; row.detail = v.detail;
     } catch (e) {
       row.outcome = "PROVIDER_ERROR"; row.detail = errorText(e);
-      if (e instanceof LlmError && (e.status === 401 || e.status === 403) && t.source === "utilisateur") ownerKeyRefused = true;
     }
     meta.tried.push(row);
   }
