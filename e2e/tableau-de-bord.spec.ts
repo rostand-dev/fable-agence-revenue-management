@@ -50,9 +50,8 @@ test("Liens des logements : fiche, situations ouvertes filtrées par logement ; 
 
 test("Navigation : « Tableau de bord » est accessible depuis le menu, et la page reste utilisable au clavier", async ({ page }) => {
   await page.goto("/");
-  const lien = page.getByRole("link", { name: "Tableau de bord" }).first();
-  if (!(await lien.isVisible())) await page.getByRole("button", { name: /Plus/ }).click();
-  await page.getByRole("link", { name: "Tableau de bord" }).filter({ visible: true }).first().click();
+  // bureau : « Tableau de bord » dans la colonne ; mobile : « Accueil » dans la barre basse
+  await page.getByRole("link", { name: /^(Tableau de bord|Accueil)$/ }).filter({ visible: true }).first().click();
   await expect(page).toHaveURL(/\/portefeuille/);
   await expect(page.getByTestId("pf-integrations")).toContainText("SuperHote");
   await expect(page.getByTestId("pf-integrations")).toContainText("PriceLabs");

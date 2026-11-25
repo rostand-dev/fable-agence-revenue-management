@@ -9,6 +9,8 @@ export const openCount = cache(async (tenantId: string): Promise<number> => {
   return r?.n ?? 0;
 });
 export const listProperties = cache(async (tenantId: string) => db.select().from(properties).where(eq(properties.tenantId, tenantId)).orderBy(properties.createdAt));
+/** Menu latéral : le strict nécessaire (identifiant, nom, statut), du plus ancien au plus récent. */
+export const menuPropertyList = cache(async (tenantId: string) => db.select({ id: properties.id, name: properties.name, status: properties.status }).from(properties).where(eq(properties.tenantId, tenantId)).orderBy(properties.createdAt));
 export const lastReview = cache(async (tenantId: string) => (await db.select().from(reviewRuns).where(eq(reviewRuns.tenantId, tenantId)).orderBy(desc(reviewRuns.startedAt)).limit(1))[0] ?? null);
 
 export async function listOpportunities(tenantId: string, statuses: string[]) {
