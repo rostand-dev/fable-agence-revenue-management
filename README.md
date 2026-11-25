@@ -44,6 +44,8 @@ Définitions complètes : `src/lib/agents/registry.ts` (postes, responsabilités
 
 Monolithe modulaire TypeScript : Next.js (App Router) + PostgreSQL + Drizzle ORM, un seul conteneur applicatif.
 
+Schéma d'architecture interactif (composants, couches internes, modules et flux, avec un zoom qui révèle le détail) : ouvrir [`docs/architecture/index.html`](docs/architecture/index.html) dans un navigateur. Page autonome, sans dépendance ; à mettre à jour quand un composant, une couche ou un flux change.
+
 ```
 src/lib/engine/     moteur déterministe, sans E/S : économie, métriques, détection, audit, machine à états
 src/lib/agents/     registre des postes, passerelle LLM
