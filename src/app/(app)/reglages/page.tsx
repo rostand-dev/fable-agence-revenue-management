@@ -6,6 +6,8 @@ import { renameTenantAction } from "@/app/actions/portfolio";
 import { renameAgentsAction, saveScoringAction } from "@/app/actions/settings";
 import { IMPLEMENTED_PLAYBOOKS, PLAYBOOKS } from "@/lib/engine/playbooks";
 import { EXECUTION_MODES, MODE_LABEL, RISK_LABEL, RISKS, resolveScoring, SCORING_LIMITS } from "@/lib/engine/scoring";
+import { CapBanner } from "@/components/CapBanner";
+import { getCapState } from "@/lib/llm-registry/cap-state";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
 import { FlagsPanel } from "@/components/FlagsPanel";
 import { loadFlags } from "@/lib/services/flags";
@@ -15,8 +17,7 @@ import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Recap } from "@/components/ui";
-import { serverDefaultModel } from "@/lib/agents/llm";
-import { getLlmStatus } from "@/lib/agents/llm-config";
+import { AUTO_LABEL, getLlmStatus, selectableModels } from "@/lib/agents/llm-config";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/dates";
@@ -28,7 +29,7 @@ export default async function Reglages() {
   const user = await requireUser();
   const names: Record<string, string> = user.settings.agentNames ?? {};
   const models: Record<string, string> = user.settings.agentModels ?? {};
-  const llm = await getLlmStatus(user.tenantId);
+  const [llm, cap] = await Promise.all([getLlmStatus(user.tenantId), getCapState(user.tenantId)]);
   const scoring = resolveScoring(user.settings.scoring);
   const [flagRows, props] = await Promise.all([loadFlags(user.tenantId), db.select({ id: schema.properties.id, name: schema.properties.name }).from(schema.properties).where(eq(schema.properties.tenantId, user.tenantId)).orderBy(schema.properties.name)]);
   return (
@@ -120,14 +121,15 @@ export default async function Reglages() {
       </section>
       <section className="section">
         <h2>Modèles par agent</h2>
-        <p className="section-note">Chaque agent peut utiliser son propre modèle de langage. La liste vient de votre clé API Anthropic : seuls les modèles qu'elle peut utiliser sont proposés. Les postes à règles gardent des calculs déterministes ; leur modèle sert à leur conversation.</p>
+        <p className="section-note">Chaque agent peut utiliser son propre modèle de langage. Par défaut, « Automatique » : le routeur prend le modèle le moins cher qui convient parmi vos fournisseurs. Un choix manuel prime toujours ; la liste vient de vos clés API. Les postes à règles gardent des calculs déterministes ; leur modèle sert à leur conversation. Prix, qualification, plafond et coûts : <Link href="/modeles">écran Modèles</Link>.</p>
+        <CapBanner cap={cap} />
         {llm.source === "utilisateur" ? (
           <ActionForm action={saveAgentModelsAction}>
             <div className="form-grid">
               {AGENTS.map((a) => (
                 <div className="field" key={a.id}>
                   <label htmlFor={"model-" + a.id} style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar agent={a.id} size={30} />{a.title}</label>
-                  <AgentModelSelect id={"model-" + a.id} name={"model-" + a.id} models={llm.models} current={models[a.id]} defaultLabel={`Modèle par défaut (${serverDefaultModel()})`} />
+                  <AgentModelSelect id={"model-" + a.id} name={"model-" + a.id} models={selectableModels(llm)} current={models[a.id]} defaultLabel={AUTO_LABEL} />
                 </div>
               ))}
             </div>

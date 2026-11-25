@@ -21,7 +21,7 @@ import { applyReview, fromReviewModel, reviewable, reviewContext, reviewPrompt, 
  * (`npx vitest run -u src/lib/agents/agents-golden.test.ts`).
  */
 let fetchCalls = 0;
-const ENV_KEYS = ["ANTHROPIC_API_KEY", "ANTHROPIC_API_BASE", "OPENAI_API_KEY", "OPENAI_API_BASE", "OPENAI_MODEL"];
+const ENV_KEYS = ["ANTHROPIC_API_BASE", "OPENAI_API_BASE", "MISTRAL_API_BASE"];
 const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 beforeAll(() => {
   for (const k of ENV_KEYS) delete process.env[k];
@@ -47,7 +47,7 @@ function inputFor(key: string, today = "2026-11-12"): EngineInput {
 
 /** Fournisseur scripté : répond comme le faux serveur de modèle des E2E (réponses valides, sans chiffre inventé), sans aucun réseau. */
 const target = (respond: (system: string, user: string) => string): GatewayTarget & { provider: ReturnType<typeof scriptedProvider> } =>
-  ({ provider: scriptedProvider((req) => respond(req.system, req.user)), apiKey: "cle-de-test", model: "scripte", source: "serveur" });
+  ({ provider: scriptedProvider((req) => respond(req.system, req.user)), apiKey: "cle-de-test", model: "scripte", source: "utilisateur" });
 const faithful = (system: string, user: string) => { const r = e2eFakeReply({ system, user, body: {} } as never); return typeof r === "string" ? r : JSON.stringify(r); };
 
 async function ask<T>(prompt: PromptId, user: string, schema: Parameters<typeof generateJson<T>>[1]["schema"], respond = faithful) {

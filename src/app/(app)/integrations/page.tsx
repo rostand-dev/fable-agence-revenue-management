@@ -2,6 +2,8 @@ import { killSwitchAction } from "@/app/actions/settings";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Banner, Recap, State, Vq } from "@/components/ui";
+import { CapBanner } from "@/components/CapBanner";
+import { getCapState } from "@/lib/llm-registry/cap-state";
 import { LlmKeyPanel } from "@/components/LlmKeyPanel";
 import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
@@ -18,7 +20,7 @@ const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 export default async function Integrations({ searchParams }: { searchParams: Promise<{ llm?: string }> }) {
   const { llm } = await searchParams;
   const user = await requireUser();
-  const [llmStatus, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
+  const [llmStatus, cap, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), getCapState(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
   return (
     <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Configuration" }, { label: "Intégrations" }]}>
       <div className="page-head">
@@ -26,7 +28,7 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
         <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. L'écriture chez PriceLabs n'existe que pour les logements réels, une fois ouverte par l'hébergeur de l'application (verrou d'environnement) et tant que le coupe-circuit est levé ; sinon, toute modification passe par une procédure manuelle guidée, avec preuve.</p>
       </div>
       <p style={{ margin: "0 0 18px" }} data-testid="ingestion-link"><Link className="btn btn-ghost btn-sm" href="/integrations/erreurs">Erreurs d'ingestion SuperHote{ingestErrors > 0 ? ` (${ingestErrors})` : ""}</Link></p>
-      {llm === "supprimee" && <Banner role="sain" title="Clé supprimée" style={{ marginBottom: 18 }}>Les agents reviennent au modèle du serveur, ou au mode déterministe s'il n'y en a pas. Les modèles choisis par agent ont été réinitialisés.</Banner>}
+      {llm === "supprimee" && <Banner role="sain" title="Clé supprimée" style={{ marginBottom: 18 }}>Cette clé n'est plus utilisée. Les agents passent par vos autres clés, ou en mode déterministe s'il n'y en a pas. Les modèles choisis par agent ont été réinitialisés.</Banner>}
       <Banner role="tech" title="Démonstration simulée, logements réels en lecture (écriture PriceLabs verrouillée par défaut)" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
       <div className="stack">
         {PROVIDERS.map((k) => {
@@ -64,6 +66,7 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
             </article>
           );
         })}
+        <CapBanner cap={cap} />
         <LlmKeyPanel status={llmStatus} />
       </div>
     </Page>

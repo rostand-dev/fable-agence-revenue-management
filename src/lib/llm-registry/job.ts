@@ -6,6 +6,7 @@
 import { sql } from "drizzle-orm";
 import { db, newId } from "@/db";
 import { syncIntervalHours } from "./config";
+import { suspendFromObserved } from "./bench";
 import { syncLlmRegistry } from "./sync";
 
 export const RETRY_AFTER_FAILURE_HOURS = 1;
@@ -39,4 +40,12 @@ export async function runLlmSyncIfDue(now: Date = new Date()): Promise<boolean> 
   if (!id) return false;
   await syncLlmRegistry({ now }, id);
   return true;
+}
+
+/** Passe horaire : suspension des modèles dont les échecs observés (30 jours) passent sous le seuil. Coupée avec le job (LLM_SYNC_INTERVAL_HOURS=0). */
+export async function runObservedSuspension(now: Date = new Date()): Promise<number> {
+  if (syncIntervalHours() <= 0) return 0;
+  const suspended = await suspendFromObserved(now);
+  for (const s of suspended) console.warn(`[registre LLM] ${s.modelId} suspendu pour ${s.task} : ${Math.round(s.rate * 1000) / 10} % de réussite observée.`);
+  return suspended.length;
 }

@@ -21,16 +21,11 @@ services:
       - LOG_PII_MASKING=${LOG_PII_MASKING:-on}
       # Adresse publique des webhooks SuperHote (https) ; vide = APP_URL. Voir .env.example.
       - SUPERHOTE_WEBHOOK_BASE_URL=${SUPERHOTE_WEBHOOK_BASE_URL:-}
-      # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, Anthropic). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
+      # Clé qui chiffre les clés API enregistrées (PriceLabs, SuperHote, et les clés de modèles Anthropic, OpenAI, Mistral des propriétaires). Générée par Coolify ; la changer rend illisibles les clés déjà enregistrées.
       - APP_SECRET=${SERVICE_PASSWORD_64_APPSECRET:-secret_local_a_remplacer_0123456789}
-      # Facultatif : clé Anthropic de repli, utilisée quand le propriétaire n'a saisi aucune clé. Vide = agents en repli déterministe.
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      # Facultatif : modèle Anthropic par défaut des agents.
+      # Facultatif : modèle Anthropic de démarrage du routeur. Utilisé avec la clé Anthropic du propriétaire tant qu'aucun modèle n'est qualifié pour une tâche (« démarrage sans régression »).
+      # Le serveur ne détient aucune clé de modèle : chaque propriétaire saisit les siennes (Anthropic, OpenAI, Mistral) dans Intégrations.
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-sonnet-5-5}
-      # Facultatif : clé OpenAI de repli des agents (US-070), utilisée seulement si Anthropic est en panne ou renvoie une sortie inexploitable. Vide = pas de repli. Exige aussi OPENAI_MODEL.
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      # Facultatif : identifiant exact du modèle OpenAI du repli. Le repli n'est actif que si OPENAI_API_KEY et OPENAI_MODEL sont tous deux renseignés.
-      - OPENAI_MODEL=${OPENAI_MODEL:-}
       # Facultatif : adresse de l'API Mistral (tests avec un faux serveur). Défaut : https://api.mistral.ai.
       - MISTRAL_API_BASE=${MISTRAL_API_BASE:-https://api.mistral.ai}
       # Facultatif : adresse (https) du fichier de prix open source de LiteLLM, lu chaque jour pour connaître le prix des modèles. Un prix modifié n'est appliqué qu'après validation dans l'application.
@@ -41,6 +36,8 @@ services:
       - LLM_SYNC_INTERVAL_HOURS=${LLM_SYNC_INTERVAL_HOURS:-24}
       # Facultatif : taux fixe dollar → euro pour exprimer le coût des modèles et le plafond mensuel en euros (défaut 0.92 ; à ajuster à la main).
       - LLM_USD_EUR_RATE=${LLM_USD_EUR_RATE:-0.92}
+      # Facultatif : adresses e-mail (séparées par des virgules) de l'exploitant, seules autorisées à valider un changement de prix de modèle et à lancer un test de modèle (réglages partagés par tous les comptes). Vide : personne.
+      - LLM_ADMIN_EMAILS=${LLM_ADMIN_EMAILS:-}
       # Facultatif : appels HTTP aux fournisseurs de modèle au plus par revue (défaut 80 ; corrections et replis comptés). Au-delà, les agents passent en repli déterministe pour le reste de la revue. 0 désactive les appels de modèle.
       - AGENT_MAX_CALLS_PER_REVIEW=${AGENT_MAX_CALLS_PER_REVIEW:-80}
       # Facultatif : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300000). Atteint : repli déterministe jusqu'au lendemain. 0 désactive les appels de modèle.

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { callLlm, listAnthropicModels, LlmError, streamLlm } from "./llm";
-import { effectiveModel, pickLlmConfig } from "./llm-config";
+import { effectiveModel } from "./llm-config";
 import { decryptSecret, encryptSecret, secretHint } from "../secret";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -70,20 +70,11 @@ describe("US-034 : masquage des données personnelles avant l'envoi au modèle",
   });
 });
 
-describe("pickLlmConfig", () => {
-  const base = { serverKey: undefined as string | undefined, defaultModel: "defaut" };
-  it("clé utilisateur + modèle choisi", () => expect(pickLlmConfig({ ...base, userKey: "u", agentModel: "m" })).toEqual({ apiKey: "u", model: "m", source: "utilisateur" }));
-  it("clé utilisateur sans choix : modèle par défaut", () => expect(pickLlmConfig({ ...base, userKey: "u", agentModel: undefined })?.model).toBe("defaut"));
-  it("sans clé utilisateur : clé du serveur, et le choix de modèle est ignoré", () => expect(pickLlmConfig({ ...base, userKey: null, serverKey: "s", agentModel: "m" })).toEqual({ apiKey: "s", model: "defaut", source: "serveur" }));
-  it("aucune clé : repli déterministe", () => expect(pickLlmConfig({ ...base, userKey: null, agentModel: "m" })).toBeNull());
-});
-
 describe("effectiveModel", () => {
-  it("couvre les trois sources", () => {
-    expect(effectiveModel("aucune", "m", "d")).toBeNull();
-    expect(effectiveModel("serveur", "m", "d")).toBe("d");
-    expect(effectiveModel("utilisateur", "m", "d")).toBe("m");
-    expect(effectiveModel("utilisateur", undefined, "d")).toBe("d");
+  it("mode déterministe sans clé ; sinon le choix manuel ou « automatique »", () => {
+    expect(effectiveModel("aucune", "m")).toBeNull();
+    expect(effectiveModel("utilisateur", "m")).toBe("m");
+    expect(effectiveModel("utilisateur", undefined)).toBe("automatique");
   });
 });
 

@@ -6,7 +6,7 @@ import type { DetectedOpportunity } from "../engine/types";
 
 type Out = z.infer<typeof OutSchema>;
 export type Narrative = { summary: string; recommendation: string; caveats: string[]; mode: "LLM" | "DETERMINISTIC"; model?: string; promptVersion?: string };
-const OutSchema = z.object({ summary: z.string().min(20).max(700), recommendation: z.string().min(10).max(500), caveats: z.array(z.string().max(300)).max(4) });
+export const OutSchema = z.object({ summary: z.string().min(20).max(700), recommendation: z.string().min(10).max(500), caveats: z.array(z.string().max(300)).max(4) });
 
 export function deterministicNarrative(o: DetectedOpportunity): Narrative {
   const c = o.candidates[o.selected];
@@ -27,7 +27,7 @@ export function deterministicNarrative(o: DetectedOpportunity): Narrative {
 }
 
 /** Faits certifiés du dossier : tout ce que le modèle reçoit. Les montants viennent du moteur. */
-function narrativeFacts(o: DetectedOpportunity, propertyName: string) {
+export function narrativeFacts(o: DetectedOpportunity, propertyName: string) {
   return {
     logement: propertyName, titre: o.title, periode: fmtPeriod(o.stayFrom, o.stayTo), signal: o.signalText, source: o.signalSource,
     diagnostic: o.diagnosis.primaryLabel, confiance: o.diagnosis.confidence, raisonnement: o.diagnosis.tree,

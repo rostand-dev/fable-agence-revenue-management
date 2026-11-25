@@ -134,7 +134,12 @@ jobs:
       # PRICELABS_WRITE_ENABLED est volontairement absent : l'écriture réelle chez PriceLabs reste fermée en CI, et le test e2e vérifie l'affichage « Désactivée sur cet environnement ».
       # Faux serveur de modèle de langage (scripts/fake-llm-server.ts), lancé par Playwright : les agents l'interrogent comme ils interrogeraient Anthropic. Clé factice, aucun appel externe.
       ANTHROPIC_API_BASE: http://127.0.0.1:4011
-      ANTHROPIC_API_KEY: ci-fake-llm-key-0123456789
+      OPENAI_API_BASE: http://127.0.0.1:4011
+      MISTRAL_API_BASE: http://127.0.0.1:4011/mistral
+      # Clé factice enregistrée comme clé Anthropic du propriétaire du compte de démo (le serveur ne détient aucune clé de modèle) ; acceptée seulement parce que ANTHROPIC_API_BASE est local.
+      DEMO_ACCOUNT_LLM_KEY: ci-fake-llm-key-0123456789
+      # Le compte de démo de la CI joue l'exploitant : il peut valider un prix et lancer un test de modèle.
+      LLM_ADMIN_EMAILS: demo-e2e@example.test
       # Le job de mise à jour des prix et modèles LLM va sur Internet (fichier de prix, listes des fournisseurs) : coupé en CI, comme tout appel externe.
       LLM_SYNC_INTERVAL_HOURS: "0"
       # Identifiants que Playwright saisit pour se connecter : ceux du compte de démo ci-dessus.
