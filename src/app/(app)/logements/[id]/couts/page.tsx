@@ -27,7 +27,7 @@ export default async function Couts({ params, searchParams }: { params: Promise<
   const step = Math.min(7, Math.max(0, Number((await searchParams).etape ?? 1) - 1 || 0));
   return (
     <Page title="Coûts et seuils" sub={`${p.name} · avec ${ines}`} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Coûts et seuils" }]}>
-      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}`}><Icon name="back" />Retour à la fiche</Link></p>
+      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=hub-economie`}><Icon name="back" />Retour à Économie</Link></p>
       <div className="page-head">
         <h1>Vos coûts et vos seuils, pas à pas</h1>
         <p>Huit écrans courts, une question concrète à la fois. {ines} en déduit vos planchers : le prix en dessous duquel l'équipe ne proposera jamais rien. Si vous ne savez pas, laissez vide ou donnez une estimation provisoire ; vos réponses sont enregistrées à chaque étape.</p>

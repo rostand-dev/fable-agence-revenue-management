@@ -7,7 +7,7 @@ const flat = (nodes: NavNode[]): NavNode[] => nodes.flatMap((n) => [n, ...flat(n
 describe("navigation", () => {
   it("range chaque onglet de la fiche logement dans une section, sans en oublier", () => {
     const tabs = PROPERTY_SECTIONS.flatMap((s) => s.tabs);
-    expect([...tabs].sort()).toEqual(["annonces", "apercu", "calendrier", "canaux", "donnees", "economie", "historique", "pricelabs", "strategie", "superhote"]);
+    expect([...tabs].sort()).toEqual(["annonces", "apercu", "calendrier", "canaux", "donnees", "economie", "historique", "hub-donnees", "hub-economie", "hub-strategie", "performance", "pricelabs", "strategie", "superhote"]);
     expect(new Set(tabs).size).toBe(tabs.length);
   });
   it("conserve tous les écrans de l'ancien menu", () => {
@@ -38,7 +38,10 @@ describe("navigation", () => {
     expect(currentNodeId("/rapports/r1", null)).toBe("rapports");
     expect(currentNodeId("/integrations/erreurs", null)).toBe("integrations");
     expect(propertyIdOf("/logements/nouveau")).toBeNull();
+    expect(currentNodeId("/logements/p1", "performance")).toBe("section:p1:apercu");
+    expect(currentNodeId("/logements/p1", "hub-economie")).toBe("section:p1:economie");
     expect(sectionHref("p1", "apercu")).toBe("/logements/p1");
+    expect(sectionHref("p1", "donnees")).toBe("/logements/p1?tab=hub-donnees");
   });
   it("ouvre les branches qui mènent à l'écran courant", () => {
     const g = buildNav(props(2));

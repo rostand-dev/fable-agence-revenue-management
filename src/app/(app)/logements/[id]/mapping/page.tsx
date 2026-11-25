@@ -25,6 +25,7 @@ export default async function Mapping({ params }: { params: Promise<{ id: string
   const m = await getMapping(user.tenantId, p.id);
   return (
     <Page title="Mapping des identifiants" sub={p.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Mapping" }]}>
+      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=hub-donnees`}><Icon name="back" />Retour à Données &amp; connexions</Link></p>
       <div className="page-head">
         <h1>Mapping des identifiants</h1>
         <p>Un mauvais rattachement fausse les prix, les réservations et les planchers sans que rien ne signale d'erreur. Vérifiez que chaque outil désigne bien ce logement, puis confirmez.</p>

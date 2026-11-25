@@ -44,6 +44,7 @@ export default async function Qualite({ params }: { params: Promise<{ id: string
   };
   return (
     <Page title="Checklist de qualité" sub={q.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: q.name, href: `/logements/${id}` }, { label: "Checklist de qualité" }]}>
+      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${id}?tab=hub-donnees`}><Icon name="back" />Retour à Données &amp; connexions</Link></p>
       <div className="page-head">
         <h1>Checklist de qualité</h1>
         <p>Un logement ne passe de l'observation à l'état actif que si tous les points bloquants sont satisfaits. Les points à surveiller n'empêchent pas l'activation.</p>

@@ -34,8 +34,8 @@ test("Checklist de qualité : activation bloquée tant que le mapping n'est pas 
   expect((await page.request.post(`/api/v1/properties/${id}/validations/reconciliation`, { data: { sampleSize: "abc", maxGapPct: "0", source: "SuperHote" } })).status()).toBe(400);
 
   // page : point bloquant visible, bouton indisponible, pas de débordement
-  await page.goto(`/logements/${id}`);
-  await page.getByRole("link", { name: "Checklist de qualité" }).click();
+  await page.goto(`/logements/${id}?tab=hub-donnees`);
+  await page.getByTestId("hub-card-checklist").click();
   await expect(page.getByRole("heading", { level: 1, name: "Checklist de qualité" })).toBeVisible();
   await expect(page.getByTestId("quality-status")).toContainText("3 points bloquants");
   await expect(page.getByTestId("quality-mapping")).toHaveAttribute("data-ok", "false");

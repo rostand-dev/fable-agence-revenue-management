@@ -9,12 +9,13 @@ import { hasDatabase } from "./helpers/roles";
  * 1. chaque page de l'application est inscrite ici (contrôle sur les fichiers `page.tsx`) ;
  * 2. chaque écran répond ;
  * 3. chaque écran s'atteint depuis l'accueil en 3 clics au plus, sur ordinateur comme sur mobile. Un « clic » est un lien suivi vers un écran :
- *    déplier une rubrique du menu ou ouvrir la feuille « Plus » ne change pas d'écran et ne compte pas.
+ *    déplier une rubrique du menu, ouvrir la feuille « Plus » ou la feuille des sections d'une fiche ne change pas d'écran et ne compte pas
+ *    (le geste réel de ces feuilles est vérifié dans navigation-menu.spec.ts et fiche-hubs.spec.ts).
  */
 const MAX_CLICS = 3;
 
 /** `route` : motif du fichier page.tsx ; `tab` : onglet. `needs` : donnée sans laquelle l'écran n'existe pas. */
-type Screen = { route: string; tab?: string; needs?: "propriete" | "brouillon" | "dossier" | "rapport"; mobileTrop?: boolean };
+type Screen = { route: string; tab?: string; needs?: "propriete" | "brouillon" | "dossier" | "rapport" };
 const P = "/logements/[id]";
 const SCREENS: Screen[] = [
   { route: "/" }, { route: "/portefeuille" }, { route: "/alertes" }, { route: "/logements" }, { route: "/logements/nouveau" },
@@ -22,11 +23,9 @@ const SCREENS: Screen[] = [
   { route: "/methode" }, { route: "/glossaire" }, { route: "/proprietaires" }, { route: "/integrations" }, { route: "/integrations/erreurs" },
   { route: "/modeles" }, { route: "/reglages" },
   { route: "/dossier/[code]", needs: "dossier" }, { route: "/rapports/[id]", needs: "rapport" },
-  { route: P }, ...["calendrier", "strategie", "economie", "canaux", "donnees", "historique", "annonces", "pricelabs", "superhote"].map((tab) => ({ route: P, tab })),
+  { route: P }, ...["performance", "calendrier", "hub-strategie", "strategie", "canaux", "hub-economie", "economie", "hub-donnees", "donnees", "annonces", "pricelabs", "superhote", "historique"].map((tab) => ({ route: P, tab })),
   { route: `${P}/creation`, needs: "brouillon" },
-  ...["modifier", "supprimer", "mapping", "qualite", "validations"].map((s) => ({ route: `${P}/${s}`, needs: "propriete" as const })),
-  // PR 1 : sur mobile, ces écrans passent par un onglet de la fiche (4 clics) ; les hubs de la fiche les rapprochent ensuite.
-  ...["couts", "strategie", "compilateur", "saisons", "versions-economie", "ecarts-reservations"].map((s) => ({ route: `${P}/${s}`, needs: "propriete" as const, mobileTrop: true })),
+  ...["modifier", "supprimer", "mapping", "qualite", "validations", "couts", "strategie", "compilateur", "saisons", "versions-economie", "ecarts-reservations"].map((s) => ({ route: `${P}/${s}`, needs: "propriete" as const })),
 ];
 const keyOf = (s: Screen) => s.route + (s.tab ? `?tab=${s.tab}` : "");
 
@@ -86,7 +85,8 @@ async function liens(page: Page): Promise<string[]> {
     const w = window.innerWidth;
     const menus = w >= 1024 ? [".rail"] : w >= 768 ? [".navbar", ".nav-sheet"] : [".bottombar", ".nav-sheet"];
     const sel = [...menus, ".content", ".fn"].map((s) => `${s} a[href]`).join(",");
-    return Array.from(document.querySelectorAll<HTMLAnchorElement>(sel)).map((a) => a.getAttribute("href")!).filter((h) => h.startsWith("/"));
+    // la feuille des sections d'une fiche n'existe pas en grand écran
+    return Array.from(document.querySelectorAll<HTMLAnchorElement>(sel)).filter((a) => !(w >= 1024 && a.closest(".section-switcher"))).map((a) => a.getAttribute("href")!).filter((h) => h.startsWith("/"));
   });
 }
 
@@ -138,10 +138,8 @@ test("Inventaire : chaque écran répond et s'atteint depuis l'accueil en 3 clic
       }
       frontier = next;
     }
-    const mobile = (page.viewportSize()?.width ?? 1280) < 768;
     const manquants: string[] = [];
     for (const s of SCREENS) {
-      if (mobile && s.mobileTrop) continue;
       // données absentes : logement réel non créable (environnement distant), ou aucun rapport préparé
       if (!db && (s.needs === "propriete" || s.needs === "brouillon")) continue;
       if (s.needs === "rapport" && !depth.has(keyOf(s))) continue;

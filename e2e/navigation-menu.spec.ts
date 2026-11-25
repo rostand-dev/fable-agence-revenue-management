@@ -22,8 +22,11 @@ test("Ordinateur : branches dépliables, branche courante ouverte, onglet reconn
   await expect(analyse).toHaveAttribute("aria-expanded", "false");
   await expect(rail.getByRole("link", { name: "Bilan mensuel" })).toBeHidden();
   // au clavier
-  await analyse.focus(); await page.keyboard.press("Enter");
-  await expect(analyse).toHaveAttribute("aria-expanded", "true");
+  // la page peut ne pas être encore interactive : on ne réappuie que si la rubrique est restée repliée
+  await expect(async () => {
+    if ((await analyse.getAttribute("aria-expanded")) !== "true") { await analyse.focus(); await page.keyboard.press("Enter"); }
+    await expect(analyse).toHaveAttribute("aria-expanded", "true", { timeout: 1000 });
+  }).toPass({ timeout: 10_000 });
   await expect(rail.getByRole("link", { name: "Bilan mensuel" })).toBeVisible();
   await page.reload();
   await expect(rail.getByRole("link", { name: "Bilan mensuel" })).toBeVisible();
@@ -41,7 +44,8 @@ test("Ordinateur : branches dépliables, branche courante ouverte, onglet reconn
   await expect(rail.getByRole("link", { name: "Stratégie & prix" })).toHaveAttribute("aria-current", "page");
   await expect(rail.locator('[aria-current="page"]')).toHaveCount(1);
   await rail.getByRole("link", { name: "Données & connexions" }).click();
-  await expect(page).toHaveURL(/tab=superhote/);
+  await expect(page).toHaveURL(/tab=hub-donnees/);
+  await expect(page.getByTestId("hub-donnees")).toBeVisible();
   await expect(rail.getByRole("link", { name: "Données & connexions" })).toHaveAttribute("aria-current", "page");
   await rail.getByRole("link", { name: "Vue d'ensemble" }).click();
   await expect(rail.getByRole("link", { name: "Vue d'ensemble" })).toHaveAttribute("aria-current", "page");

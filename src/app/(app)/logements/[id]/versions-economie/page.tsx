@@ -21,7 +21,7 @@ export default async function VersionsEconomie({ params }: { params: Promise<{ i
   const versions = await listEconomicsVersions(user.tenantId, p.id);
   return (
     <Page title="Versions du modèle économique" sub={p.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Versions de l'économie" }]}>
-      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=economie`}><Icon name="back" />Retour à l'économie</Link></p>
+      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=hub-economie`}><Icon name="back" />Retour à Économie</Link></p>
       <div className="page-head">
         <h1>Versions du modèle économique</h1>
         <p>Chaque changement de commission, de coût ou de seuil crée une version. Une version n'est jamais modifiée ni effacée : on retrouve ce qui valait à une date donnée, et qui l'a changé.</p>
