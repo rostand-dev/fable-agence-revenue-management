@@ -12,7 +12,7 @@ const tag = () => test.info().project.name.replace(/\W/g, "") + Date.now().toStr
 
 async function premierLogementId(page: Page): Promise<string> {
   await page.goto("/logements");
-  const hrefs = await page.locator('a[href^="/logements/"]').evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!).filter((h) => /^\/logements\/[^/]+$/.test(h) && !h.endsWith("/nouveau")));
+  const hrefs = await page.locator('.content a[href^="/logements/"]').evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!).filter((h) => /^\/logements\/[^/]+$/.test(h) && !h.endsWith("/nouveau")));
   expect(hrefs.length, "aucun logement dans la démonstration").toBeGreaterThan(0);
   return hrefs[0];
 }

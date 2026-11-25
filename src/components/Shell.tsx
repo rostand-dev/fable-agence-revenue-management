@@ -1,42 +1,90 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { createContext, useContext, useEffect, useRef } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { createContext, Suspense, useContext, useEffect, useRef, useState } from "react";
 import { Icon, Logo } from "./Icon";
 import { logoutAction } from "@/app/actions/auth";
+import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, propertyIdOf, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
 
-type Item = { href: string; icon: string; label: string; primary?: boolean; count?: boolean; alerts?: boolean };
-const GROUPS: { label: string; items: Item[] }[] = [
-  { label: "Poste de travail", items: [
-    { href: "/portefeuille", icon: "chart", label: "Tableau de bord" },
-    { href: "/", icon: "inbox", label: "Opportunités", primary: true, count: true },
-    { href: "/logements", icon: "home", label: "Logements", primary: true },
-    { href: "/historique", icon: "history", label: "Historique", primary: true },
-    { href: "/alertes", icon: "alert", label: "Alertes", alerts: true },
-  ] },
-  { label: "Agence IA", items: [
-    { href: "/equipe", icon: "team", label: "Équipe", primary: true },
-    { href: "/methode", icon: "book", label: "Méthode de travail" },
-    { href: "/glossaire", icon: "glossary", label: "Glossaire" },
-  ] },
-  { label: "Analyse", items: [{ href: "/bilan", icon: "chart", label: "Bilan mensuel" }, { href: "/rapports", icon: "book", label: "Rapports mensuels" }] },
-  { label: "Configuration", items: [
-    { href: "/proprietaires", icon: "team", label: "Propriétaires" },
-    { href: "/integrations", icon: "plug", label: "Intégrations" },
-    { href: "/modeles", icon: "euro", label: "Modèles" },
-    { href: "/reglages", icon: "sliders", label: "Réglages" },
-  ] },
-];
-const FLAT = GROUPS.flatMap((g) => g.items.map((item) => ({ item, group: g.label })));
-const isCurrent = (path: string, href: string) => (href === "/" ? path === "/" || path.startsWith("/dossier") : path === href || path.startsWith(href + "/"));
+type Counts = { open: number; alerts: number };
+const NavCtx = createContext<Counts & { openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, openSheet: () => {} });
+const STORAGE_KEY = "nuitsignal.menu.ouvert";
+const alertsLabel = (n: number) => `${n} alerte${n > 1 ? "s" : ""} à traiter`;
 
-const NavCtx = createContext<{ open: number; alerts: number }>({ open: 0, alerts: 0 });
+function Count({ badge, counts, className = "rail-count" }: { badge?: NavBadge; counts: Counts; className?: string }) {
+  if (badge === "open" && counts.open > 0) return <span className={className}>{counts.open}</span>;
+  if (badge === "alerts" && counts.alerts > 0) return <span className={`${className} ${className}-alert`} role="img" aria-label={alertsLabel(counts.alerts)}>{counts.alerts}</span>;
+  return null;
+}
 
-/** Une seule source de navigation, trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
-export function Shell({ open, alerts = 0, demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
+/** Colonne latérale : arborescence dépliable. La branche de l'écran courant s'ouvre seule ; les ouvertures manuelles sont gardées dans le navigateur. */
+function RailTree({ properties, tab, counts }: { properties: NavProperty[]; tab: string | null; counts: Counts }) {
+  const path = usePathname();
+  const groups = buildNav(properties, propertyIdOf(path));
+  const current = currentNodeId(path, tab);
+  const trail = ancestorIds(groups, current);
+  // sur une fiche, la branche du logement affiché montre ses sections
+  const auto = new Set(current ? [...trail, current] : trail);
+  const [manual, setManual] = useState<string[]>([]);
+  const [closed, setClosed] = useState<string[]>([]);
+  useEffect(() => {
+    try { const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]"); if (Array.isArray(v)) setManual(v.filter((x) => typeof x === "string")); } catch { /* stockage indisponible : le menu reste utilisable */ }
+  }, []);
+  // un changement d'écran rouvre sa branche, même si elle avait été repliée
+  useEffect(() => { setClosed([]); }, [path, tab]);
+  const isOpen = (id: string) => !closed.includes(id) && (auto.has(id) || manual.includes(id));
+  const toggle = (id: string) => {
+    const open = isOpen(id);
+    const next = open ? manual.filter((x) => x !== id) : [...manual.filter((x) => x !== id), id];
+    setManual(next);
+    setClosed((c) => (open ? [...c, id] : c.filter((x) => x !== id)));
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* idem */ }
+  };
+  const render = (n: NavNode, level: number) => {
+    const open = !!n.children && isOpen(n.id);
+    const panel = `nav-${n.id.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+    const cls = `rail-link rail-level-${level}${n.action ? " rail-action" : ""}${trail.includes(n.id) ? " is-trail" : ""}`;
+    const inner = <>{n.icon && <span data-icon><Icon name={n.icon} /></span>}<span className="rail-text">{n.label}</span><Count badge={n.badge} counts={counts} /></>;
+    return (
+      <li key={n.id}>
+        <div className="rail-row">
+          {n.href
+            ? <Link className={cls} href={n.href} title={level > 1 ? n.label : undefined} aria-current={current === n.id ? "page" : undefined}>{inner}</Link>
+            : <button type="button" className={cls} aria-expanded={open} aria-controls={panel} onClick={() => toggle(n.id)}>{inner}<span className="rail-chevron" aria-hidden="true"><Icon name="caret" /></span></button>}
+          {n.href && n.children && (
+            <button type="button" className="rail-toggle" aria-expanded={open} aria-controls={panel} aria-label={`Sous-menu ${n.label}`} onClick={() => toggle(n.id)}>
+              <span className="rail-chevron" aria-hidden="true"><Icon name="caret" /></span>
+            </button>
+          )}
+        </div>
+        {n.children && <ul id={panel} className="rail-sub" hidden={!open}>{n.children.map((c) => render(c, level + 1))}</ul>}
+      </li>
+    );
+  };
+  return (
+    <>
+      {groups.map((g) => (
+        <div className="rail-group" key={g.label}>
+          <p className="rail-label">{g.label}</p>
+          <ul className="rail-nav">{g.items.map((n) => render(n, 1))}</ul>
+        </div>
+      ))}
+    </>
+  );
+}
+function RailWithTab(props: { properties: NavProperty[]; counts: Counts }) {
+  return <RailTree {...props} tab={useSearchParams().get("tab")} />;
+}
+
+const foldedNodes = (groups: NavGroup[]) => groups.flatMap((g) => g.items).filter((n) => FOLDED_NODES.includes(n.id));
+
+/** Une seule source de navigation (lib/nav), trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
+export function Shell({ open, alerts = 0, properties = [], demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; properties?: NavProperty[]; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
   const path = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
-  const more = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  // null : feuille fermée ; "" : tous les groupes (mobile) ; identifiant : un seul groupe (tablette)
+  const [sheetGroup, setSheetGroup] = useState<string | null>(null);
 
   useEffect(() => {
     // les bandes collantes se superposent : leurs hauteurs réelles sont mesurées et publiées
@@ -55,62 +103,75 @@ export function Shell({ open, alerts = 0, demo = false, exitHref = "/demo", chil
     return () => { window.removeEventListener("resize", sync); ro.disconnect(); };
   }, [path]);
   useEffect(() => { sheet.current?.close(); }, [path]);
+  useEffect(() => { if (sheetGroup !== null && !sheet.current?.open) sheet.current?.showModal(); }, [sheetGroup]);
+  // la feuille n'existe pas en grand écran : restée ouverte (rotation, redimensionnement), elle bloquerait la page sans être visible
+  useEffect(() => {
+    const large = window.matchMedia("(min-width: 1024px)");
+    const onChange = () => { if (large.matches) sheet.current?.close(); };
+    large.addEventListener("change", onChange);
+    return () => large.removeEventListener("change", onChange);
+  }, []);
 
-  const overflowCurrent = FLAT.some((e) => !e.item.primary && isCurrent(path, e.item.href));
+  const counts = { open, alerts };
+  const groups = buildNav(properties, propertyIdOf(path));
+  const current = currentNodeId(path, null);
+  const trail = ancestorIds(groups, current);
+  const inFolded = trail.some((id) => FOLDED_NODES.includes(id));
+  const openSheet = (group: string, from: HTMLElement) => { opener.current = from; setSheetGroup(group); };
+  const close = () => sheet.current?.close();
+  const bottom = [
+    { href: "/portefeuille", icon: "chart", label: "Accueil", id: "tableau-de-bord" },
+    { href: "/", icon: "inbox", label: "Opportunités", id: "opportunites", badge: "open" as const },
+    { href: "/logements", icon: "home", label: "Logements", id: "logements" },
+    { href: "/alertes", icon: "alert", label: "Alertes", id: "alertes", badge: "alerts" as const },
+  ];
+  const shown = foldedNodes(groups).filter((n) => !sheetGroup || n.id === sheetGroup);
+
   return (
-    <NavCtx.Provider value={{ open, alerts }}>
+    <NavCtx.Provider value={{ ...counts, openSheet }}>
       <div className="app">
         <nav className="rail" aria-label="Navigation du cockpit">
           <Link className="brand" href="/" aria-label="NuitSignal — accueil"><Logo /></Link>
-          {GROUPS.map((g) => (
-            <div className="rail-group" key={g.label}>
-              <p className="rail-label">{g.label}</p>
-              <div className="rail-nav">
-                {g.items.map((it) => (
-                  <Link key={it.href} className="rail-link" href={it.href} aria-current={isCurrent(path, it.href) ? "page" : undefined}>
-                    <span data-icon><Icon name={it.icon} /></span>{it.label}
-                    {it.count && open > 0 && <span className="rail-count">{open}</span>}
-                    {it.alerts && alerts > 0 && <span className="rail-count rail-count-alert" role="img" aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""} à traiter`}>{alerts}</span>}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          ))}
+          <Suspense fallback={<RailTree properties={properties} tab={null} counts={counts} />}>
+            <RailWithTab properties={properties} counts={counts} />
+          </Suspense>
         </nav>
         <div className="main">{children}</div>
       </div>
       <nav className="bottombar" aria-label="Navigation principale">
-        {FLAT.filter((e) => e.item.primary).map(({ item }) => (
-          <Link key={item.href} className="bottombar-link" href={item.href} aria-current={isCurrent(path, item.href) ? "page" : undefined}>
-            <span data-icon><Icon name={item.icon} /></span><span className="bottombar-label">{item.label}</span>
-            {item.count && open > 0 && <span className="bottombar-count">{open}</span>}
+        {bottom.map((it) => (
+          <Link key={it.id} className="bottombar-link" href={it.href} aria-current={current === it.id ? "page" : trail.includes(it.id) ? "true" : undefined}>
+            <span data-icon><Icon name={it.icon} /></span><span className="bottombar-label">{it.label}</span>
+            <Count badge={it.badge} counts={counts} className="bottombar-count" />
           </Link>
         ))}
-        <button type="button" className="bottombar-link" ref={more} aria-haspopup="dialog" aria-current={overflowCurrent ? "page" : undefined} onClick={() => sheet.current?.showModal()}>
+        <button type="button" className="bottombar-link" aria-haspopup="dialog" aria-current={inFolded ? "true" : undefined} onClick={(e) => openSheet("", e.currentTarget)}>
           <span data-icon><Icon name="sliders" /></span><span className="bottombar-label">Plus</span>
-          {alerts > 0 && <span className="bottombar-count bottombar-count-alert" role="img" aria-label={`${alerts} alerte${alerts > 1 ? "s" : ""} à traiter`}>{alerts}</span>}
         </button>
       </nav>
-      <dialog className="nav-sheet" ref={sheet} aria-labelledby="nav-sheet-title" onClick={(e) => { if (e.target === sheet.current) sheet.current?.close(); }} onClose={() => more.current?.focus()}>
+      <dialog className="nav-sheet" ref={sheet} aria-labelledby="nav-sheet-title"
+        onClick={(e) => { if (e.target === sheet.current || (e.target as HTMLElement).closest("a")) close(); }}
+        onClose={() => { setSheetGroup(null); opener.current?.focus(); }}>
         <div className="nav-sheet-head">
-          <h2 id="nav-sheet-title">Tous les écrans</h2>
-          <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={() => sheet.current?.close()}>Fermer</button>
+          <h2 id="nav-sheet-title">{(sheetGroup && shown[0]?.label) || "Tous les écrans"}</h2>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={close}>Fermer</button>
         </div>
         <div className="nav-sheet-body">
-          {GROUPS.map((g) => (
-            <section className="nav-sheet-group" key={g.label}>
-              <h3>{g.label}</h3>
-              {g.items.map((it) => {
-                const cur = isCurrent(path, it.href);
+          {shown.map((n) => (
+            // la clé change à chaque ouverture : le groupe courant (ou demandé) est déplié, les autres repliés
+            <details className="nav-sheet-group" key={`${n.id}:${sheetGroup ?? "fermee"}:${path}`} open={n.id === sheetGroup || trail.includes(n.id)}>
+              <summary><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><span className="nav-sheet-chevron" aria-hidden="true"><Icon name="caret" /></span></summary>
+              {n.children?.map((c) => {
+                const cur = current === c.id;
                 return (
-                  <Link key={it.href} className="nav-sheet-link" href={it.href} aria-current={cur ? "page" : undefined}>
-                    <span data-icon><Icon name={it.icon} /></span><span>{it.label}</span>{it.alerts && alerts > 0 && <span className="rail-count rail-count-alert">{alerts}</span>}{cur && <span className="nav-sheet-here">écran courant</span>}
+                  <Link key={c.id} className="nav-sheet-link" href={c.href!} aria-current={cur ? "page" : undefined}>
+                    <span>{c.label}</span>{cur && <span className="nav-sheet-here">écran courant</span>}
                   </Link>
                 );
               })}
-            </section>
+            </details>
           ))}
-          {demo ? (
+          {!sheetGroup && (demo ? (
             <div className="nav-sheet-logout">
               <a className="nav-sheet-link nav-sheet-logout-btn" href={exitHref}>
                 <span data-icon><Icon name="logout" /></span><span>Quitter la démo</span>
@@ -122,33 +183,34 @@ export function Shell({ open, alerts = 0, demo = false, exitHref = "/demo", chil
                 <span data-icon><Icon name="logout" /></span><span>Se déconnecter</span>
               </button>
             </form>
-          )}
+          ))}
         </div>
       </dialog>
     </NavCtx.Provider>
   );
 }
 
-/** Rangée de navigation tablette, placée entre la barre de titre et le fil d'Ariane. */
+/** Rangée de navigation tablette (premier niveau seulement), placée entre la barre de titre et le fil d'Ariane. */
 export function TabletNav() {
   const path = usePathname();
-  const { open, alerts } = useContext(NavCtx);
-  let last: string | null = null;
+  const { open, alerts, openSheet } = useContext(NavCtx);
+  const groups = buildNav([], null);
+  const current = currentNodeId(path, null);
+  // sur une fiche logement, c'est « Logements » qui reste allumé
+  const active = propertyIdOf(path) || path === "/logements/nouveau" ? "logements" : ancestorIds(groups, current)[0] ?? current;
   return (
     <nav className="navbar" aria-label="Navigation du cockpit">
-      {FLAT.map(({ item, group }) => {
-        const sep = last !== null && last !== group; last = group;
-        return (
-          <span key={item.href} style={{ display: "contents" }}>
-            {sep && <span className="navbar-sep" aria-hidden="true" />}
-            <Link className="navbar-link" href={item.href} aria-current={isCurrent(path, item.href) ? "page" : undefined}>
-              <span data-icon><Icon name={item.icon} /></span><span>{item.label}</span>
-              {item.count && open > 0 && <span className="rail-count">{open}</span>}
-              {item.alerts && alerts > 0 && <span className="rail-count rail-count-alert">{alerts}</span>}
-            </Link>
-          </span>
-        );
-      })}
+      {groups.map((g, i) => (
+        <span key={g.label} style={{ display: "contents" }}>
+          {i > 0 && <span className="navbar-sep" aria-hidden="true" />}
+          {g.items.map((n) => {
+            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge} counts={{ open, alerts }} /></>;
+            return n.href
+              ? <Link key={n.id} className="navbar-link" href={n.href} aria-current={active === n.id ? (current === n.id ? "page" : "true") : undefined}>{inner}</Link>
+              : <button key={n.id} type="button" className="navbar-link" aria-haspopup="dialog" aria-current={active === n.id ? "true" : undefined} onClick={(e) => openSheet(n.id, e.currentTarget)}>{inner}<span className="navbar-chevron" aria-hidden="true"><Icon name="caret" /></span></button>;
+          })}
+        </span>
+      ))}
     </nav>
   );
 }

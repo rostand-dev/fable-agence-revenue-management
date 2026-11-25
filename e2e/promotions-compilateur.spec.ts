@@ -5,7 +5,7 @@ import { expectNoHorizontalOverflow } from "./helpers/layout";
 // Lisible sans défilement horizontal sur bureau, 390 px et 360 px.
 async function premierLogement(page: Page): Promise<string> {
   await page.goto("/logements");
-  const hrefs = await page.locator('a[href^="/logements/"]').evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!).filter((h) => /^\/logements\/[^/]+$/.test(h) && !h.endsWith("/nouveau")));
+  const hrefs = await page.locator('.content a[href^="/logements/"]').evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!).filter((h) => /^\/logements\/[^/]+$/.test(h) && !h.endsWith("/nouveau")));
   expect(hrefs.length, "aucun logement dans la démonstration").toBeGreaterThan(0);
   return hrefs[0];
 }
