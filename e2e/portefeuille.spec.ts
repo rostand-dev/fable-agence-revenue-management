@@ -108,8 +108,8 @@ test("Logement : création par l'API, propriétaire choisi dans le parcours, ann
   expect(errors).toEqual([]);
 });
 
-test("Réglages : le nom de l'espace se modifie, une valeur invalide est refusée", async ({ page }) => {
-  await page.goto("/reglages");
+test("Compte & sécurité : le nom de l'espace se modifie, une valeur invalide est refusée", async ({ page }) => {
+  await page.goto("/parametres/compte");
   const field = page.locator("#tenantName");
   const current = await field.inputValue();
   await field.evaluate((el: HTMLInputElement) => { el.removeAttribute("minlength"); });
@@ -119,7 +119,7 @@ test("Réglages : le nom de l'espace se modifie, une valeur invalide est refusé
   await field.fill(current);
   await page.getByRole("button", { name: "Enregistrer le nom" }).click();
   await expect(page.getByText("Nom de l'espace enregistré.")).toBeVisible();
-  await expectNoHorizontalOverflow(page, "/reglages");
+  await expectNoHorizontalOverflow(page, "/parametres/compte");
 });
 
 test("API REST : session obligatoire, origine contrôlée, erreurs lisibles, aucun secret exposé", async ({ page, browser, baseURL }, info) => {

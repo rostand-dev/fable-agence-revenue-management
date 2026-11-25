@@ -4,6 +4,10 @@ const nextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
   experimental: { serverActions: { bodySizeLimit: "1mb" } },
+  // les anciens Réglages sont devenus les Paramètres (308) ; le navigateur conserve l'ancre, que la page d'accueil des Paramètres suit
+  async redirects() {
+    return [{ source: "/reglages", destination: "/parametres", permanent: true }];
+  },
   // pages de récupération de compte : le jeton est dans l'URL, donc ni cache, ni Referer, ni indexation
   async headers() {
     const secure = [

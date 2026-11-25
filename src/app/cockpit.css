@@ -2030,3 +2030,9 @@ table.cascade .delta-neu { color: var(--quiet); }
   .nav-sheet-single .nav-sheet-link { min-height: 52px; padding-left: 0; font-weight: 600; }
 }
 .section-switcher-btn .od-icon { transform: rotate(90deg); }
+
+/* ---------- Sommaire et ancres ---------- */
+.toc { margin: 0 0 28px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: rgb(255 255 255 / 2.5%); }
+.toc-title { margin: 0 0 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 18px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
+.toc a { display: flex; align-items: center; min-height: 40px; font-size: 14px; }

@@ -22,7 +22,7 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
   const user = await requireUser();
   const [llmStatus, cap, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), getCapState(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
   return (
-    <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Configuration" }, { label: "Intégrations" }]}>
+    <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Intégrations" }]}>
       <div className="page-head">
         <h1>Ce que l'agence peut lire et écrire</h1>
         <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. L'écriture chez PriceLabs n'existe que pour les logements réels, une fois ouverte par l'hébergeur de l'application (verrou d'environnement) et tant que le coupe-circuit est levé ; sinon, toute modification passe par une procédure manuelle guidée, avec preuve.</p>

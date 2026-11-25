@@ -116,7 +116,8 @@ export function Shell({ open, alerts = 0, properties = [], demo = false, exitHre
   const groups = buildNav(properties, propertyIdOf(path));
   const current = currentNodeId(path, null);
   const trail = ancestorIds(groups, current);
-  const inFolded = trail.some((id) => FOLDED_NODES.includes(id));
+  // la rubrique elle-même compte aussi : l'accueil des Paramètres est une page, pas un ancêtre
+  const inFolded = [current, ...trail].some((id) => !!id && FOLDED_NODES.includes(id));
   const openSheet = (group: string, from: HTMLElement) => { opener.current = from; setSheetGroup(group); };
   const close = () => sheet.current?.close();
   const bottom = [
@@ -159,8 +160,9 @@ export function Shell({ open, alerts = 0, properties = [], demo = false, exitHre
         <div className="nav-sheet-body">
           {shown.map((n) => (
             // la clé change à chaque ouverture : le groupe courant (ou demandé) est déplié, les autres repliés
-            <details className="nav-sheet-group" key={`${n.id}:${sheetGroup ?? "fermee"}:${path}`} open={n.id === sheetGroup || trail.includes(n.id)}>
+            <details className="nav-sheet-group" key={`${n.id}:${sheetGroup ?? "fermee"}:${path}`} open={n.id === sheetGroup || n.id === current || trail.includes(n.id)}>
               <summary><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><span className="nav-sheet-chevron" aria-hidden="true"><Icon name="caret" /></span></summary>
+              {n.href && <Link className="nav-sheet-link" href={n.href} aria-current={current === n.id ? "page" : undefined}><span>Tous les {n.label.toLowerCase()}</span>{current === n.id && <span className="nav-sheet-here">écran courant</span>}</Link>}
               {n.children?.map((c) => {
                 const cur = current === c.id;
                 return (

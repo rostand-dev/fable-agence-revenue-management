@@ -157,7 +157,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const log = (agentId: string, operation: string, summary: string, extra: Partial<typeof agentRuns.$inferInsert> = {}) =>
     runs.push({ id: newId("run"), tenantId, agentId, operation, mode: "DETERMINISTIC", summary, createdAt: new Date(), ...extra });
 
-  // priorités réglables par espace (Réglages) ; une valeur absente ou hors bornes retombe sur le réglage par défaut
+  // priorités réglables par espace (Paramètres › Priorisation) ; une valeur absente ou hors bornes retombe sur le réglage par défaut
   const [tenantRow] = await db.select({ settings: tenants.settings }).from(tenants).where(eq(tenants.id, tenantId));
   const scoring = resolveScoring(tenantRow?.settings?.scoring);
   const all = await db.select().from(properties).where(eq(properties.tenantId, tenantId));

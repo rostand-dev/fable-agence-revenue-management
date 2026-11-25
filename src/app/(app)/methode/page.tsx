@@ -54,18 +54,25 @@ export default async function Methode() {
         <p>La règle centrale : une occupation faible n'entraîne jamais automatiquement une baisse de prix. L'équipe établit d'abord un <Term id="diagnostic-causal">diagnostic causal</Term> — demande, fenêtre de réservation, prix, restriction, promotion, annonce — puis compare les options, dont celle de ne rien faire.</p>
         <p style={{ marginTop: 10 }}>Un mot vous échappe ? <Link href="/glossaire">Consultez le glossaire</Link> : chaque terme y est expliqué avec un exemple.</p>
       </div>
-      <section className="section" style={{ marginTop: 0 }}>
+      <nav className="toc" aria-label="Sommaire">
+        <p className="toc-title">Sommaire</p>
+        <ul>{[
+          ["cycle", "Le cycle d'une décision"], ...WORKFLOWS.map((w) => [`workflow-${w.id}`, w.name]), ["playbooks", "Les playbooks"], ["calibrage", "Calibrage des seuils"],
+          ["auditeur", "Les règles de l'auditeur"], ["partage", "Règles ou modèle de langage ?"], ["autonomie", "Niveaux d'autonomie"], ["cumul", "Cumul des promotions"], ["mesure", "Comment une action est mesurée"],
+        ].map(([id, label]) => <li key={id}><a href={`#${id}`}>{label}</a></li>)}</ul>
+      </nav>
+      <section className="section" id="cycle" style={{ marginTop: 0 }}>
         <h2>Le cycle d'une décision</h2>
         <p className="section-note">Huit étapes traçables. Les quatre premières sont faites par l'équipe avant que vous ne voyiez le dossier.</p>
         <ol className="frieze" role="list">{CYCLE.map((n, i) => <li key={n} className={i < 4 ? "is-fait" : i === 4 ? "is-encours" : "is-avenir"}><span className="fr-step"><span className="fr-glyph" /><span className="fr-no">{i + 1}/8</span></span><span className="fr-name">{n}</span><span className="fr-state">{i < 4 ? "équipe" : i === 4 ? "vous" : i === 5 ? "équipe ou vous" : "équipe"}</span></li>)}</ol>
       </section>
       {WORKFLOWS.map((w) => (
-        <section className="section" key={w.id}>
+        <section className="section" key={w.id} id={`workflow-${w.id}`}>
           <h2>{w.name}</h2><p className="section-note">{w.cadence} · {w.purpose}</p>
           <ol className="flow">{w.steps.map((s, i) => <li key={i}><span className="n">{i + 1}</span><span className={`who${s.agent === "vous" ? " is-you" : ""}`}>{s.agent === "vous" ? "Vous" : <><Avatar agent={s.agent} size={24} />{agentName(s.agent, names)}</>}</span><span>{s.what}</span></li>)}</ol>
         </section>
       ))}
-      <section className="section" aria-labelledby="playbooks-h" data-testid="playbooks">
+      <section className="section" id="playbooks" aria-labelledby="playbooks-h" data-testid="playbooks">
         <h2 id="playbooks-h">Les playbooks de l'agence</h2>
         <p className="section-note">Chaque situation que l'agence sait reconnaître a un déclencheur chiffré, des données dont elle dépend, une période de repos après décision, un approbateur et une vérification. Ces seuils sont ceux que le moteur utilise.</p>
         <ul className="playbooks">
@@ -98,7 +105,7 @@ export default async function Methode() {
           })}
         </ul>
       </section>
-      <section className="section" aria-labelledby="calibrage-h" data-testid="calibrage">
+      <section className="section" id="calibrage" aria-labelledby="calibrage-h" data-testid="calibrage">
         <h2 id="calibrage-h">Calibrage des seuils</h2>
         <p className="section-note">Les seuils des playbooks sont des hypothèses de départ. Ce tableau lit vos dossiers des {CALIBRATION.historyDays} derniers jours : le volume récent ({CALIBRATION.recentDays} jours) contre le précédent, et ce que vous en avez fait. Les dossiers sont comptés à leur date de création ; une approbation « ombre » compte comme approuvée. Un taux d'approbation n'est donné qu'à partir de {CALIBRATION.minDecisions} décisions ; en dessous, il reste « inconnu ».</p>
         <ul className="calibrage">
@@ -115,7 +122,7 @@ export default async function Methode() {
         </ul>
       </section>
 
-      <section className="section" aria-labelledby="auditeur-h" data-testid="regles-auditeur">
+      <section className="section" id="auditeur" aria-labelledby="auditeur-h" data-testid="regles-auditeur">
         <h2 id="auditeur-h">Les règles de l'auditeur</h2>
         <p className="section-note">Chaque option est contrôlée par des règles déterministes, chacune identifiée par un code (la seconde lecture par modèle, INDEPENDENT_REVIEW, est un ajout qui ne peut qu'alerter). Un <strong>veto</strong> rejette l'option : elle ne peut pas être approuvée. Une <strong>validation humaine</strong> la laisse proposée, mais elle ne s'approuve qu'avec un commentaire. Aucun modèle de langage n'intervient dans ces contrôles.</p>
         <ul className="playbooks">
@@ -140,19 +147,19 @@ export default async function Methode() {
           })}
         </ul>
       </section>
-      <section className="section">
+      <section className="section" id="partage">
         <h2>Règles ou modèle de langage ?</h2>
         <p className="section-note">Le partage est fixe. Si le fournisseur de modèle est indisponible, la revue, les métriques et les garde-fous continuent.</p>
         <div className="table-wrap"><table className="econ"><thead><tr><th scope="col">Travail</th><th scope="col">Réalisé par</th><th scope="col">Pourquoi</th></tr></thead>
           <tbody>{SPLIT.map(([a, b, c]) => <tr key={a}><th scope="row">{a}</th><td>{b}</td><td>{c}</td></tr>)}</tbody></table></div>
       </section>
-      <section className="section">
+      <section className="section" id="autonomie">
         <h2>Niveaux d'autonomie</h2>
         <p className="section-note">L'autonomie se gagne par type d'action, jamais globalement. Dans cette version, aucune écriture n'a lieu sans votre approbation.</p>
         <div className="table-wrap"><table className="econ"><thead><tr><th scope="col">Action</th><th scope="col">Risque</th><th scope="col">Traitement</th></tr></thead>
           <tbody>{AUTONOMY.map(([a, b, c]) => <tr key={a}><th scope="row">{a}</th><td>{b === "interdit" ? <State role="veto">interdit</State> : b}</td><td>{c}</td></tr>)}</tbody></table></div>
       </section>
-      <section className="section" aria-labelledby="cumul-h">
+      <section className="section" id="cumul" aria-labelledby="cumul-h">
         <h2 id="cumul-h">Règles de cumul des promotions</h2>
         <p className="section-note">Quand deux promotions d'un même canal valent pour les mêmes nuits, <Term id="regle-de-cumul">la règle de cumul</Term> décide du prix réel. L'agence ne la devine jamais : si l'aide officielle du canal ne la donne pas, l'auditeur renvoie l'option vers vous (validation commentée). Relecture des sources : {new Date(RULES_CHECKED_AT).toLocaleDateString("fr-FR", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" })}.</p>
         {(["BOOKING", "AIRBNB"] as const).map((ch) => (
@@ -175,7 +182,7 @@ export default async function Methode() {
           </div>
         ))}
       </section>
-      <section className="section" aria-labelledby="mesure-h" data-testid="methode-mesure">
+      <section className="section" id="mesure" aria-labelledby="mesure-h" data-testid="methode-mesure">
         <h2 id="mesure-h">Comment une action est mesurée</h2>
         <p className="section-note">Avant l'exécution, la <Term id="baseline">référence</Term> est figée : combien de nuits des dates visées se réservaient par jour pendant les {BASELINE_DAYS} jours précédents. Après la fenêtre d'observation, le rythme observé est comparé à ce que cette référence laissait attendre. Quatre résultats existent : {OUTCOMES.map((o) => OUTCOME_LABEL[o].toLowerCase()).join(", ")}.</p>
         <ul className="muted" style={{ paddingLeft: 18, display: "grid", gap: 6 }}>

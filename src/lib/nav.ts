@@ -67,11 +67,13 @@ export function buildNav(properties: NavProperty[], currentPropertyId: string | 
         { id: "methode", label: "Méthode de travail", href: "/methode" },
         { id: "glossaire", label: "Glossaire", href: "/glossaire" },
       ] },
-      { id: "parametres", label: "Paramètres", icon: "sliders", children: [
-        { id: "reglages", label: "Réglages", href: "/reglages" },
+      { id: "parametres", label: "Paramètres", href: "/parametres", icon: "sliders", children: [
+        { id: "compte", label: "Compte & sécurité", href: "/parametres/compte" },
         { id: "proprietaires", label: "Propriétaires", href: "/proprietaires" },
         { id: "integrations", label: "Intégrations", href: "/integrations" },
-        { id: "modeles", label: "Modèles", href: "/modeles" },
+        { id: "modeles", label: "IA & modèles", href: "/modeles" },
+        { id: "priorisation", label: "Priorisation des dossiers", href: "/parametres/priorisation" },
+        { id: "demonstration", label: "Démonstration", href: "/parametres/demo" },
       ] },
     ] },
   ];
@@ -91,7 +93,7 @@ export function currentNodeId(path: string, tab: string | null): string | null {
     return sectionNodeId(pid, section?.key ?? "apercu");
   }
   const leaves: [string, string][] = [["/portefeuille", "tableau-de-bord"], ["/alertes", "alertes"], ["/bilan", "bilan"], ["/rapports", "rapports"], ["/historique", "historique"],
-    ["/equipe", "equipe"], ["/methode", "methode"], ["/glossaire", "glossaire"], ["/reglages", "reglages"], ["/proprietaires", "proprietaires"], ["/integrations", "integrations"], ["/modeles", "modeles"]];
+    ["/equipe", "equipe"], ["/methode", "methode"], ["/glossaire", "glossaire"], ["/parametres/compte", "compte"], ["/parametres/priorisation", "priorisation"], ["/parametres/demo", "demonstration"], ["/parametres", "parametres"], ["/proprietaires", "proprietaires"], ["/integrations", "integrations"], ["/modeles", "modeles"]];
   return leaves.find(([base]) => within(path, base))?.[1] ?? null;
 }
 
@@ -108,5 +110,5 @@ export function ancestorIds(groups: NavGroup[], id: string | null): string[] {
   return walk(groups.flatMap((g) => g.items), []) ?? [];
 }
 
-/** Rubriques repliées dans la feuille « Plus » (mobile) et dans la rangée tablette. */
+/** Rubriques repliées dans la feuille « Plus » (mobile) et dans la rangée tablette (où une rubrique qui a sa propre page, comme Paramètres, y mène directement). */
 export const FOLDED_NODES = ["analyse", "agence-ia", "parametres"];

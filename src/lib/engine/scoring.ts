@@ -4,7 +4,7 @@
  *
  *   priorité = contribution incrémentale attendue × confiance × facteur d'urgence × poids stratégique − coût d'exécution − pénalité de risque
  *
- * La contribution est exprimée en euros. Les poids, pénalités et coûts sont réglables par espace (Réglages) ; les valeurs par défaut reproduisent
+ * La contribution est exprimée en euros. Les poids, pénalités et coûts sont réglables par espace (Paramètres › Priorisation) ; les valeurs par défaut reproduisent
  * le score d'origine (poids 1, aucun coût d'exécution, pénalités 0 / 4 / 10 / 25). Module pur, sans accès base.
  */
 import { PLAYBOOK_CODES, playbookOf, type PlaybookCode } from "./playbooks";

@@ -57,13 +57,13 @@ test("Modèles : « Tester ce modèle » annonce le coût avant le clic ; sans p
   await expectNoHorizontalOverflow(page, "modèles : test refusé");
 });
 
-test("Fiche agent : « Automatique » est le choix par défaut du modèle, et la navigation mène à l'écran Modèles", async ({ page }) => {
+test("Fiche agent : « Automatique » est le choix par défaut du modèle, et la navigation mène à IA & modèles", async ({ page }) => {
   await page.goto("/equipe/direction");
   const sel = page.locator("select#agent-model");
   test.skip(!(await sel.count()), "pas de clé sur ce compte : la liste de modèles n'est pas proposée");
   await expect(sel.locator("option").first()).toContainText("Automatique");
   await expect(sel).toHaveValue("");
   await page.goto("/integrations");
-  await page.locator("#llm-keys").getByRole("link", { name: "écran Modèles" }).click();
+  await page.locator("#llm-keys").getByRole("link", { name: "IA & modèles" }).click();
   await expect(page).toHaveURL(/\/modeles$/);
 });

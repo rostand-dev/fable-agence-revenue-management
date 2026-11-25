@@ -34,8 +34,11 @@ test("Ordinateur : branches dépliables, branche courante ouverte, onglet reconn
   await expect(rail.getByRole("link", { name: "Bilan mensuel" })).toBeHidden();
   // la branche de l'écran courant s'ouvre seule
   await page.goto("/modeles");
-  await expect(rail.getByRole("button", { name: "Paramètres" })).toHaveAttribute("aria-expanded", "true");
-  await expect(rail.getByRole("link", { name: "Modèles" })).toHaveAttribute("aria-current", "page");
+  await expect(rail.getByRole("button", { name: "Sous-menu Paramètres" })).toHaveAttribute("aria-expanded", "true");
+  await expect(rail.getByRole("link", { name: "IA & modèles" })).toHaveAttribute("aria-current", "page");
+  await rail.getByRole("link", { name: "Paramètres", exact: true }).click();
+  await expect(page).toHaveURL(/\/parametres$/);
+  await expect(rail.getByRole("link", { name: "Paramètres", exact: true })).toHaveAttribute("aria-current", "page");
 
   await page.goto("/logements");
   await expect(rail.getByRole("link", { name: "Ajouter un logement" })).toBeVisible();

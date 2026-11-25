@@ -114,7 +114,7 @@ export async function renameAgentsAction(_: FormState, fd: FormData): Promise<Fo
 export async function saveScoringAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
   const group = (prefix: string, keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, txt(fd, `${prefix}-${k}`)]).filter(([, v]) => v !== ""));
-  const reset = txt(fd, "reset") === "1";
+  const reset = txt(fd, "retablir") === "1";
   const checked = reset ? { ok: true as const, config: DEFAULT_SCORING } : validateScoringInput({ strategicWeight: group("w", IMPLEMENTED_PLAYBOOKS), riskPenalty: group("r", RISKS), executionCost: group("c", EXECUTION_MODES) });
   if (!checked.ok) return { error: checked.error };
   const overrides = scoringOverrides(checked.config);

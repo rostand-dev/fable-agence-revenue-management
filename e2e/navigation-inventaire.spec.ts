@@ -21,7 +21,7 @@ const SCREENS: Screen[] = [
   { route: "/" }, { route: "/portefeuille" }, { route: "/alertes" }, { route: "/logements" }, { route: "/logements/nouveau" },
   { route: "/bilan" }, { route: "/rapports" }, { route: "/historique" }, { route: "/equipe" }, { route: "/equipe/[id]" },
   { route: "/methode" }, { route: "/glossaire" }, { route: "/proprietaires" }, { route: "/integrations" }, { route: "/integrations/erreurs" },
-  { route: "/modeles" }, { route: "/reglages" },
+  { route: "/modeles" }, { route: "/parametres" }, { route: "/parametres/compte" }, { route: "/parametres/priorisation" }, { route: "/parametres/demo" },
   { route: "/dossier/[code]", needs: "dossier" }, { route: "/rapports/[id]", needs: "rapport" },
   { route: P }, ...["performance", "calendrier", "hub-strategie", "strategie", "canaux", "hub-economie", "economie", "hub-donnees", "donnees", "annonces", "pricelabs", "superhote", "historique"].map((tab) => ({ route: P, tab })),
   { route: `${P}/creation`, needs: "brouillon" },
