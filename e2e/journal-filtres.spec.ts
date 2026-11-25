@@ -28,7 +28,8 @@ test("Période dans le passé lointain : état vide explicite ; réinitialiser r
   await expect(page.getByText("Ce n'est pas une confirmation que rien ne s'est passé")).toBeVisible();
   await expectNoHorizontalOverflow(page, "journal période vide");
   await page.getByTestId("journal-reinit").click();
-  await expect(page.locator("#journal ul.timeline > li")).toHaveCount(avant);
+  // les autres tests (3 formats d'écran en parallèle) inscrivent des événements au même journal : le total ne peut que croître
+  await expect.poll(() => page.locator("#journal ul.timeline > li").count()).toBeGreaterThanOrEqual(avant);
 });
 
 test("Auteur « Le système » : seuls des événements non humains ; dates inversées ou invalides tolérées", async ({ page }) => {
