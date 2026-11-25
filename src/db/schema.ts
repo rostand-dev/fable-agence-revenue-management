@@ -1,6 +1,6 @@
 import type { OnboardingState } from "@/lib/onboarding";
 import { sql } from "drizzle-orm";
-import { pgTable, text, integer, bigserial, boolean, timestamp, jsonb, date, real, numeric, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigserial, boolean, timestamp, jsonb, date, real, doublePrecision, numeric, primaryKey, index, uniqueIndex } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
@@ -513,10 +513,10 @@ export const marketGapHistory = pgTable("market_gap_history", {
   propertyId: text("property_id").notNull().references(() => properties.id, { onDelete: "cascade" }),
   day: date("day", { mode: "string" }).notNull(),
   windowKey: text("window_key").notNull(),
-  gap: real("gap"),
-  occupancy: real("occupancy"),
-  marketOccupancy: real("market_occupancy"),
-  avgPercentile: real("avg_percentile"),
+  gap: doublePrecision("gap"),
+  occupancy: doublePrecision("occupancy"),
+  marketOccupancy: doublePrecision("market_occupancy"),
+  avgPercentile: doublePrecision("avg_percentile"),
   freeNights: integer("free_nights").notNull().default(0),
   observedAt: ts("observed_at").notNull().defaultNow(),
 }, (t) => [

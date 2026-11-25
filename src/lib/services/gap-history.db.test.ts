@@ -29,9 +29,13 @@ describe("historique daté de l'écart au marché", () => {
     await runDailyReview(t.tenantId, "MANUAL");
     expect((await rows()).filter((r) => r.day === today())).toHaveLength(5);
   });
-  it("une fenêtre sans donnée de marché s'enregistre avec un écart inconnu (null), jamais zéro", async () => {
-    const r = await rows();
-    for (const x of r) if (x.marketOccupancy === null) expect(x.gap).toBeNull();
+  it("sans donnée de marché, la revue écrit un écart inconnu (null), jamais zéro, et écrase une valeur connue du même jour", async () => {
+    await db.update(marketGapHistory).set({ gap: -0.5, marketOccupancy: 0.7, occupancy: 0.2 }).where(and(eq(marketGapHistory.propertyId, propId), eq(marketGapHistory.day, today())));
+    await db.delete(schema.marketDays).where(eq(schema.marketDays.propertyId, propId));
+    await runDailyReview(t.tenantId, "MANUAL");
+    const r = (await rows()).filter((x) => x.day === today());
+    expect(r.length).toBe(5);
+    for (const x of r) { expect(x.marketOccupancy).toBeNull(); expect(x.gap).toBeNull(); }
   });
   it("l'historique ancien est purgé (au-delà de 120 jours), le récent est gardé", async () => {
     await obs(addDays(today(), -200), "D15_30", -0.4);
@@ -50,6 +54,24 @@ describe("historique daté de l'écart au marché", () => {
   it("sans historique ni dossier : durée inconnue (null)", async () => {
     await db.delete(marketGapHistory).where(eq(marketGapHistory.propertyId, propId));
     await db.delete(opportunities).where(eq(opportunities.tenantId, t.tenantId));
+    expect((await loadEngineInput(t.tenantId, propId, today()))!.lagSince).toBeNull();
+  });
+  it("un retard que l'historique montre résolu n'est pas prolongé par un vieux dossier encore dans la tolérance", async () => {
+    await db.delete(marketGapHistory).where(eq(marketGapHistory.propertyId, propId));
+    await db.delete(opportunities).where(eq(opportunities.tenantId, t.tenantId));
+    await db.insert(opportunities).values({
+      id: newId("opp"), tenantId: t.tenantId, propertyId: propId, code: newId("c"), playbook: "PB-01", reasonCode: "PACE_BELOW_MARKET", title: "t", stayFrom: "2026-12-01", stayTo: "2026-12-05",
+      dedupeKey: newId("k"), signals: {}, diagnosis: {}, candidates: [], status: "OPEN", createdAt: new Date(Date.now() - 40 * 86400000), expiresAt: addDays(today(), 5),
+    } as any);
+    expect((await loadEngineInput(t.tenantId, propId, today()))!.lagSince).toBe(addDays(today(), -40)); // sans historique : le dossier fait foi
+    await obs(addDays(today(), -1), "D15_30", 0.05); // l'historique dit : normal hier
+    expect((await loadEngineInput(t.tenantId, propId, today()))!.lagSince).toBeNull();
+  });
+  it("deux relevés isolés en retard ne font pas un retard qui dure", async () => {
+    await db.delete(marketGapHistory).where(eq(marketGapHistory.propertyId, propId));
+    await db.delete(opportunities).where(eq(opportunities.tenantId, t.tenantId));
+    await obs(addDays(today(), -1), "D15_30", -0.3);
+    await obs(addDays(today(), -15), "D15_30", -0.3);
     expect((await loadEngineInput(t.tenantId, propId, today()))!.lagSince).toBeNull();
   });
 });

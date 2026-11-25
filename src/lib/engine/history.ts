@@ -112,9 +112,11 @@ export type GapObservation = { day: ISODate; windowKey: string; gap: number | nu
  * Début du retard en cours, lu sur l'historique daté : un jour est « en retard » si une fenêtre (hors J+0 à J+7, comme PB-01) a un écart ≤ `gapThreshold`,
  * « normal » si des écarts sont connus et aucun ne passe le seuil, « inconnu » si aucun écart n'est connu (le jour est ignoré : inconnu ≠ zéro).
  * On remonte depuis le dernier jour connu, qui doit être en retard et dater d'au plus `toleranceDays` ; un jour normal coupe la série ; deux jours en retard
- * séparés de plus de `toleranceDays` aussi (collecte interrompue). Retourne null s'il n'y a pas de retard en cours.
+ * séparés de plus de `toleranceDays` aussi (collecte interrompue). Une série n'est retenue que si elle compte au moins `minLagDays` jours en retard observés :
+ * deux relevés isolés ne font pas un retard qui dure.
+ * `resolved` = le dernier jour connu (récent, dans la tolérance) est normal : le retard est résolu, aucune autre preuve plus ancienne ne doit le prolonger.
  */
-export function lagRunStart(obs: GapObservation[], today: ISODate, gapThreshold: number, toleranceDays: number): ISODate | null {
+export function lagRunStart(obs: GapObservation[], today: ISODate, gapThreshold: number, toleranceDays: number, minLagDays = 1): { start: ISODate | null; resolved: boolean } {
   const byDay = new Map<ISODate, "LAG" | "OK">();
   for (const o of obs) {
     if (o.windowKey === "D0_7" || o.gap === null) continue;
@@ -122,12 +124,13 @@ export function lagRunStart(obs: GapObservation[], today: ISODate, gapThreshold:
     else if (!byDay.has(o.day)) byDay.set(o.day, "OK");
   }
   const days = [...byDay.keys()].sort().reverse();
-  if (days.length === 0 || byDay.get(days[0]) !== "LAG" || diffDays(today, days[0]) > toleranceDays) return null;
-  let start = days[0];
+  if (days.length === 0 || diffDays(today, days[0]) > toleranceDays) return { start: null, resolved: false };
+  if (byDay.get(days[0]) !== "LAG") return { start: null, resolved: true };
+  let start = days[0], lagDays = 1;
   for (const d of days.slice(1)) {
     if (byDay.get(d) === "OK") break;
     if (diffDays(start, d) > toleranceDays) break;
-    start = d;
+    start = d; lagDays++;
   }
-  return start;
+  return { start: lagDays >= minLagDays ? start : null, resolved: false };
 }

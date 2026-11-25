@@ -1,5 +1,5 @@
 {
-  "id": "a932412a-28db-409f-8138-d4899e1f5d1d",
+  "id": "8a04cea0-ef62-42e6-9d34-9b559aa4c6dd",
   "prevId": "037bd1e6-e622-4793-8570-b5709bb6bcf0",
   "version": "7",
   "dialect": "postgresql",
@@ -2740,25 +2740,25 @@
         },
         "gap": {
           "name": "gap",
-          "type": "real",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": false
         },
         "occupancy": {
           "name": "occupancy",
-          "type": "real",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": false
         },
         "market_occupancy": {
           "name": "market_occupancy",
-          "type": "real",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": false
         },
         "avg_percentile": {
           "name": "avg_percentile",
-          "type": "real",
+          "type": "double precision",
           "primaryKey": false,
           "notNull": false
         },

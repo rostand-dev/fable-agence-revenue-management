@@ -92,30 +92,44 @@ describe("lagRunStart · début du retard lu sur l'historique daté", () => {
   const ok = (day: string, gap = 0.05, windowKey = "D15_30") => ({ day, windowKey, gap });
   it("retard observé chaque jour depuis 25 jours : début = premier jour de la série", () => {
     const obs = Array.from({ length: 26 }, (_, i) => lag(addDays(T, -i)));
-    expect(lagRunStart(obs, T, -0.2, 14)).toBe(addDays(T, -25));
+    expect(lagRunStart(obs, T, -0.2, 14).start).toBe(addDays(T, -25));
   });
   it("un jour normal coupe la série : le retard repart du lendemain", () => {
     const obs = [lag(T), lag(addDays(T, -1)), lag(addDays(T, -2)), ok(addDays(T, -3)), lag(addDays(T, -4)), lag(addDays(T, -5))];
-    expect(lagRunStart(obs, T, -0.2, 14)).toBe(addDays(T, -2));
+    expect(lagRunStart(obs, T, -0.2, 14).start).toBe(addDays(T, -2));
   });
   it("collecte interrompue moins que la tolérance : la série continue ; au-delà, elle s'arrête", () => {
-    expect(lagRunStart([lag(T), lag(addDays(T, -10)), lag(addDays(T, -11))], T, -0.2, 14)).toBe(addDays(T, -11));
-    expect(lagRunStart([lag(T), lag(addDays(T, -20)), lag(addDays(T, -21))], T, -0.2, 14)).toBe(T);
+    expect(lagRunStart([lag(T), lag(addDays(T, -10)), lag(addDays(T, -11))], T, -0.2, 14).start).toBe(addDays(T, -11));
+    expect(lagRunStart([lag(T), lag(addDays(T, -20)), lag(addDays(T, -21))], T, -0.2, 14).start).toBe(T);
   });
   it("dernier jour connu trop ancien ou normal : aucun retard en cours", () => {
-    expect(lagRunStart([lag(addDays(T, -20))], T, -0.2, 14)).toBeNull();
-    expect(lagRunStart([ok(T), lag(addDays(T, -1))], T, -0.2, 14)).toBeNull();
+    expect(lagRunStart([lag(addDays(T, -20))], T, -0.2, 14).start).toBeNull();
+    expect(lagRunStart([ok(T), lag(addDays(T, -1))], T, -0.2, 14).start).toBeNull();
   });
   it("marché inconnu (gap null) : le jour est ignoré, jamais compté comme retard ni comme normal ; J+0 à J+7 ne compte pas", () => {
-    expect(lagRunStart([{ day: T, windowKey: "D15_30", gap: null }], T, -0.2, 14)).toBeNull();
-    expect(lagRunStart([lag(T, -0.5, "D0_7")], T, -0.2, 14)).toBeNull();
-    expect(lagRunStart([lag(T), { day: addDays(T, -1), windowKey: "D15_30", gap: null }, lag(addDays(T, -2))], T, -0.2, 14)).toBe(addDays(T, -2));
+    expect(lagRunStart([{ day: T, windowKey: "D15_30", gap: null }], T, -0.2, 14).start).toBeNull();
+    expect(lagRunStart([lag(T, -0.5, "D0_7")], T, -0.2, 14).start).toBeNull();
+    expect(lagRunStart([lag(T), { day: addDays(T, -1), windowKey: "D15_30", gap: null }, lag(addDays(T, -2))], T, -0.2, 14).start).toBe(addDays(T, -2));
   });
   it("une fenêtre en retard suffit même si une autre est normale le même jour", () => {
-    expect(lagRunStart([lag(T, -0.3, "D31_60"), ok(T, 0.1, "D15_30")], T, -0.2, 14)).toBe(T);
+    expect(lagRunStart([lag(T, -0.3, "D31_60"), ok(T, 0.1, "D15_30")], T, -0.2, 14).start).toBe(T);
   });
   it("seuil exact : un écart égal au seuil est en retard", () => {
-    expect(lagRunStart([lag(T, -0.2)], T, -0.2, 14)).toBe(T);
-    expect(lagRunStart([lag(T, -0.19)], T, -0.2, 14)).toBeNull();
+    expect(lagRunStart([lag(T, -0.2)], T, -0.2, 14).start).toBe(T);
+    expect(lagRunStart([lag(T, -0.19)], T, -0.2, 14).start).toBeNull();
+  });
+  it("un dernier jour connu normal : le retard est résolu (resolved) ; sans donnée, il ne l'est pas", () => {
+    expect(lagRunStart([lag(addDays(T, -3)), ok(addDays(T, -1))], T, -0.2, 14)).toEqual({ start: null, resolved: true });
+    expect(lagRunStart([], T, -0.2, 14)).toEqual({ start: null, resolved: false });
+    expect(lagRunStart([ok(addDays(T, -30))], T, -0.2, 14)).toEqual({ start: null, resolved: false }); // trop ancien : pas une preuve
+  });
+  it("deux relevés isolés espacés de 14 jours ne font pas une série (au moins 3 jours en retard)", () => {
+    const obs = [lag(T), lag(addDays(T, -14))];
+    expect(lagRunStart(obs, T, -0.2, 14, 3).start).toBeNull();
+    expect(lagRunStart([...obs, lag(addDays(T, -7))], T, -0.2, 14, 3).start).toBe(addDays(T, -14));
+  });
+  it("entrées non triées, deux lignes du même jour (écart inconnu et connu), tolérance exactement égale", () => {
+    const obs = [lag(addDays(T, -14)), { day: T, windowKey: "D15_30", gap: null }, lag(T), lag(addDays(T, -7))];
+    expect(lagRunStart(obs, T, -0.2, 14).start).toBe(addDays(T, -14));
   });
 });

@@ -72,10 +72,16 @@ export async function loadEngineInput(tenantId: string, propertyId: string, toda
   const tolerance = addDays(today, -PLAYBOOKS["PB-12"].thresholds.lagGapToleranceDays.value);
   const lagFromDossiers = lagRows.filter((r) => r.expiresAt >= tolerance).map((r) => (typeof r.signals?.lagSince === "string" ? r.signals.lagSince : todayISO(r.createdAt))).sort()[0] ?? null;
   // historique daté de l'écart au marché (écrit à chaque revue) : début du retard en cours ; on garde la plus ancienne des deux preuves
-  const gapRows = await db.select({ day: marketGapHistory.day, windowKey: marketGapHistory.windowKey, gap: marketGapHistory.gap }).from(marketGapHistory)
-    .where(and(eq(marketGapHistory.propertyId, p.id), gte(marketGapHistory.day, addDays(today, -MAX_HISTORY_DAYS))));
-  const lagFromHistory = lagRunStart(gapRows, today, PLAYBOOKS["PB-12"].thresholds.paceGap.value, PLAYBOOKS["PB-12"].thresholds.lagGapToleranceDays.value);
-  const lagSince = [lagFromDossiers, lagFromHistory].filter((x): x is string => !!x).sort()[0] ?? null;
+  // L'historique est auxiliaire : une erreur de lecture ne casse pas le chargement (repli sur les seuls dossiers).
+  let hist: { start: string | null; resolved: boolean } = { start: null, resolved: false };
+  try {
+    const gapRows = await db.select({ day: marketGapHistory.day, windowKey: marketGapHistory.windowKey, gap: marketGapHistory.gap }).from(marketGapHistory)
+      .where(and(eq(marketGapHistory.tenantId, tenantId), eq(marketGapHistory.propertyId, p.id), gte(marketGapHistory.day, addDays(today, -MAX_HISTORY_DAYS))));
+    const th = PLAYBOOKS["PB-12"].thresholds;
+    hist = lagRunStart(gapRows, today, th.paceGap.value, th.lagGapToleranceDays.value, th.minLagObservations.value);
+  } catch { /* historique indisponible */ }
+  // un retard que l'historique montre résolu (dernier jour connu normal) n'est pas prolongé par un vieux dossier encore dans la tolérance
+  const lagSince = hist.resolved ? null : [lagFromDossiers, hist.start].filter((x): x is string => !!x).sort()[0] ?? null;
   const firstBooking = resas.filter((r) => r.status === "CONFIRMED").map((r) => r.bookedAt).sort()[0] ?? null;
   const m = new Map(mkt.map((x) => [x.date, x]));
   const days: Day[] = cal.sort((a, b) => a.date.localeCompare(b.date)).map((c) => {
@@ -181,9 +187,11 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
     log("onboarding", "reconcile", `${p.name} : ${input.days.length} jours de calendrier et ${input.resas.length} réservations rapprochés${unknownPrice ? ` · ${unknownPrice} prix inconnus` : ""}${p.isDemo ? " · données de démonstration" : ""}.`);
     const res = reviewProperty(input);
     // historique daté de l'écart au marché : la dernière revue du jour fait foi ; un marché inconnu s'enregistre « inconnu » (null), jamais zéro
+    try {
     await db.insert(marketGapHistory).values(res.stats.map((w) => ({ id: newId("mgh"), tenantId, propertyId: p.id, day: today, windowKey: w.key, gap: w.gap, occupancy: w.occupancy, marketOccupancy: w.marketOccupancy, avgPercentile: w.avgPercentile, freeNights: w.free, observedAt: now })))
       .onConflictDoUpdate({ target: [marketGapHistory.propertyId, marketGapHistory.day, marketGapHistory.windowKey], set: { gap: sql`excluded.gap`, occupancy: sql`excluded.occupancy`, marketOccupancy: sql`excluded.market_occupancy`, avgPercentile: sql`excluded.avg_percentile`, freeNights: sql`excluded.free_nights`, observedAt: sql`excluded.observed_at` } });
     await db.delete(marketGapHistory).where(and(eq(marketGapHistory.propertyId, p.id), lt(marketGapHistory.day, addDays(today, -MAX_HISTORY_DAYS))));
+    } catch (e) { log("marche", "history", `Historique de l'écart au marché non écrit pour ${p.name} : ${e instanceof Error ? e.message : String(e)}`); } // auxiliaire : la revue continue
     if (res.blocked.length) {
       blocked++; blockedIds.add(p.id); log("onboarding", "quality", `${p.name} : modèle économique incomplet (${res.blocked.join(", ")}). Aucune opportunité financière n'est ouverte tant que ces valeurs sont inconnues.`);
       continue;

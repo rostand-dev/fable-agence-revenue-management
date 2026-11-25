@@ -89,7 +89,7 @@ describe("PB-12 · prix de base trop haut, retard durable", () => {
 
   it("le catalogue porte les seuils et le statut actif", () => {
     expect(PLAYBOOKS["PB-12"].status).toBe("IMPLEMENTED");
-    expect(Object.keys(PLAYBOOKS["PB-12"].thresholds)).toEqual(["lagGapToleranceDays", "strongPersistDays", "strongPercentile", "minPersistDays", "paceGap", "priceHighPercentile", "weakMarketOccupancy", "restrictiveMinStay", "minFreeNights", "stepPct"]);
+    expect(Object.keys(PLAYBOOKS["PB-12"].thresholds)).toEqual(["lagGapToleranceDays", "minLagObservations", "strongPersistDays", "strongPercentile", "minPersistDays", "paceGap", "priceHighPercentile", "weakMarketOccupancy", "restrictiveMinStay", "minFreeNights", "stepPct"]);
   });
 
   it("promotion qui démarre en milieu de fenêtre : silence (pas de baisse sur des nuits déjà remisées)", () => {
