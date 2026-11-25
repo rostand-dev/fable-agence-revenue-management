@@ -6,14 +6,16 @@ import { Icon, Logo } from "./Icon";
 import { logoutAction } from "@/app/actions/auth";
 import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, propertyIdOf, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
 
-type Counts = { open: number; alerts: number };
-const NavCtx = createContext<Counts & { openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, openSheet: () => {} });
+type Counts = { open: number; alerts: number; prices: number };
+const NavCtx = createContext<Counts & { openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, prices: 0, openSheet: () => {} });
 const STORAGE_KEY = "nuitsignal.menu.ouvert";
 const alertsLabel = (n: number) => `${n} alerte${n > 1 ? "s" : ""} à traiter`;
+const pricesLabel = (n: number) => `${n} prix à valider`;
 
 function Count({ badge, counts, className = "rail-count" }: { badge?: NavBadge; counts: Counts; className?: string }) {
   if (badge === "open" && counts.open > 0) return <span className={className}>{counts.open}</span>;
   if (badge === "alerts" && counts.alerts > 0) return <span className={`${className} ${className}-alert`} role="img" aria-label={alertsLabel(counts.alerts)}>{counts.alerts}</span>;
+  if (badge === "prices" && counts.prices > 0) return <span className={`${className} ${className}-alert`} role="img" aria-label={pricesLabel(counts.prices)}>{counts.prices}</span>;
   return null;
 }
 
@@ -79,7 +81,7 @@ function RailWithTab(props: { properties: NavProperty[]; counts: Counts }) {
 const foldedNodes = (groups: NavGroup[]) => groups.flatMap((g) => g.items).filter((n) => FOLDED_NODES.includes(n.id));
 
 /** Une seule source de navigation (lib/nav), trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
-export function Shell({ open, alerts = 0, properties = [], demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; properties?: NavProperty[]; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
+export function Shell({ open, alerts = 0, prices = 0, properties = [], demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; prices?: number; properties?: NavProperty[]; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
   const path = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -112,7 +114,7 @@ export function Shell({ open, alerts = 0, properties = [], demo = false, exitHre
     return () => large.removeEventListener("change", onChange);
   }, []);
 
-  const counts = { open, alerts };
+  const counts = { open, alerts, prices };
   const groups = buildNav(properties, propertyIdOf(path));
   const current = currentNodeId(path, null);
   const trail = ancestorIds(groups, current);
@@ -163,11 +165,12 @@ export function Shell({ open, alerts = 0, properties = [], demo = false, exitHre
             <details className="nav-sheet-group" key={`${n.id}:${sheetGroup ?? "fermee"}:${path}`} open={n.id === sheetGroup || n.id === current || trail.includes(n.id)}>
               <summary><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><span className="nav-sheet-chevron" aria-hidden="true"><Icon name="caret" /></span></summary>
               {n.href && <Link className="nav-sheet-link" href={n.href} aria-current={current === n.id ? "page" : undefined}><span>Tous les {n.label.toLowerCase()}</span>{current === n.id && <span className="nav-sheet-here">écran courant</span>}</Link>}
-              {n.children?.map((c) => {
+              {/* un troisième niveau (IA & modèles) n'apparaît que lorsque sa branche est celle de l'écran courant */}
+              {n.children?.flatMap((c) => [{ node: c, sub: false }, ...(c.id === current || trail.includes(c.id) ? (c.children ?? []).map((g) => ({ node: g, sub: true })) : [])]).map(({ node: c, sub }) => {
                 const cur = current === c.id;
                 return (
-                  <Link key={c.id} className="nav-sheet-link" href={c.href!} aria-current={cur ? "page" : undefined}>
-                    <span>{c.label}</span>{cur && <span className="nav-sheet-here">écran courant</span>}
+                  <Link key={c.id} className={sub ? "nav-sheet-link nav-sheet-sub" : "nav-sheet-link"} href={c.href!} aria-current={cur ? "page" : undefined}>
+                    <span>{c.label}</span><Count badge={c.badge} counts={counts} />{cur && <span className="nav-sheet-here">écran courant</span>}
                   </Link>
                 );
               })}
@@ -195,7 +198,7 @@ export function Shell({ open, alerts = 0, properties = [], demo = false, exitHre
 /** Rangée de navigation tablette (premier niveau seulement), placée entre la barre de titre et le fil d'Ariane. */
 export function TabletNav() {
   const path = usePathname();
-  const { open, alerts, openSheet } = useContext(NavCtx);
+  const { open, alerts, prices, openSheet } = useContext(NavCtx);
   const groups = buildNav([], null);
   const current = currentNodeId(path, null);
   // sur une fiche logement, c'est « Logements » qui reste allumé
@@ -206,7 +209,7 @@ export function TabletNav() {
         <span key={g.label} style={{ display: "contents" }}>
           {i > 0 && <span className="navbar-sep" aria-hidden="true" />}
           {g.items.map((n) => {
-            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge} counts={{ open, alerts }} /></>;
+            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge} counts={{ open, alerts, prices }} /></>;
             return n.href
               ? <Link key={n.id} className="navbar-link" href={n.href} aria-current={active === n.id ? (current === n.id ? "page" : "true") : undefined}>{inner}</Link>
               : <button key={n.id} type="button" className="navbar-link" aria-haspopup="dialog" aria-current={active === n.id ? "true" : undefined} onClick={(e) => openSheet(n.id, e.currentTarget)}>{inner}<span className="navbar-chevron" aria-hidden="true"><Icon name="caret" /></span></button>;

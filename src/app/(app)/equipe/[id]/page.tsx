@@ -83,7 +83,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                   <div style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer le modèle</Submit></div>
                 </ActionForm>
               ) : (
-                <p className="muted" style={{ margin: 0 }}>Pour choisir un modèle, <Link href="/integrations">saisissez d'abord votre clé API Anthropic</Link> : la liste dépend d'elle.</p>
+                <p className="muted" style={{ margin: 0 }}>Pour choisir un modèle, <Link href="/modeles/cles">saisissez d'abord une clé API</Link> : la liste dépend d'elle.</p>
               )}
             </div>
           </section>

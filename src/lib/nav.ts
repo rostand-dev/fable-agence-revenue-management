@@ -2,7 +2,7 @@
  * Arborescence de navigation (une seule source) : colonne (bureau), rangée (tablette), barre basse et feuille (mobile).
  * Fonctions pures, sans React : testées dans nav.test.ts.
  */
-export type NavBadge = "open" | "alerts";
+export type NavBadge = "open" | "alerts" | "prices";
 export type NavNode = { id: string; label: string; href?: string; icon?: string; badge?: NavBadge; action?: boolean; children?: NavNode[] };
 export type NavGroup = { label: string; items: NavNode[] };
 export type NavProperty = { id: string; name: string; status: string };
@@ -71,7 +71,12 @@ export function buildNav(properties: NavProperty[], currentPropertyId: string | 
         { id: "compte", label: "Compte & sécurité", href: "/parametres/compte" },
         { id: "proprietaires", label: "Propriétaires", href: "/proprietaires" },
         { id: "integrations", label: "Intégrations", href: "/integrations" },
-        { id: "modeles", label: "IA & modèles", href: "/modeles" },
+        { id: "modeles", label: "IA & modèles", href: "/modeles", children: [
+          { id: "ia-cles", label: "Clés fournisseurs", href: "/modeles/cles" },
+          { id: "ia-agents", label: "Agents", href: "/modeles/agents" },
+          { id: "ia-budget", label: "Budget", href: "/modeles/budget" },
+          { id: "ia-catalogue", label: "Catalogue", href: "/modeles/catalogue", badge: "prices" },
+        ] },
         { id: "priorisation", label: "Priorisation des dossiers", href: "/parametres/priorisation" },
         { id: "demonstration", label: "Démonstration", href: "/parametres/demo" },
       ] },
@@ -93,7 +98,7 @@ export function currentNodeId(path: string, tab: string | null): string | null {
     return sectionNodeId(pid, section?.key ?? "apercu");
   }
   const leaves: [string, string][] = [["/portefeuille", "tableau-de-bord"], ["/alertes", "alertes"], ["/bilan", "bilan"], ["/rapports", "rapports"], ["/historique", "historique"],
-    ["/equipe", "equipe"], ["/methode", "methode"], ["/glossaire", "glossaire"], ["/parametres/compte", "compte"], ["/parametres/priorisation", "priorisation"], ["/parametres/demo", "demonstration"], ["/parametres", "parametres"], ["/proprietaires", "proprietaires"], ["/integrations", "integrations"], ["/modeles", "modeles"]];
+    ["/equipe", "equipe"], ["/methode", "methode"], ["/glossaire", "glossaire"], ["/parametres/compte", "compte"], ["/parametres/priorisation", "priorisation"], ["/parametres/demo", "demonstration"], ["/parametres", "parametres"], ["/proprietaires", "proprietaires"], ["/integrations", "integrations"], ["/modeles/cles", "ia-cles"], ["/modeles/agents", "ia-agents"], ["/modeles/budget", "ia-budget"], ["/modeles/catalogue", "ia-catalogue"], ["/modeles", "modeles"]];
   return leaves.find(([base]) => within(path, base))?.[1] ?? null;
 }
 

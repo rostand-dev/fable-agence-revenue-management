@@ -10,7 +10,7 @@ export function CapBanner({ cap, link = true }: { cap: CapState; link?: boolean 
   return (
     <div data-testid="cap-banner" data-level={a.level} style={{ margin: "0 0 16px" }}>
       <Banner role={a.level === "reached" ? "violation" : "attention"} title={a.title}>
-        <p style={{ margin: 0 }}>{a.body}{link && <> <Link href="/modeles#plafond">Régler le plafond</Link></>}</p>
+        <p style={{ margin: 0 }}>{a.body}{link && <> <Link href="/modeles/budget#plafond">Régler le plafond</Link></>}</p>
       </Banner>
     </div>
   );

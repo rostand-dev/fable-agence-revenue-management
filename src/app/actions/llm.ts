@@ -91,13 +91,13 @@ export async function removeLlmKeyAction(_: FormState, fd: FormData): Promise<Fo
   });
   // le formulaire de suppression disparaît avec la clé : la confirmation s'affiche donc sur la page, après redirection
   if (res?.error) return res;
-  redirect("/integrations?llm=supprimee");
+  redirect("/modeles/cles?llm=supprimee");
 }
 
 /** Relit la liste des modèles d'un fournisseur avec la clé du propriétaire. */
 async function refreshKeyModels(tenantId: string, prov: ProviderKey) {
   const k = (await loadOwnerKeys(tenantId)).get(prov);
-  if (!k) throw new LlmError(`Aucune clé API ${PROVIDER_LABEL[prov]} enregistrée. Saisissez d'abord votre clé dans Intégrations.`);
+  if (!k) throw new LlmError(`Aucune clé API ${PROVIDER_LABEL[prov]} enregistrée. Saisissez d'abord votre clé dans IA & modèles › Clés fournisseurs.`);
   const models = await listProviderModels(prov, k.apiKey), now = new Date();
   await db.update(schema.llmCredentials).set({ models, modelsFetchedAt: now, verifiedAt: now, updatedAt: now }).where(and(eq(schema.llmCredentials.tenantId, tenantId), eq(schema.llmCredentials.provider, prov)));
   return models;
@@ -133,7 +133,7 @@ export async function saveAgentModelsAction(_: FormState, fd: FormData): Promise
   return run(async () => {
     const asked: Record<string, string> = {};
     for (const a of AGENTS) { const v = txt(fd, "model-" + a.id).slice(0, 120); if (v) asked[a.id] = v; }
-    if (Object.keys(asked).length && (await loadOwnerKeys(u.tenantId)).size === 0) return { error: "Saisissez d'abord une clé API dans Intégrations : la liste des modèles dépend d'elle." };
+    if (Object.keys(asked).length && (await loadOwnerKeys(u.tenantId)).size === 0) return { error: "Saisissez d'abord une clé API dans IA & modèles › Clés fournisseurs : la liste des modèles dépend d'elle." };
     const ids = await accessibleIds(u.tenantId, Object.values(asked));
     const bad = AGENTS.filter((a) => asked[a.id] && !ids.has(asked[a.id]));
     if (bad.length) return { error: `Modèle indisponible avec vos clés pour : ${bad.map((a) => a.title).join(", ")}. Choisissez-en un dans la liste.` };
@@ -152,7 +152,7 @@ export async function saveAgentModelAction(_: FormState, fd: FormData): Promise<
     const agent = AGENTS.find((a) => a.id === agentId);
     if (!agent) return { error: "Agent inconnu." };
     if (model) {
-      if ((await loadOwnerKeys(u.tenantId)).size === 0) return { error: "Saisissez d'abord une clé API dans Intégrations : la liste des modèles dépend d'elle." };
+      if ((await loadOwnerKeys(u.tenantId)).size === 0) return { error: "Saisissez d'abord une clé API dans IA & modèles › Clés fournisseurs : la liste des modèles dépend d'elle." };
       if (!(await accessibleIds(u.tenantId, [model])).has(model)) return { error: "Ce modèle n'est pas disponible avec vos clés. Choisissez-en un dans la liste." };
     }
     await patchSettings(u.tenantId, (s) => {
@@ -203,7 +203,7 @@ export async function decidePriceAction(_: FormState, fd: FormData): Promise<For
   });
   if (res?.error) return res;
   // le bloc « à valider » disparaît avec le prix en attente : la confirmation s'affiche donc sur la page, après redirection
-  redirect(`/modeles?prix=${outcome}`);
+  redirect(`/modeles/catalogue?prix=${outcome}`);
 }
 
 /**

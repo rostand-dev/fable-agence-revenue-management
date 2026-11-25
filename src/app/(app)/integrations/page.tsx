@@ -1,11 +1,8 @@
 import { killSwitchAction } from "@/app/actions/settings";
 import { ActionForm, Submit } from "@/components/forms";
+import { LegacyAnchor } from "@/components/LegacyAnchor";
 import { Page } from "@/components/Page";
 import { Banner, Recap, State, Vq } from "@/components/ui";
-import { CapBanner } from "@/components/CapBanner";
-import { getCapState } from "@/lib/llm-registry/cap-state";
-import { LlmKeyPanel } from "@/components/LlmKeyPanel";
-import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { AVAILABILITY, capabilitiesOf, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, PROVIDERS, providerStatus, resolveProvider, type ProviderStatus } from "@/lib/integrations/capabilities";
@@ -17,18 +14,21 @@ export const metadata = { title: "Intégrations" };
 const ST: Record<ProviderStatus, [string, "sain" | "tech" | "attention" | "neutre"]> = { DEMO: ["Source simulée", "tech"], CONNECTED: ["Connectée", "sain"], NOT_CONNECTED: ["Non connectée", "neutre"], DEGRADED: ["Dégradée", "attention"] };
 const plural = (n: number, one: string, many: string) => (n > 1 ? many : one);
 
-export default async function Integrations({ searchParams }: { searchParams: Promise<{ llm?: string }> }) {
-  const { llm } = await searchParams;
+/** Les clés des modèles ont rejoint « IA & modèles » : les anciens liens y mènent. */
+const MOVED: Record<string, string> = { "llm-keys": "/modeles/cles" };
+
+export default async function Integrations() {
   const user = await requireUser();
-  const [llmStatus, cap, facts, ingestErrors] = await Promise.all([getLlmStatus(user.tenantId), getCapState(user.tenantId), loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
+  const [facts, ingestErrors] = await Promise.all([loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
   return (
     <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Intégrations" }]}>
+      <LegacyAnchor targets={MOVED} />
       <div className="page-head">
         <h1>Ce que l'agence peut lire et écrire</h1>
         <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. L'écriture chez PriceLabs n'existe que pour les logements réels, une fois ouverte par l'hébergeur de l'application (verrou d'environnement) et tant que le coupe-circuit est levé ; sinon, toute modification passe par une procédure manuelle guidée, avec preuve.</p>
       </div>
-      <p style={{ margin: "0 0 18px" }} data-testid="ingestion-link"><Link className="btn btn-ghost btn-sm" href="/integrations/erreurs">Erreurs d'ingestion SuperHote{ingestErrors > 0 ? ` (${ingestErrors})` : ""}</Link></p>
-      {llm === "supprimee" && <Banner role="sain" title="Clé supprimée" style={{ marginBottom: 18 }}>Cette clé n'est plus utilisée. Les agents passent par vos autres clés, ou en mode déterministe s'il n'y en a pas. Les modèles choisis par agent ont été réinitialisés.</Banner>}
+      {/* avis temporaire, à retirer à la version suivante */}
+      <Banner role="tech" title="Les clés IA ont déménagé" style={{ marginBottom: 18 }}><span data-testid="cles-demenagees">Les clés Anthropic, OpenAI et Mistral sont désormais dans <Link href="/modeles/cles">IA &amp; modèles › Clés fournisseurs</Link>.</span></Banner>
       <Banner role="tech" title="Démonstration simulée, logements réels en lecture (écriture PriceLabs verrouillée par défaut)" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
       <div className="stack">
         {PROVIDERS.map((k) => {
@@ -56,6 +56,12 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
                     : "Aucun : procédure manuelle uniquement"],
                   ["Dernière synchronisation", f.lastSyncAt ? fmtDateTime(f.lastSyncAt) : <Vq>aucune</Vq>, true], ["Suite", info.next],
                 ]} />
+                {k === "superhote" && (
+                  <div className="btn-row" data-testid="ingestion-link" style={{ alignItems: "center" }}>
+                    <Link className="btn btn-ghost btn-sm" href="/integrations/erreurs">Erreurs d'ingestion</Link>
+                    {ingestErrors > 0 ? <State role="attention">{ingestErrors} à traiter</State> : <State role="neutre">Aucune en attente</State>}
+                  </div>
+                )}
                 {KILL_SWITCH_PROVIDERS.includes(k) && (
                 <ActionForm action={killSwitchAction} hidden={{ provider: k, on: f.killSwitch ? "0" : "1" }}>
                   <Submit className={f.killSwitch ? "btn btn-ghost btn-sm" : "btn btn-danger btn-sm"} icon={f.killSwitch ? "check" : "ban"}>{f.killSwitch ? "Lever le coupe-circuit" : "Activer le coupe-circuit"}</Submit>
@@ -66,8 +72,6 @@ export default async function Integrations({ searchParams }: { searchParams: Pro
             </article>
           );
         })}
-        <CapBanner cap={cap} />
-        <LlmKeyPanel status={llmStatus} />
       </div>
     </Page>
   );

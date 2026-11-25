@@ -12,7 +12,7 @@ describe("navigation", () => {
   });
   it("conserve tous les écrans de l'ancien menu", () => {
     const hrefs = flat(buildNav(props(1)).flatMap((g) => g.items)).map((n) => n.href);
-    for (const h of ["/portefeuille", "/", "/logements", "/historique", "/alertes", "/equipe", "/methode", "/glossaire", "/bilan", "/rapports", "/proprietaires", "/integrations", "/modeles", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo"]) expect(hrefs).toContain(h);
+    for (const h of ["/portefeuille", "/", "/logements", "/historique", "/alertes", "/equipe", "/methode", "/glossaire", "/bilan", "/rapports", "/proprietaires", "/integrations", "/modeles", "/modeles/cles", "/modeles/agents", "/modeles/budget", "/modeles/catalogue", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo"]) expect(hrefs).toContain(h);
   });
   it("identifiants uniques", () => {
     const ids = flat(buildNav(props(12), "p1").flatMap((g) => g.items)).map((n) => n.id);
@@ -47,6 +47,7 @@ describe("navigation", () => {
     const g = buildNav(props(2));
     expect(ancestorIds(g, "section:p2:economie")).toEqual(["logements", "property:p2"]);
     expect(ancestorIds(g, "modeles")).toEqual(["parametres"]);
+    expect(ancestorIds(g, currentNodeId("/modeles/catalogue", null))).toEqual(["parametres", "modeles"]);
     expect(ancestorIds(g, currentNodeId("/parametres/compte", null))).toEqual(["parametres"]);
     expect(currentNodeId("/parametres", null)).toBe("parametres");
     expect(ancestorIds(g, "alertes")).toEqual([]);

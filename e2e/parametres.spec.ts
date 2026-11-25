@@ -5,7 +5,7 @@ import { expectNoHorizontalOverflow } from "./helpers/layout";
 // [carte, adresse, titre de la page ouverte]
 const PAGES = [
   ["compte", "/parametres/compte", "Compte & sécurité"], ["proprietaires", "/proprietaires", "Propriétaires"], ["integrations", "/integrations", "Ce que l'agence peut lire et écrire"],
-  ["modeles", "/modeles", "Modèles de langage"], ["priorisation", "/parametres/priorisation", "Priorisation des dossiers"], ["demo", "/parametres/demo", "Démonstration"],
+  ["modeles", "/modeles", "IA & modèles"], ["priorisation", "/parametres/priorisation", "Priorisation des dossiers"], ["demo", "/parametres/demo", "Démonstration"],
 ] as const;
 
 test("Paramètres : six cartes avec leur origine, chacune ouvre sa page, rattachée aux Paramètres", async ({ page }, info) => {
@@ -29,8 +29,9 @@ test("Paramètres : six cartes avec leur origine, chacune ouvre sa page, rattach
   }
   // rien n'est perdu : les rubriques de l'ancien écran sont réparties
   await page.goto("/parametres/compte");
-  for (const t of ["Compte", "Vos droits", "Fonctions activées", "Sécurité", "Équipe IA"]) await expect(page.getByRole("heading", { level: 2, name: t, exact: true })).toBeVisible();
-  for (const t of ["Prénoms de l'équipe", "Modèles par agent"]) await expect(page.getByRole("heading", { level: 3, name: t })).toBeVisible();
+  for (const t of ["Compte", "Vos droits", "Fonctions activées", "Sécurité"]) await expect(page.getByRole("heading", { level: 2, name: t, exact: true })).toBeVisible();
+  await page.goto("/modeles/agents");
+  for (const t of ["Prénoms de l'équipe", "Modèles par agent"]) await expect(page.getByRole("heading", { level: 2, name: t })).toBeVisible();
   await page.goto("/parametres/demo");
   await expect(page.getByRole("button", { name: /Réinstaller la démonstration/ })).toBeVisible();
   expect(errors).toEqual([]);
@@ -42,9 +43,16 @@ test("Anciens Réglages : redirection 308, les ancres mènent à la bonne page",
   expect(res.headers()["location"]).toMatch(/\/parametres$/);
   await page.goto("/reglages");
   await expect(page).toHaveURL(/\/parametres$/);
-  for (const [ancre, cible] of [["droits", "compte"], ["fonctions", "compte"], ["securite", "compte"], ["equipe-ia", "compte"], ["modeles-agents", "compte"], ["priorisation", "priorisation"]]) {
+  for (const [ancre, cible] of [["droits", "compte"], ["fonctions", "compte"], ["securite", "compte"], ["priorisation", "priorisation"]]) {
     await page.goto(`/reglages#${ancre}`);
     await expect(page).toHaveURL(new RegExp(`/parametres/${cible}#${ancre}$`));
+    await expect(page.locator(`#${ancre}`)).toBeInViewport();
+  }
+  // l'équipe IA a rejoint « IA & modèles › Agents » : anciens liens des Réglages et de Compte & sécurité
+  for (const depart of ["/reglages", "/parametres/compte"]) for (const ancre of ["equipe-ia", "modeles-agents"]) {
+    await page.goto("/glossaire");
+    await page.goto(`${depart}#${ancre}`);
+    await expect(page).toHaveURL(new RegExp(`/modeles/agents#${ancre}$`));
     await expect(page.locator(`#${ancre}`)).toBeInViewport();
   }
   await page.goto("/reglages#inconnue");

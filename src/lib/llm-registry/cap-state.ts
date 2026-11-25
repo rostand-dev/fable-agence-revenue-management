@@ -53,6 +53,13 @@ export function capState(capEur: number | null, spentUsd: number, rate: number =
   return { capEur, spentUsd, spentEur, rate, ratio, level: ratio >= 1 ? "reached" : ratio >= CAP_ALERT_RATIO ? "alert" : "ok", remainingUsd: Math.max(0, capEur / rate - spentUsd) };
 }
 
+/** État à AFFICHER (hub, Budget) : la dépense du mois est lue même sans plafond, pour ne jamais annoncer 0 € à tort. */
+export async function getSpendState(tenantId: string, now: Date = new Date()): Promise<CapState> {
+  const [capEur, spent] = await Promise.all([getMonthlyCapEur(tenantId), monthlySpendUsd(tenantId, now)]);
+  return capState(capEur, spent);
+}
+
+/** État pour les contrôles et les bandeaux : sans plafond, la dépense n'est pas lue (elle vaut 0 ici). */
 export async function getCapState(tenantId: string, now: Date = new Date()): Promise<CapState> {
   const capEur = await getMonthlyCapEur(tenantId);
   return capState(capEur, capEur === null ? 0 : await monthlySpendUsd(tenantId, now));

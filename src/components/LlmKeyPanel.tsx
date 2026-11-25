@@ -27,7 +27,7 @@ export function LlmKeyPanel({ status }: { status: LlmStatus }) {
       <div className="stratum-body">
         <p className="muted" style={{ margin: "0 0 14px" }}>
           Vos données ne sont envoyées qu'aux fournisseurs pour lesquels vous saisissez <strong>votre propre clé</strong>. Le serveur n'en détient aucune : sans clé, la revue, les calculs et les garde-fous fonctionnent à l'identique en mode déterministe.
-          Le routeur choisit ensuite, parmi vos fournisseurs, le modèle le moins cher qui convient à chaque tâche : prix, qualification, plafond de dépense et coûts sont dans <Link href="/modeles">IA & modèles</Link>.
+          Le routeur choisit ensuite, parmi vos fournisseurs, le modèle le moins cher qui convient à chaque tâche : prix et qualification sont dans le <Link href="/modeles/catalogue">Catalogue</Link>, plafond de dépense et coûts dans <Link href="/modeles/budget">Budget</Link>.
         </p>
         {PROVIDER_KEYS.map((p, i) => {
           const k = status.providers.find((x) => x.provider === p), label = PROVIDER_LABEL[p];
