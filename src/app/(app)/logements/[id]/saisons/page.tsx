@@ -26,7 +26,7 @@ export default async function Saisons({ params }: { params: Promise<{ id: string
   const rows = Math.min(MAX_SEASONS, seasons.length + 2);
   return (
     <Page title="Saisons du plancher" sub={p.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Saisons du plancher" }]}>
-      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=economie`}><Icon name="back" />Retour à l'économie</Link></p>
+      <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=hub-economie`}><Icon name="back" />Retour à Économie</Link></p>
       <div className="page-head">
         <h1>Saisons du plancher</h1>
         <p>Une saison change la couverture des charges fixes par nuit vendue, donc le plancher stratégique, pendant une période qui revient chaque année. Le seuil de dérangement (plancher absolu) ne change jamais. Hors saison, la valeur de base s'applique{model.strategyContributionPerNightCents != null ? ` (${eur(model.strategyContributionPerNightCents)} € par nuit)` : ""}.</p>

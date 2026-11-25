@@ -35,10 +35,9 @@ test("Onglet Historique : chronologie du logement, liens vers les dossiers, sans
   await page.goto(`${href}?tab=historique`);
   const h = page.getByTestId("historique-logement");
   await expect(h.getByRole("heading", { name: "Chronologie du logement" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Historique" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("tab", { name: "Historique" }).scrollIntoViewIfNeeded();
-  const nav = await page.locator(".subnav").evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }));
-  expect(nav.sw, "la barre d'onglets défile en interne sans élargir la page").toBeGreaterThanOrEqual(nav.cw);
+  // la section courante est montrée par la colonne (grand écran) ou par le bouton « Section » (mobile, tablette)
+  if ((page.viewportSize()?.width ?? 1280) >= 1024) await expect(page.locator(".rail").getByRole("link", { name: "Historique", exact: true }).and(page.locator('[aria-current="page"]'))).toBeVisible();
+  else await expect(page.locator(".section-switcher-btn")).toContainText("Section : Historique");
   if (await page.locator("ul.timeline > li").count() === 0) await expect(h).toContainText("Aucun événement");
   await expectNoHorizontalOverflow(page, "historique logement");
   await h.scrollIntoViewIfNeeded();

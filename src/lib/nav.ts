@@ -14,14 +14,16 @@ export const NAV_RECENT_PROPERTIES = 5;
 type SectionDef = { key: string; label: string; query: string; tabs: string[]; pages: string[] };
 /** Les six sections d'un logement : onglets (`?tab=`) et sous-pages rattachés à chacune. */
 export const PROPERTY_SECTIONS: SectionDef[] = [
-  { key: "apercu", label: "Vue d'ensemble", query: "", tabs: ["apercu"], pages: ["modifier", "supprimer"] },
+  { key: "apercu", label: "Vue d'ensemble", query: "", tabs: ["apercu", "performance"], pages: ["modifier", "supprimer"] },
   { key: "calendrier", label: "Calendrier 90 jours", query: "?tab=calendrier", tabs: ["calendrier"], pages: [] },
-  { key: "strategie", label: "Stratégie & prix", query: "?tab=strategie", tabs: ["strategie", "canaux"], pages: ["strategie", "compilateur"] },
-  { key: "economie", label: "Économie", query: "?tab=economie", tabs: ["economie"], pages: ["couts", "saisons", "versions-economie"] },
-  { key: "donnees", label: "Données & connexions", query: "?tab=superhote", tabs: ["superhote", "pricelabs", "annonces", "donnees"], pages: ["mapping", "qualite", "ecarts-reservations", "validations"] },
+  { key: "strategie", label: "Stratégie & prix", query: "?tab=hub-strategie", tabs: ["hub-strategie", "strategie", "canaux"], pages: ["strategie", "compilateur"] },
+  { key: "economie", label: "Économie", query: "?tab=hub-economie", tabs: ["hub-economie", "economie"], pages: ["couts", "saisons", "versions-economie"] },
+  { key: "donnees", label: "Données & connexions", query: "?tab=hub-donnees", tabs: ["hub-donnees", "superhote", "pricelabs", "annonces", "donnees"], pages: ["mapping", "qualite", "ecarts-reservations", "validations"] },
   { key: "historique", label: "Historique", query: "?tab=historique", tabs: ["historique"], pages: [] },
 ];
 
+/** Section à laquelle appartient un onglet de la fiche (la vue d'ensemble pour un onglet inconnu). */
+export const sectionOfTab = (tab: string) => PROPERTY_SECTIONS.find((s) => s.tabs.includes(tab)) ?? PROPERTY_SECTIONS[0];
 export const sectionHref = (propertyId: string, key: string) => `/logements/${propertyId}${PROPERTY_SECTIONS.find((s) => s.key === key)?.query ?? ""}`;
 export const sectionNodeId = (propertyId: string, key: string) => `section:${propertyId}:${key}`;
 

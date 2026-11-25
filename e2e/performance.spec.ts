@@ -78,7 +78,7 @@ test("API pace : cinq fenêtres, pickup 1/3/7/14, pacing inconnu avec sa raison 
 
 test("fiche du logement : pickup et pacing dans le tableau du rythme de réservation, sans débordement", async ({ page }) => {
   const id = await demoPropertyId(page);
-  await page.goto(`/logements/${id}`);
+  await page.goto(`/logements/${id}?tab=performance`);
   await expect(page.getByTestId("pickup-7").first()).toBeVisible();
   await expect(page.getByTestId("pace-status").first()).toBeVisible();
   await expect(page.getByTestId("pickup-7")).toHaveCount(5);
