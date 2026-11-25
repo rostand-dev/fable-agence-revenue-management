@@ -11,12 +11,16 @@ async function premierLogement(page: Page): Promise<string> {
   expect(hrefs.length, "aucun logement dans la démonstration").toBeGreaterThan(0);
   return hrefs[0];
 }
-/** Restes d'un essai interrompu (une promotion non terminée du même projet bloquerait la déclaration suivante : contrôle de doublon). */
+/**
+ * Restes d'un essai interrompu (une promotion non terminée du même projet bloquerait la déclaration suivante : contrôle de doublon).
+ * Seules les promotions de plus de 10 minutes sont retirées : les trois tests du fichier tournent en parallèle dans le même projet, et un nettoyage
+ * plus large supprimait la promotion d'un test en cours (« Promotion introuvable » à la modification).
+ */
 test.beforeEach(async () => {
   if (!hasDatabase()) return;
   const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await c.connect();
-  try { await c.query("delete from promotions where label ~ $1", [`^(Semaine|Mobile) ${test.info().project.name.replace(/\W/g, "")}[0-9a-z]+$`]); } finally { await c.end(); }
+  try { await c.query("delete from promotions where label ~ $1 and created_at < now() - interval '10 minutes'", [`^(Semaine|Mobile) ${test.info().project.name.replace(/\W/g, "")}[0-9a-z]+$`]); } finally { await c.end(); }
 });
 const tag = () => test.info().project.name.replace(/\W/g, "") + Date.now().toString(36);
 // Les trois largeurs tournent en parallèle sur le même logement : chacune a sa propre plage de dates, pour ne jamais se heurter au contrôle de doublon.
