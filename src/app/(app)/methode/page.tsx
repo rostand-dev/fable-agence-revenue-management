@@ -1,3 +1,4 @@
+import { and, eq, gte } from "drizzle-orm";
 import Link from "next/link";
 import { Avatar } from "@/components/Avatar";
 import { Term } from "@/components/Term";
@@ -5,6 +6,9 @@ import { Page } from "@/components/Page";
 import { State } from "@/components/ui";
 import { agentName, WORKFLOWS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
+import { db, schema } from "@/db";
+import { addDays, todayISO } from "@/lib/dates";
+import { CALIBRATION, calibration, TREND_TEXT, VERDICT_TEXT } from "@/lib/engine/calibration";
 import { CYCLE } from "@/lib/engine/stateMachine";
 import { PLAYBOOK_CODES, PLAYBOOKS } from "@/lib/engine/playbooks";
 import { POLICY_RULES, POLICY_CODES } from "@/lib/engine/policy";
@@ -39,6 +43,10 @@ const APPROVER_LABEL: Record<string, string> = {
 export default async function Methode() {
   const user = await requireUser();
   const names = user.settings.agentNames ?? null;
+  const today = todayISO(new Date());
+  const rows = await db.select({ playbook: schema.opportunities.playbook, status: schema.opportunities.status, decision: schema.opportunities.decision, createdAt: schema.opportunities.createdAt })
+    .from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), gte(schema.opportunities.createdAt, new Date(addDays(today, -CALIBRATION.historyDays + 1) + "T00:00:00Z"))));
+  const cal = calibration(rows, today);
   return (
     <Page title="Méthode de travail" sub="Workflows, garde-fous et partage des rôles" crumbs={[{ label: "Agence IA" }, { label: "Méthode de travail" }]}>
       <div className="page-head">
@@ -90,6 +98,23 @@ export default async function Methode() {
           })}
         </ul>
       </section>
+      <section className="section" aria-labelledby="calibrage-h" data-testid="calibrage">
+        <h2 id="calibrage-h">Calibrage des seuils</h2>
+        <p className="section-note">Les seuils des playbooks sont des hypothèses de départ. Ce tableau lit vos dossiers des {CALIBRATION.historyDays} derniers jours : le volume récent ({CALIBRATION.recentDays} jours) contre le précédent, et ce que vous en avez fait. Les dossiers sont comptés à leur date de création ; une approbation « ombre » compte comme approuvée. Un taux d'approbation n'est donné qu'à partir de {CALIBRATION.minDecisions} décisions ; en dessous, il reste « inconnu ».</p>
+        <ul className="calibrage">
+          {cal.map((l) => (
+            <li key={l.code} className="calibrage-line" data-verdict={l.verdict} data-trend={l.trend}>
+              <div className="calibrage-head"><span className="mono">{l.code}</span> <strong>{l.label}</strong></div>
+              <div className="calibrage-facts">
+                <span>{l.recent} dossier{l.recent > 1 ? "s" : ""} sur {CALIBRATION.recentDays} jours (avant : {l.previous}) · <strong>{TREND_TEXT[l.trend]}</strong></span>
+                <span>Approuvés {l.approved} · refusés {l.rejected} · sans action {l.noAction} · ouverts {l.open} · expirés {l.expired}{" "}· taux d'approbation {l.approvalRate === null ? "inconnu" : `${Math.round(l.approvalRate * 100)} %`}</span>
+              </div>
+              <p className="calibrage-verdict"><State role={l.verdict === "TROP_SENSIBLE" || l.verdict === "TROP_PRUDENT" || l.verdict === "IGNORE" ? "attention" : "tech"}>{VERDICT_TEXT[l.verdict]}</State></p>
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="section" aria-labelledby="auditeur-h" data-testid="regles-auditeur">
         <h2 id="auditeur-h">Les règles de l'auditeur</h2>
         <p className="section-note">Chaque option est contrôlée par des règles déterministes, chacune identifiée par un code (la seconde lecture par modèle, INDEPENDENT_REVIEW, est un ajout qui ne peut qu'alerter). Un <strong>veto</strong> rejette l'option : elle ne peut pas être approuvée. Une <strong>validation humaine</strong> la laisse proposée, mais elle ne s'approuve qu'avec un commentaire. Aucun modèle de langage n'intervient dans ces contrôles.</p>
