@@ -15,14 +15,15 @@ export const CALIBRATION = {
   noisyRejectionRate: 0.6, // part de refus à partir de laquelle le seuil paraît trop sensible
   rubberStampRate: 0.9,    // part d'approbations à partir de laquelle le seuil paraît trop prudent
   rubberStampMinDecisions: 8,
+  ignoredRate: 0.6,        // part de dossiers expirés sans réponse à partir de laquelle le signal paraît du bruit
 } as const;
 
 export type CalRow = { playbook: string; status: string; decision: string | null; createdAt: Date };
 export type Trend = "CROISSANTE" | "STABLE" | "DECROISSANTE" | "INSUFFISANT";
-export type Verdict = "SILENCIEUX" | "TROP_SENSIBLE" | "TROP_PRUDENT" | "EN_OBSERVATION" | "RAS";
+export type Verdict = "SILENCIEUX" | "TROP_SENSIBLE" | "TROP_PRUDENT" | "EN_OBSERVATION" | "IGNORE" | "RAS";
 export type CalibrationLine = {
   code: PlaybookCode; label: string; recent: number; previous: number; trend: Trend;
-  open: number; approved: number; rejected: number; noAction: number; approvalRate: number | null; total: number; verdict: Verdict;
+  open: number; expired: number; approved: number; rejected: number; noAction: number; approvalRate: number | null; total: number; verdict: Verdict;
 };
 
 const iso = (d: Date): ISODate => d.toISOString().slice(0, 10);
@@ -44,13 +45,15 @@ export function calibration(rows: CalRow[], today: ISODate): CalibrationLine[] {
     const rejected = mine.filter((x) => x.decision === "REJECTED").length;
     const noAction = mine.filter((x) => x.decision === "NO_ACTION").length;
     const open = mine.filter((x) => x.status === "OPEN").length;
+    const expired = mine.filter((x) => x.status === "EXPIRED").length;
     const decided = approved + rejected;
     const approvalRate = decided >= CALIBRATION.minDecisions ? approved / decided : null;
     const verdict: Verdict = mine.length === 0 ? "SILENCIEUX"
+      : mine.length >= CALIBRATION.minDecisions && expired / mine.length >= CALIBRATION.ignoredRate ? "IGNORE"
       : approvalRate === null ? "EN_OBSERVATION"
       : 1 - approvalRate >= CALIBRATION.noisyRejectionRate ? "TROP_SENSIBLE"
       : approvalRate >= CALIBRATION.rubberStampRate && decided >= CALIBRATION.rubberStampMinDecisions ? "TROP_PRUDENT" : "RAS";
-    return { code, label: PLAYBOOKS[code].label, recent, previous, trend: trendOf(recent, previous), open, approved, rejected, noAction, approvalRate, total: mine.length, verdict };
+    return { code, label: PLAYBOOKS[code].label, recent, previous, trend: trendOf(recent, previous), open, expired, approved, rejected, noAction, approvalRate, total: mine.length, verdict };
   });
 }
 
@@ -59,6 +62,7 @@ export const VERDICT_TEXT: Record<Verdict, string> = {
   EN_OBSERVATION: "Pas encore assez de décisions pour juger le seuil.",
   TROP_SENSIBLE: "Souvent refusé : le seuil déclenche probablement trop tôt.",
   TROP_PRUDENT: "Presque toujours approuvé : le seuil est peut-être trop prudent, des cas ont pu passer sous le radar.",
-  RAS: "Rien à signaler : les dossiers sont en grande partie approuvés.",
+  IGNORE: "Le plus souvent expiré sans réponse : signal peu utile ou mal placé, seuil à revoir.",
+  RAS: "Taux d'approbation dans la plage attendue : rien à signaler.",
 };
 export const TREND_TEXT: Record<Trend, string> = { CROISSANTE: "En hausse", STABLE: "Stable", DECROISSANTE: "En baisse", INSUFFISANT: "Trop peu de dossiers" };

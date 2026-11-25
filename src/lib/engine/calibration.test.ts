@@ -48,4 +48,14 @@ describe("calibrage des playbooks", () => {
     expect(CALIBRATION.growthRatio).toBeGreaterThan(1);
     expect(CALIBRATION.rubberStampMinDecisions).toBeGreaterThanOrEqual(CALIBRATION.minDecisions);
   });
+  it("verdicts aux bornes : 5 décisions mini, refus à 60 %, accord à 90 % avec 8 décisions, expirés à 60 %", () => {
+    const mk = (a: number, r: number) => [...Array.from({ length: a }, () => row("PB-01", 5, "APPROVED")), ...Array.from({ length: r }, () => row("PB-01", 5, "REJECTED"))];
+    expect(line(mk(3, 1), "PB-01").verdict).toBe("EN_OBSERVATION");
+    expect(line(mk(2, 3), "PB-01").verdict).toBe("TROP_SENSIBLE");
+    expect(line(mk(7, 1), "PB-01").verdict).toBe("RAS");
+    expect(line(mk(8, 0), "PB-01").verdict).toBe("TROP_PRUDENT");
+    expect(line(mk(7, 0), "PB-01").verdict).toBe("RAS");
+    const exp = [...Array.from({ length: 3 }, () => row("PB-01", 5, null, "EXPIRED")), ...Array.from({ length: 2 }, () => row("PB-01", 5))];
+    expect(line(exp, "PB-01").verdict).toBe("IGNORE");
+  });
 });

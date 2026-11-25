@@ -45,7 +45,7 @@ export default async function Methode() {
   const names = user.settings.agentNames ?? null;
   const today = todayISO(new Date());
   const rows = await db.select({ playbook: schema.opportunities.playbook, status: schema.opportunities.status, decision: schema.opportunities.decision, createdAt: schema.opportunities.createdAt })
-    .from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), gte(schema.opportunities.createdAt, new Date(addDays(today, -CALIBRATION.historyDays) + "T00:00:00Z"))));
+    .from(schema.opportunities).where(and(eq(schema.opportunities.tenantId, user.tenantId), gte(schema.opportunities.createdAt, new Date(addDays(today, -CALIBRATION.historyDays + 1) + "T00:00:00Z"))));
   const cal = calibration(rows, today);
   return (
     <Page title="Méthode de travail" sub="Workflows, garde-fous et partage des rôles" crumbs={[{ label: "Agence IA" }, { label: "Méthode de travail" }]}>
@@ -100,16 +100,16 @@ export default async function Methode() {
       </section>
       <section className="section" aria-labelledby="calibrage-h" data-testid="calibrage">
         <h2 id="calibrage-h">Calibrage des seuils</h2>
-        <p className="section-note">Les seuils des playbooks sont des hypothèses de départ. Ce tableau lit vos dossiers des {CALIBRATION.historyDays} derniers jours : le volume récent ({CALIBRATION.recentDays} jours) contre le précédent, et ce que vous en avez fait. Un taux d'approbation n'est donné qu'à partir de {CALIBRATION.minDecisions} décisions ; en dessous, il reste « inconnu ».</p>
+        <p className="section-note">Les seuils des playbooks sont des hypothèses de départ. Ce tableau lit vos dossiers des {CALIBRATION.historyDays} derniers jours : le volume récent ({CALIBRATION.recentDays} jours) contre le précédent, et ce que vous en avez fait. Les dossiers sont comptés à leur date de création ; une approbation « ombre » compte comme approuvée. Un taux d'approbation n'est donné qu'à partir de {CALIBRATION.minDecisions} décisions ; en dessous, il reste « inconnu ».</p>
         <ul className="calibrage">
           {cal.map((l) => (
             <li key={l.code} className="calibrage-line" data-verdict={l.verdict} data-trend={l.trend}>
               <div className="calibrage-head"><span className="mono">{l.code}</span> <strong>{l.label}</strong></div>
               <div className="calibrage-facts">
                 <span>{l.recent} dossier{l.recent > 1 ? "s" : ""} sur {CALIBRATION.recentDays} jours (avant : {l.previous}) · <strong>{TREND_TEXT[l.trend]}</strong></span>
-                <span>Approuvés {l.approved} · refusés {l.rejected} · sans action {l.noAction} · ouverts {l.open}{" "}· taux d'approbation {l.approvalRate === null ? "inconnu" : `${Math.round(l.approvalRate * 100)} %`}</span>
+                <span>Approuvés {l.approved} · refusés {l.rejected} · sans action {l.noAction} · ouverts {l.open} · expirés {l.expired}{" "}· taux d'approbation {l.approvalRate === null ? "inconnu" : `${Math.round(l.approvalRate * 100)} %`}</span>
               </div>
-              <p className="calibrage-verdict"><State role={l.verdict === "TROP_SENSIBLE" || l.verdict === "TROP_PRUDENT" ? "attention" : "tech"}>{VERDICT_TEXT[l.verdict]}</State></p>
+              <p className="calibrage-verdict"><State role={l.verdict === "TROP_SENSIBLE" || l.verdict === "TROP_PRUDENT" || l.verdict === "IGNORE" ? "attention" : "tech"}>{VERDICT_TEXT[l.verdict]}</State></p>
             </li>
           ))}
         </ul>
