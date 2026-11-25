@@ -56,13 +56,15 @@ function codeOnly(text: string): string {
 const SHARED = ["zod", "node:crypto", "../dates", "../format", "../privacy/pii", "../secret", "../engine/types", "../engine/policy"];
 /** Autorisations supplémentaires, fichier par fichier. */
 const EXTRA: Record<string, string[]> = {
-  "runner.ts": ["@/db", "drizzle-orm", "../llm-registry/pricebook"], // pricebook : lecture seule des prix validés, calcul du coût tracé
-  "llm-config.ts": ["@/db", "drizzle-orm"],
+  "runner.ts": ["@/db", "drizzle-orm", "../llm-registry/pricebook", "../llm-registry/cap-state"], // pricebook, cap-state : lecture seule (prix validés, dépense du mois)
+  // routeur : registre, prix, plafond, profils et aptitudes en LECTURE seule ; les clés du propriétaire viennent de owner-keys
+  "llm-config.ts": ["@/db", "drizzle-orm", "../llm-registry/catalog", "../llm-registry/availability", "../llm-registry/cap-state", "../llm-registry/pricebook", "../llm-registry/profiles", "../llm-registry/router"],
+  "owner-keys.ts": ["@/db", "drizzle-orm", "../llm-registry/catalog"],
   "fake-llm-server.ts": ["node:http", "node:net"],
 };
 /** Seuls ces fichiers contactent le réseau, et seulement ces hôtes. */
-const NETWORK = ["gateway.ts", "llm.ts"];
-const HOSTS = ["api.anthropic.com", "api.openai.com"];
+const NETWORK = ["gateway.ts", "llm.ts", "owner-keys.ts"];
+const HOSTS = ["api.anthropic.com", "api.openai.com", "api.mistral.ai"];
 
 describe("agents : aucune écriture externe (US-075)", () => {
   it("la liste des modules d'agents couvre les agents de l'épic, sans sous-dossier imprévu", () => {
@@ -137,16 +139,16 @@ describe("agents : aucune écriture externe (US-075)", () => {
 
 describe("registre LLM : les modules que les agents importent restent en lecture seule", () => {
   const REG = join(LIB, "llm-registry");
-  const readOnly = ["pricebook.ts", "prices.ts", "catalog.ts"];
+  const readOnly = ["pricebook.ts", "prices.ts", "catalog.ts", "cap-state.ts", "profiles.ts", "router.ts", "availability.ts", "config.ts"];
   const FORBIDDEN_CALLS = /\.(insert|update|delete|execute)\s*\(|\bfetch\s*\(|\bsetInterval\s*\(|\bsetTimeout\s*\(/;
   it("pricebook, prices et catalog n'écrivent pas en base, n'appellent pas le réseau et n'importent ni synchronisation ni validation ni intégration", () => {
     for (const f of readOnly) {
       const text = readFileSync(join(REG, f), "utf8");
       expect(codeOnly(text), `${f} : écriture ou réseau interdits ici (module importé par les agents)`).not.toMatch(FORBIDDEN_CALLS);
-      for (const s of specifiers(text)) expect(["zod", "drizzle-orm", "@/db", "./prices", "./catalog"].includes(s), `${f} importe « ${s} » : interdit`).toBe(true);
+      for (const s of specifiers(text)) expect(["zod", "drizzle-orm", "@/db", "./prices", "./catalog", "./pricebook", "./profiles", "./config", "../agents/registry", "../agents/prompts"].includes(s), `${f} importe « ${s} » : interdit`).toBe(true);
     }
   });
   it("aucun module d'agent n'importe le module qui écrit les prix (validation) ni la synchronisation", () => {
-    for (const f of files) for (const s of specifiers(read(f))) expect(/llm-registry\/(price-validation|sync|job|cap)/.test(s), `${name(f)} importe « ${s} »`).toBe(false);
+    for (const f of files) for (const s of specifiers(read(f))) expect(/llm-registry\/(price-validation|sync|job|bench|cap(?!-state))/.test(s), `${name(f)} importe « ${s} »`).toBe(false);
   });
 });

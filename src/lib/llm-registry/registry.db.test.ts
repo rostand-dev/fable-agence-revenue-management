@@ -1,3 +1,4 @@
+import { setOwnerKey } from "@/test/llm-keys";
 import { eq } from "drizzle-orm";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -267,9 +268,9 @@ describe("registre LLM : coût réel tracé dans agent_runs (base réelle, faux 
   const Out = z.object({ answer: z.string().min(3) });
   beforeAll(async () => { srv = await startFakeLlmServer(() => '{"answer":"bonjour"}'); t = await makeTenant("cout"); }, 60_000);
   afterAll(async () => { await srv.close(); });
-  beforeEach(async () => { await reset(); process.env.ANTHROPIC_API_BASE = srv.url; process.env.ANTHROPIC_API_KEY = "sk-ant-serveur-de-test-0123456789"; process.env.ANTHROPIC_MODEL = "claude-haiku-5-5"; });
+  beforeEach(async () => { await reset(); process.env.ANTHROPIC_API_BASE = srv.url; await setOwnerKey(t.tenantId); process.env.ANTHROPIC_MODEL = "claude-haiku-5-5"; });
   const run = async () => { const o = await runAgentTask({ budget: await openBudget(t.tenantId), agentId: "direction", operation: "test", prompt: "direction.explain_action", user: "Faits : x", schema: Out, summary: ({ mode }) => `Essai ${mode}`, fallback: () => ({ answer: "repli" }) }); await db.insert(schema.agentRuns).values(o.run); return o; };
-  const cleanup = () => { for (const k of ["ANTHROPIC_API_BASE", "ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"]) delete process.env[k]; };
+  const cleanup = () => { for (const k of ["ANTHROPIC_API_BASE", "ANTHROPIC_MODEL"]) delete process.env[k]; };
   afterAll(cleanup);
 
   it("prix validé connu : le coût est calculé à partir des jetons déclarés et rattaché à l'instantané de prix", async () => {
@@ -281,7 +282,9 @@ describe("registre LLM : coût réel tracé dans agent_runs (base réelle, faux 
     const expected = ((row.inputTokens ?? 0) * 0.1 + (row.outputTokens ?? 0) * 0.5) / 1e6;
     expect(Number(row.costUsd)).toBeCloseTo(expected, 6);
     expect(row.priceSnapshotId).toBe((await loadPriceBook()).get("claude-haiku-5-5")!.snapshotId);
-    expect(row.costEstimatedUsd).toBeNull();
+    // coût estimé par le routeur avant l'appel : renseigné dès qu'un prix validé existe
+    expect(Number(row.costEstimatedUsd)).toBeGreaterThan(0);
+    expect((row.trace as any).route).toMatchObject({ reason: "demarrage_sans_regression", chosen: [{ model: "claude-haiku-5-5" }] });
     expect((row.trace as any).tried[0]).toMatchObject({ model: "claude-haiku-5-5", outcome: "OK" });
     expect((row.trace as any).tried[0].inputTokens).toBe(row.inputTokens);
   });
@@ -291,11 +294,12 @@ describe("registre LLM : coût réel tracé dans agent_runs (base réelle, faux 
     expect(o.mode).toBe("LLM");
     const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, o.run.id!));
     expect(row.costUsd).toBeNull();
+    expect(row.costEstimatedUsd).toBeNull();
     expect(row.priceSnapshotId).toBeNull();
   });
 
   it("sans fournisseur : aucun appel, aucun coût", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+    await setOwnerKey(t.tenantId, null);
     const o = await run();
     expect(o.reason).toBe("NO_PROVIDER");
     const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, o.run.id!));

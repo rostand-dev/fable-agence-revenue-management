@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { anthropicProvider, describeIssues, generateJson, openaiProvider, parseJsonObject, schemaHint, scriptedProvider, type GatewayTarget } from "./gateway";
-import { buildTargets, openaiFallbackFrom } from "./llm-config";
+import { anthropicProvider, describeIssues, generateJson, mistralProvider, openaiProvider, parseJsonObject, providerByKey, schemaHint, scriptedProvider, type GatewayTarget } from "./gateway";
 import { startFakeLlmServer, type FakeLlmServer } from "./fake-llm-server";
 
 const Out = z.object({ summary: z.string().min(3), score: z.number().int().min(0).max(10) });
@@ -86,15 +85,15 @@ describe("generateJson", () => {
     expect(JSON.stringify(r)).not.toContain("sk-ant-secret");
   });
 
-  it("la clé du propriétaire refusée (401) ne fait PAS partir ses données vers un autre fournisseur", async () => {
-    const refused = scriptedProvider(() => Object.assign(new Error("401"), {}));
+  it("une clé refusée (401) chez un fournisseur : le suivant est tenté, avec la clé que le propriétaire y a saisie", async () => {
     const ok = scriptedProvider(() => good);
     const { LlmError } = await import("./llm");
     const own = scriptedProvider(() => new LlmError("Clé refusée", 401));
-    const r = await generateJson([target(own), { provider: ok, apiKey: "k", model: "b", source: "serveur" }], call);
-    expect(r).toMatchObject({ ok: false, kind: "PROVIDER_ERROR" });
-    expect(ok.calls).toHaveLength(0);
-    void refused;
+    const r = await generateJson([target(own), target(ok, "b")], call);
+    expect(r.ok).toBe(true);
+    expect(own.calls).toHaveLength(1);
+    expect(ok.calls).toHaveLength(1);
+    expect(r.meta.tried.map((t) => t.outcome)).toEqual(["PROVIDER_ERROR", "OK"]);
   });
 
   it("une clé de schéma strict et hostile n'est jamais renvoyée au modèle ni conservée", async () => {
@@ -177,27 +176,20 @@ describe("generateJson", () => {
   });
 });
 
-describe("construction des cibles", () => {
-  it("Anthropic d'abord, puis le repli OpenAI seulement si la clé ET le modèle sont définis", () => {
-    const primary = { apiKey: "k1", model: "claude-x", source: "utilisateur" as const };
-    expect(buildTargets({ primary: null, openai: null })).toEqual([]);
-    expect(buildTargets({ primary, openai: null }).map((t) => t.provider.id)).toEqual(["anthropic"]);
-    expect(buildTargets({ primary, openai: { apiKey: "k2", model: "gpt-x" } }).map((t) => [t.provider.id, t.source])).toEqual([["anthropic", "utilisateur"], ["openai", "serveur"]]);
-    expect(buildTargets({ primary: null, openai: { apiKey: "k2", model: "gpt-x" } }).map((t) => t.provider.id)).toEqual(["openai"]);
-  });
-  it("le repli OpenAI exige les deux variables, sans espace parasite", () => {
-    expect(openaiFallbackFrom({})).toBeNull();
-    expect(openaiFallbackFrom({ OPENAI_API_KEY: "k" })).toBeNull();
-    expect(openaiFallbackFrom({ OPENAI_MODEL: "m" })).toBeNull();
-    expect(openaiFallbackFrom({ OPENAI_API_KEY: " k ", OPENAI_MODEL: " m " })).toEqual({ apiKey: "k", model: "m" });
+describe("adaptateurs par fournisseur", () => {
+  it("chaque fournisseur du catalogue a son adaptateur", () => {
+    expect(providerByKey("anthropic")).toBe(anthropicProvider);
+    expect(providerByKey("openai")).toBe(openaiProvider);
+    expect(providerByKey("mistral")).toBe(mistralProvider);
+    expect(["anthropic", "openai", "mistral"].map((k) => providerByKey(k as never).id)).toEqual(["anthropic", "openai", "mistral"]);
   });
 });
 
 // Test fonctionnel : vraies requêtes HTTP vers un faux serveur local (aucun réseau externe, aucune clé réelle).
 describe("fournisseurs réels contre un faux serveur HTTP", () => {
   let srv: FakeLlmServer;
-  afterEach(async () => { await srv?.close(); delete process.env.ANTHROPIC_API_BASE; delete process.env.OPENAI_API_BASE; });
-  beforeEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.OPENAI_API_BASE; });
+  afterEach(async () => { await srv?.close(); delete process.env.ANTHROPIC_API_BASE; delete process.env.OPENAI_API_BASE; delete process.env.MISTRAL_API_BASE; });
+  beforeEach(() => { delete process.env.ANTHROPIC_API_BASE; delete process.env.OPENAI_API_BASE; delete process.env.MISTRAL_API_BASE; });
 
   it("Anthropic : clé et modèle transmis, sortie JSON validée, jetons lus", async () => {
     srv = await startFakeLlmServer(() => "Voici : " + good);
@@ -211,16 +203,35 @@ describe("fournisseurs réels contre un faux serveur HTTP", () => {
   it("OpenAI : mode JSON demandé, clé en Bearer, sortie validée", async () => {
     srv = await startFakeLlmServer(() => good);
     process.env.OPENAI_API_BASE = srv.url + "/";
-    const r = await generateJson([{ provider: openaiProvider, apiKey: "sk-openai-test-0123456789", model: "gpt-test", source: "serveur" }], call);
+    const r = await generateJson([{ provider: openaiProvider, apiKey: "sk-openai-test-0123456789", model: "gpt-test", source: "utilisateur" }], call);
     expect(r.ok).toBe(true);
     expect(srv.requests[0]).toMatchObject({ provider: "openai", apiKey: "sk-openai-test-0123456789", model: "gpt-test" });
     expect(srv.requests[0].body.response_format).toEqual({ type: "json_object" });
   });
 
+  it("Mistral : mode JSON demandé, clé en Bearer, préfixe /mistral, jetons lus", async () => {
+    srv = await startFakeLlmServer(() => good);
+    process.env.MISTRAL_API_BASE = srv.url + "/mistral/";
+    const r = await generateJson([{ provider: mistralProvider, apiKey: "mistral-cle-de-test-0123456789", model: "mistral-small-2603", source: "utilisateur" }], call);
+    expect(r.ok).toBe(true);
+    expect(srv.requests[0]).toMatchObject({ provider: "mistral", apiKey: "mistral-cle-de-test-0123456789", model: "mistral-small-2603" });
+    expect(srv.requests[0].body.response_format).toEqual({ type: "json_object" });
+    if (r.ok) expect(r.meta.outputTokens).toBeGreaterThan(0);
+  });
+
+  it("Mistral : clé refusée (401) = erreur claire sans la clé", async () => {
+    srv = await startFakeLlmServer(() => ({ status: 401 }));
+    process.env.MISTRAL_API_BASE = srv.url + "/mistral";
+    const r = await generateJson([{ provider: mistralProvider, apiKey: "mistral-cle-refusee-0123456789", model: "m", source: "utilisateur" }], call);
+    expect(r.ok).toBe(false);
+    expect(JSON.stringify(r)).not.toContain("mistral-cle-refusee");
+    expect(r.ok ? "" : r.message).toContain("refusée par Mistral");
+  });
+
   it("bascule d'Anthropic en panne (HTTP 529) vers OpenAI, et trace les deux tentatives", async () => {
     srv = await startFakeLlmServer((req) => (req.provider === "anthropic" ? { status: 529 } : good));
     process.env.ANTHROPIC_API_BASE = srv.url; process.env.OPENAI_API_BASE = srv.url;
-    const r = await generateJson(buildTargets({ primary: { apiKey: "sk-ant-cle-de-test-0123456789", model: "claude-test", source: "utilisateur" }, openai: { apiKey: "sk-openai-test-0123456789", model: "gpt-test" } }), call);
+    const r = await generateJson([{ provider: anthropicProvider, apiKey: "sk-ant-cle-de-test-0123456789", model: "claude-test", source: "utilisateur" }, { provider: openaiProvider, apiKey: "sk-openai-test-0123456789", model: "gpt-test", source: "utilisateur" }], call);
     expect(r.ok).toBe(true);
     expect(r.meta.provider).toBe("openai");
     expect(r.meta.tried.map((t) => [t.provider, t.outcome])).toEqual([["anthropic", "PROVIDER_ERROR"], ["openai", "OK"]]);

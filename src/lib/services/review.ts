@@ -10,10 +10,10 @@ import { DEFAULT_SCORING, resolveScoring, scoreOpportunity, type ScoringConfig }
 import { dedupeOpportunities, groupKeys, openingDecision, shouldExpire } from "../engine/lifecycle";
 import { groupCooldownUntil, recentBaseChanges, STRUCTURAL_COUNTED_STATUSES, structuralHold } from "../engine/structural";
 import type { Channel, Day, DetectedOpportunity, EconomicModel, Promo, Resa, Strategy } from "../engine/types";
-import { resolveTargets } from "../agents/llm-config";
+import { resolveRouting } from "../agents/llm-config";
 import { openBudget } from "../agents/runner";
 import { analyzeMarket } from "../agents/market-analyst";
-import { PROMPTS } from "../agents/prompts";
+import { PROMPTS, type PromptId } from "../agents/prompts";
 import { secondReading, reviewPromptVersion } from "../agents/auditor";
 import { applyReview, reviewable, reviewHashOf, type IndependentReview } from "../agents/independent-review";
 import { opine, opinionPromptVersion } from "../agents/strategist";
@@ -34,6 +34,9 @@ const ACTIVE_ACTION = ["APPROVED", "EXECUTING", "EXECUTED", "VERIFIED", "MEASURI
  * Majorations saisies par le propriétaire (clé « airbnb », « booking »…) → canaux du moteur. Une majoration non renseignée est `null` (inconnue),
  * jamais 0 % : le moteur exclut alors ce canal de la revue au lieu de calculer un prix vendu faux.
  */
+/** Prompt de chaque agent à base de modèle : clé de mémorisation du routage dans le budget de la revue. */
+const AGENT_PROMPT: Record<string, PromptId> = Object.fromEntries((Object.values(PROMPTS)).map((p) => [p.agent, p.id]));
+
 export function channelMarkupsOf(list: { key: string; pct: number | null }[] | null | undefined): Partial<Record<Channel, number | null>> {
   const find = (prefix: string) => (list ?? []).find((m) => m.key === prefix || m.key.startsWith(prefix + "-"));
   const pct = (m: { pct: number | null } | undefined) => (m && typeof m.pct === "number" && Number.isFinite(m.pct) && m.pct >= 0 && m.pct <= 100 ? m.pct : null);
@@ -152,11 +155,12 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   const code = await nextCode(tenantId, today);
   // budget des appels de modèle de la revue (US-074) ; les cibles de la passerelle sont résolues une fois par agent
   const budget = await openBudget(tenantId, now);
-  const llm = await resolveTargets(tenantId, "direction");
-  budget.targets.set("direction", llm);
-  const llmMarche = (await resolveTargets(tenantId, "marche")).length > 0;
-  const llmAudit = (await resolveTargets(tenantId, "audit")).length > 0;
-  const llmStrategist: Record<StrategistId, boolean> = { pricing: (await resolveTargets(tenantId, "pricing")).length > 0, distribution: (await resolveTargets(tenantId, "distribution")).length > 0 };
+  // le routeur choisit le modèle de chaque agent avec les clés du propriétaire ; plafond mensuel atteint = les agents passent par l'exécuteur, qui trace le repli (BUDGET_CAP)
+  const routed = async (agent: string) => { const r = await resolveRouting(tenantId, agent); budget.routings.set(agent + "|" + AGENT_PROMPT[agent], r); return r.targets.length > 0 || r.reason === "plafond_mensuel"; };
+  const llm = await routed("direction");
+  const llmMarche = await routed("marche");
+  const llmAudit = await routed("audit");
+  const llmStrategist: Record<StrategistId, boolean> = { pricing: await routed("pricing"), distribution: await routed("distribution") };
   let opened = 0, refreshed = 0, expired = 0, blocked = 0, resting = 0, seq = 0;
   const counts = { options: 0, approve: 0, reject: 0, human: 0, pricing: 0, distribution: 0, annonce: 0 };
 
@@ -251,7 +255,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
       }
       let narrative = deterministicNarrative(o);
       const id = newId("opp");
-      if (llm.length) {
+      if (llm) {
         const w = await writeNarrative(budget, o, p.name, id); narrative = w.narrative;
         // trace enregistrée tout de suite : le budget du jour la voit, même si la revue échoue plus loin ou si une autre revue tourne en parallèle
         await db.insert(agentRuns).values(w.outcome.run);
@@ -277,7 +281,7 @@ export async function runDailyReview(tenantId: string, trigger: ReviewTrigger = 
   if (runs.length) await db.insert(agentRuns).values(runs);
   steps.push(...runs.map((r) => ({ agent: r.agentId, label: r.operation, detail: r.summary, ok: !r.error })));
   const scope = opts.propertyIds ? props.map((p) => p.name).join(", ") : null;
-  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, resting, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm: llm.length > 0 } }).where(eq(reviewRuns.id, runId));
+  await db.update(reviewRuns).set({ finishedAt: new Date(), steps, stats: { trigger, opened, refreshed, expired, blocked, resting, properties: props.length, propertyIds: opts.propertyIds ?? null, scope, llm } }).where(eq(reviewRuns.id, runId));
   // les revues planifiées sont fréquentes (jusqu'à quatre par jour et par logement) : seules celles qui changent quelque chose entrent au journal
   if (!(trigger === "SCHEDULED" && opened === 0 && expired === 0)) {
     const how = trigger === "MANUAL" ? "lancée à la main" : trigger === "SIGNUP" ? "première revue" : trigger === "EVENT" ? "après un changement de réservation" : "planifiée";

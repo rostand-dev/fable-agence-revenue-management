@@ -10,8 +10,7 @@ import { Recap, State } from "@/components/ui";
 import { db, schema } from "@/db";
 import { saveAgentModelAction } from "@/app/actions/llm";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
-import { serverDefaultModel } from "@/lib/agents/llm";
-import { effectiveModel, getLlmStatus } from "@/lib/agents/llm-config";
+import { AUTO_LABEL, effectiveModel, getLlmStatus, selectableModels } from "@/lib/agents/llm-config";
 import { budgetLimits } from "@/lib/agents/budget";
 import { FALLBACK_LABEL, tokensUsedToday } from "@/lib/agents/runner";
 import { AGENT_BY_ID, agentName, WORKFLOWS, type AgentId } from "@/lib/agents/registry";
@@ -31,7 +30,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const names = user.settings.agentNames ?? null, name = agentName(a.id, names);
   const llm = await getLlmStatus(user.tenantId);
   const chosen: string | undefined = (user.settings.agentModels ?? {})[a.id];
-  const effective = effectiveModel(llm.source, chosen, serverDefaultModel());
+  const effective = effectiveModel(llm.source, chosen);
   const [usedToday, runs, talk] = await Promise.all([
     tokensUsedToday(user.tenantId),
     db.select().from(schema.agentRuns).where(and(eq(schema.agentRuns.tenantId, user.tenantId), eq(schema.agentRuns.agentId, a.id), ...(onlyLlm ? [eq(schema.agentRuns.mode, "LLM")] : []))).orderBy(desc(schema.agentRuns.createdAt)).limit(40),
@@ -65,7 +64,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           <Recap rows={[
             ["Poste", a.title], ["Rend compte à", a.reportsTo ? agentName(a.reportsTo, names) + " · direction" : a.id === "audit" ? "Vous — indépendant de la direction" : "Vous"],
             ["Cadence", a.cadence], ["Droits d'écriture", a.rights],
-            ["Mode de raisonnement", a.reasoning], ["Modèle de langage", effective ? effective + (chosen && llm.source === "utilisateur" ? " (choisi pour ce poste)" : " (par défaut)") : "non configuré — repli déterministe", true],
+            ["Mode de raisonnement", a.reasoning], ["Modèle de langage", effective ? (chosen ? chosen + " (choisi pour ce poste)" : "Automatique : le moins cher qui convient") : "non configuré — repli déterministe", true],
           ]} />
           <section className="stratum">
             <header><h3>Modèle de langage de {name}</h3></header>
@@ -75,7 +74,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
                 <ActionForm action={saveAgentModelAction} hidden={{ agentId: a.id }}>
                   <div className="field" style={{ maxWidth: 560 }}>
                     <label htmlFor="agent-model">Modèle</label>
-                    <AgentModelSelect id="agent-model" name="model" models={llm.models} current={chosen} defaultLabel={`Modèle par défaut (${serverDefaultModel()})`} />
+                    <AgentModelSelect id="agent-model" name="model" models={selectableModels(llm)} current={chosen} defaultLabel={AUTO_LABEL} />
                     <span className="help">Liste des modèles disponibles avec votre clé API.</span>
                   </div>
                   <div style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer le modèle</Submit></div>

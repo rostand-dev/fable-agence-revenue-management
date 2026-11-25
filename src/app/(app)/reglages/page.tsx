@@ -15,8 +15,7 @@ import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { Recap } from "@/components/ui";
-import { serverDefaultModel } from "@/lib/agents/llm";
-import { getLlmStatus } from "@/lib/agents/llm-config";
+import { AUTO_LABEL, getLlmStatus, selectableModels } from "@/lib/agents/llm-config";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDate } from "@/lib/dates";
@@ -127,7 +126,7 @@ export default async function Reglages() {
               {AGENTS.map((a) => (
                 <div className="field" key={a.id}>
                   <label htmlFor={"model-" + a.id} style={{ display: "flex", alignItems: "center", gap: 10 }}><Avatar agent={a.id} size={30} />{a.title}</label>
-                  <AgentModelSelect id={"model-" + a.id} name={"model-" + a.id} models={llm.models} current={models[a.id]} defaultLabel={`Modèle par défaut (${serverDefaultModel()})`} />
+                  <AgentModelSelect id={"model-" + a.id} name={"model-" + a.id} models={selectableModels(llm)} current={models[a.id]} defaultLabel={AUTO_LABEL} />
                 </div>
               ))}
             </div>
