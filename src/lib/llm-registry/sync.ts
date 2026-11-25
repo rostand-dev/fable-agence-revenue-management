@@ -4,13 +4,13 @@
  * Aucune donnée de propriétaire n'est envoyée : seules les listes de modèles sont lues, avec une clé de propriétaire pour la disponibilité.
  * Une panne ne détruit jamais l'état connu : un fichier de prix injoignable ou une liste en erreur ne change rien.
  */
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { db, newId, schema } from "@/db";
 import { decryptSecret } from "../secret";
 import { CATALOG, type ProviderKey } from "./catalog";
 import { applyListing, PARSERS } from "./availability";
 import { mistralBase, pricesUrl } from "./config";
-import { decidePrice, parseLitellmPrices, parsePriceOverrides, type PriceEntry } from "./prices";
+import { decidePrice, parseLitellmPrices, parsePriceOverrides, samePrice, type PriceEntry } from "./prices";
 import { invalidatePriceBook, latestValidated, snapshotToPrice } from "./pricebook";
 
 type Env = Record<string, string | undefined>;
@@ -95,6 +95,9 @@ export async function syncPrices(deps: SyncDeps = {}): Promise<SyncStats["prices
     // prix modifié dans le fichier communautaire : signalé, appliqué seulement après validation
     const [pending] = await db.select().from(schema.llmPriceSnapshots).where(and(eq(schema.llmPriceSnapshots.modelId, m.modelId), eq(schema.llmPriceSnapshots.status, "PENDING")));
     if (pending && decidePrice(snapshotToPrice(pending), observed) === "KEEP") { stats.flagged.push(m.modelId); continue; }
+    // un refus de l'exploitant tient : le même prix n'est pas signalé de nouveau à chaque synchronisation (les relevés remplacés par le système ne comptent pas)
+    const [lastRefused] = await db.select().from(schema.llmPriceSnapshots).where(and(eq(schema.llmPriceSnapshots.modelId, m.modelId), eq(schema.llmPriceSnapshots.status, "REJECTED"), ne(schema.llmPriceSnapshots.validatedBy, "system"))).orderBy(desc(schema.llmPriceSnapshots.seq)).limit(1);
+    if (!pending && lastRefused && samePrice(snapshotToPrice(lastRefused), observed)) continue;
     if (pending) await db.update(schema.llmPriceSnapshots).set({ status: "REJECTED", validatedAt: now, validatedBy: "system" }).where(eq(schema.llmPriceSnapshots.id, pending.id));
     // une passe concurrente a pu poser le même changement : l'index unique le refuse, sans erreur
     await db.insert(schema.llmPriceSnapshots).values({ id: newId("llmp"), modelId: m.modelId, ...priceCols(observed), source, status: "PENDING", observedAt: now }).onConflictDoNothing();

@@ -36,6 +36,8 @@ services:
       - LLM_SYNC_INTERVAL_HOURS=${LLM_SYNC_INTERVAL_HOURS:-24}
       # Facultatif : taux fixe dollar → euro pour exprimer le coût des modèles et le plafond mensuel en euros (défaut 0.92 ; à ajuster à la main).
       - LLM_USD_EUR_RATE=${LLM_USD_EUR_RATE:-0.92}
+      # Facultatif : adresses e-mail (séparées par des virgules) de l'exploitant, seules autorisées à valider un changement de prix de modèle et à lancer un test de modèle (réglages partagés par tous les comptes). Vide : personne.
+      - LLM_ADMIN_EMAILS=${LLM_ADMIN_EMAILS:-}
       # Facultatif : appels HTTP aux fournisseurs de modèle au plus par revue (défaut 80 ; corrections et replis comptés). Au-delà, les agents passent en repli déterministe pour le reste de la revue. 0 désactive les appels de modèle.
       - AGENT_MAX_CALLS_PER_REVIEW=${AGENT_MAX_CALLS_PER_REVIEW:-80}
       # Facultatif : jetons (entrée + sortie) au plus par propriétaire et par jour UTC (défaut 300000). Atteint : repli déterministe jusqu'au lendemain. 0 désactive les appels de modèle.

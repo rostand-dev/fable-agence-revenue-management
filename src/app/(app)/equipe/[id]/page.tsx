@@ -10,6 +10,8 @@ import { Recap, State } from "@/components/ui";
 import { db, schema } from "@/db";
 import { saveAgentModelAction } from "@/app/actions/llm";
 import { AgentModelSelect } from "@/components/AgentModelSelect";
+import { CapBanner } from "@/components/CapBanner";
+import { getCapState } from "@/lib/llm-registry/cap-state";
 import { AUTO_LABEL, effectiveModel, getLlmStatus, selectableModels } from "@/lib/agents/llm-config";
 import { budgetLimits } from "@/lib/agents/budget";
 import { FALLBACK_LABEL, tokensUsedToday } from "@/lib/agents/runner";
@@ -28,7 +30,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
   const tab = sp.tab ?? "poste";
   const onlyLlm = sp.mode === "llm"; // filtre de l'onglet Activité : les interventions avec modèle ne sont pas noyées par les lignes de règles
   const names = user.settings.agentNames ?? null, name = agentName(a.id, names);
-  const llm = await getLlmStatus(user.tenantId);
+  const [llm, cap] = await Promise.all([getLlmStatus(user.tenantId), getCapState(user.tenantId)]);
   const chosen: string | undefined = (user.settings.agentModels ?? {})[a.id];
   const effective = effectiveModel(llm.source, chosen);
   const [usedToday, runs, talk] = await Promise.all([
@@ -69,6 +71,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
           <section className="stratum">
             <header><h3>Modèle de langage de {name}</h3></header>
             <div className="stratum-body">
+              <CapBanner cap={cap} />
               <p className="muted" style={{ margin: "0 0 12px" }}>{usesLlm ? "Ce modèle rédige les synthèses et répond dans la conversation de ce poste." : "Les calculs de ce poste restent déterministes : aucun modèle n'y intervient. Le modèle choisi sert uniquement à sa conversation."}</p>
               {llm.source === "utilisateur" ? (
                 <ActionForm action={saveAgentModelAction} hidden={{ agentId: a.id }}>

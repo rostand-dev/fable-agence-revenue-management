@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { refreshModelsAction, removeLlmKeyAction, saveLlmKeyAction } from "@/app/actions/llm";
 import { ActionForm, Submit } from "@/components/forms";
 import { Recap, State, Vq } from "@/components/ui";
@@ -26,7 +27,7 @@ export function LlmKeyPanel({ status }: { status: LlmStatus }) {
       <div className="stratum-body">
         <p className="muted" style={{ margin: "0 0 14px" }}>
           Vos données ne sont envoyées qu'aux fournisseurs pour lesquels vous saisissez <strong>votre propre clé</strong>. Le serveur n'en détient aucune : sans clé, la revue, les calculs et les garde-fous fonctionnent à l'identique en mode déterministe.
-          Le routeur choisit ensuite, parmi vos fournisseurs, le modèle le moins cher qui convient à chaque tâche.
+          Le routeur choisit ensuite, parmi vos fournisseurs, le modèle le moins cher qui convient à chaque tâche : prix, qualification, plafond de dépense et coûts sont dans l'<Link href="/modeles">écran Modèles</Link>.
         </p>
         {PROVIDER_KEYS.map((p, i) => {
           const k = status.providers.find((x) => x.provider === p), label = PROVIDER_LABEL[p];

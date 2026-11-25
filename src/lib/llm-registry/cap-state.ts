@@ -11,7 +11,7 @@ export const MAX_MONTHLY_CAP_EUR = 100000;
 /** Valide la saisie : vide ou null = pas de plafond ; sinon un montant en euros strictement positif, au plus 2 décimales, au plus 100 000. */
 export function parseMonthlyCapEur(input: unknown): { ok: true; value: number | null } | { ok: false; error: string } {
   if (input === null || input === undefined) return { ok: true, value: null };
-  const raw = typeof input === "string" ? input.trim().replace(",", ".") : input;
+  const raw = typeof input === "string" ? input.replace(/[\s\u00a0\u202f]/g, "").replace(",", ".") : input;
   if (raw === "") return { ok: true, value: null };
   const n = typeof raw === "number" ? raw : Number(raw);
   if (!Number.isFinite(n) || n <= 0) return { ok: false, error: "Saisissez un montant en euros supérieur à 0, ou laissez vide pour ne fixer aucun plafond." };
@@ -37,9 +37,9 @@ export const CAP_ALERT_RATIO = 0.8;
 /** Premier instant du mois (UTC) : le plafond se remet à zéro à ce moment. */
 export const monthStart = (now: Date): Date => new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-/** Dépense LLM du mois en USD (coûts connus ; un appel sans prix connu compte pour 0, jamais une valeur inventée). */
+/** Dépense LLM du mois en USD (coûts connus ; un appel sans prix connu compte pour 0, jamais une valeur inventée ; un test de modèle en cours ou interrompu compte pour son estimation maximale). */
 export async function monthlySpendUsd(tenantId: string, now: Date = new Date()): Promise<number> {
-  const [r] = await db.select({ n: sql<string>`coalesce(sum(${schema.agentRuns.costUsd}), 0)` }).from(schema.agentRuns)
+  const [r] = await db.select({ n: sql<string>`coalesce(sum(coalesce(${schema.agentRuns.costUsd}, case when ${schema.agentRuns.operation} = 'bench' then ${schema.agentRuns.costEstimatedUsd} end)), 0)` }).from(schema.agentRuns)
     .where(and(eq(schema.agentRuns.tenantId, tenantId), gte(schema.agentRuns.createdAt, monthStart(now))));
   return Number(r?.n ?? 0);
 }

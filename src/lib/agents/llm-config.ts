@@ -1,4 +1,4 @@
-import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, ne, sql } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { serverDefaultModel } from "./llm";
 import { providerByKey, type GatewayTarget } from "./gateway";
@@ -34,7 +34,7 @@ async function observedLatencies(now: Date): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   try {
     const rows = await db.select({ model: schema.agentRuns.model, ms: sql<string>`avg(${schema.agentRuns.durationMs})` }).from(schema.agentRuns)
-      .where(and(eq(schema.agentRuns.mode, "LLM"), isNotNull(schema.agentRuns.model), gte(schema.agentRuns.createdAt, new Date(now.getTime() - 30 * 86400_000)))).groupBy(schema.agentRuns.model);
+      .where(and(eq(schema.agentRuns.mode, "LLM"), ne(schema.agentRuns.operation, "bench"), isNotNull(schema.agentRuns.model), gte(schema.agentRuns.createdAt, new Date(now.getTime() - 30 * 86400_000)))).groupBy(schema.agentRuns.model);
     for (const r of rows) if (r.model) map.set(r.model, Number(r.ms));
   } catch { /* latence inconnue : le départage ignore ce critère */ }
   latencyCache = { at: now.getTime(), map };

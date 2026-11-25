@@ -64,3 +64,17 @@ Saisir sa propre clé Anthropic sur chaque compte (staging, production), sinon s
 - Une clé refusée (401) chez un fournisseur laisse la passerelle essayer les autres clés du même propriétaire : ses données ne vont jamais qu'à ses propres fournisseurs.
 - Tant qu'aucun modèle n'est qualifié (le bouton « Tester ce modèle » arrive en PR 3), OpenAI et Mistral ne sont pas utilisés en automatique : seul le démarrage sans régression (Anthropic) s'applique, ou un choix manuel.
 - Le banc écrit un verdict partagé par tous les comptes : son déclenchement sera réservé et son coût tracé en PR 3.
+
+## PR 3 : écran « Modèles », plafond, coûts
+
+Page `/modeles` (menu Configuration) :
+
+- **Plafond mensuel en euros** : saisie vide = aucun plafond. Le taux appliqué (`LLM_USD_EUR_RATE`, défaut 0,92) est affiché à côté. Alerte à 80 % (aussi sur Réglages, Intégrations et la fiche agent) ; à 100 % les agents passent en mode déterministe jusqu'au 1er du mois suivant (UTC).
+- **Coût du mois par agent** : mois en cours et mois précédent, en euros, avec la tendance nommée (croissante, stable, décroissante) : rythme journalier du mois comparé à celui du mois précédent, écart de moins de 15 % = stable. Les appels sans prix connu sont comptés à part, jamais chiffrés. Les tests de modèles ont leur propre ligne.
+- **Modèles du catalogue** : état (qualifié, disponible, prix à vérifier, déprécié ou retiré, non disponible avec vos clés), prix validé, qualification par tâche. Un changement de prix détecté reste « à vérifier » : validation ou refus en un clic, sans effet sur les coûts avant validation.
+- **« Tester ce modèle »** : banc sur cas synthétiques avec la clé du propriétaire. Le coût estimé est affiché avant le clic. Refusé si le prix est inconnu, si le plafond est atteint ou serait dépassé, au-delà d'un test par modèle toutes les 15 minutes ou de 6 tests par heure et par espace. Le coût réel est tracé dans `agent_runs` (agent `banc`) et compte dans le plafond.
+- « Automatique » est le choix par défaut de chaque liste de modèle (Réglages et fiche agent) ; un choix manuel prime toujours.
+
+**Réservé à l'exploitant** : valider un prix et lancer un test modifient des données partagées par tous les comptes ; seules les adresses de `LLM_ADMIN_EMAILS` (nouvelle variable, vide par défaut = personne) peuvent le faire. Le plafond est réservé aux rôles propriétaire et administrateur, avec mot de passe redemandé après « Rester connecté ». Un test en cours ou interrompu compte dans le plafond pour son estimation maximale (corrections comprises) ; contrôles et pose de la trace sont atomiques par espace. Un prix refusé n'est pas re-signalé tant que le fichier de prix ne change pas.
+
+**Avant déploiement** : renseigner `LLM_ADMIN_EMAILS` dans Coolify (sinon aucun prix ne peut être validé ni aucun modèle testé). Aucune migration. Limites : la qualification issue d'un test est partagée par tous les espaces ; le test est synchrone (quelques minutes avec de vrais modèles) ; le plafond est contrôlé avant le lancement au pire cas, pas pendant ; la colonne « Appels » de la ligne « Tests de modèles » compte un test pour un appel et ses jetons n'entrent pas dans le budget journalier.
