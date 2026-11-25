@@ -44,7 +44,9 @@ Définitions complètes : `src/lib/agents/registry.ts` (postes, responsabilités
 
 Monolithe modulaire TypeScript : Next.js (App Router) + PostgreSQL + Drizzle ORM, un seul conteneur applicatif.
 
-Schéma d'architecture interactif (composants, couches internes, modules et flux, avec un zoom qui révèle le détail) : ouvrir [`docs/architecture/index.html`](docs/architecture/index.html) dans un navigateur. Page autonome, sans dépendance ; à mettre à jour quand un composant, une couche ou un flux change.
+Schéma d'architecture interactif (composants, couches internes, modules et flux, avec un zoom qui révèle le détail) : **[ouvrir le schéma](https://rostand-dev.github.io/fable-agence-revenue-management/architecture/)**, publié par GitHub Pages depuis le dossier `docs/` de `main`. Source : [`docs/architecture/index.html`](docs/architecture/index.html), page autonome sans dépendance ; à mettre à jour quand un composant, une couche ou un flux change, avec l'aperçu `docs/architecture/apercu.jpg`.
+
+[![Vue d'ensemble de l'architecture NuitSignal : 17 composants et leurs flux d'échange](docs/architecture/apercu.jpg)](https://rostand-dev.github.io/fable-agence-revenue-management/architecture/)
 
 ```
 src/lib/engine/     moteur déterministe, sans E/S : économie, métriques, détection, audit, machine à états
