@@ -81,7 +81,7 @@ export const ACTION_COVERAGE: Record<string, Coverage> = {
   saveListingAction: { events: ["listing.created", "listing.updated"] },
   setListingStatusAction: { events: ["listing.archived", "listing.restored"] },
   deleteListingAction: { events: ["listing.deleted"] },
-  deletePropertyAction: { events: ["property.deleted"] },
+  deletePropertyAction: { events: ["property.deleted", "access.denied"] },
   renameTenantAction: { events: ["tenant.renamed"] },
   // actions/strategy.ts (US-023)
   saveStrategyDraftAction: { events: ["strategy.draft_saved"] },
@@ -118,7 +118,7 @@ export const ROUTE_COVERAGE: Record<string, Coverage> = {
   "api/v1/owners": { events: ["owner.created"] },
   "api/v1/owners/[id]": { events: ["owner.updated", "owner.deleted"] },
   "api/v1/properties": { events: ["property.created"] },
-  "api/v1/properties/[id]": { events: ["property.updated", "property.deleted"] },
+  "api/v1/properties/[id]": { events: ["property.updated", "property.deleted", "access.denied"] },
   "api/v1/properties/[id]/listings": { events: ["listing.created"] },
   "api/v1/properties/[id]/listings/[listingId]": { events: ["listing.updated", "listing.archived", "listing.restored", "listing.deleted"] },
   "api/v1/properties/[id]/economics/seasons": { events: ["property.economics_versioned"] },

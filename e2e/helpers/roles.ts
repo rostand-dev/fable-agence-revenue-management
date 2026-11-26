@@ -29,6 +29,20 @@ export async function deleteUser(id: string): Promise<void> {
   try { await client.query("delete from users where id = $1", [id]); } finally { await client.end(); }
 }
 
+/** Passe un brouillon de test en logement lancé, sans dérouler le parcours de création. */
+export async function markLaunched(propertyId: string): Promise<void> {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try { await client.query("update properties set status = 'SHADOW' where id = $1", [propertyId]); } finally { await client.end(); }
+}
+
+/** Retire un logement de test resté en base après un échec (sans effet s'il a déjà été supprimé). */
+export async function removeProperty(propertyId: string): Promise<void> {
+  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try { await client.query("delete from properties where id = $1", [propertyId]); } finally { await client.end(); }
+}
+
 /** Inscrit un événement `property.updated` au journal du logement (le journal est en ajout seul : il ne s'efface pas). US-081. */
 export async function seedPropertyEvent(propertyId: string, summary: string): Promise<void> {
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });

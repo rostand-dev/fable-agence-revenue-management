@@ -6,6 +6,7 @@ import { emptyEconomics } from "@/lib/engine/economics";
 import type { Strategy } from "@/lib/engine/types";
 import { advance } from "@/lib/onboarding";
 import { LISTING_CHANNEL_LABEL, parseListingInput, parseOwnerInput, parsePropertyIdentity, parsePropertyPatch, parseTenantName, type ListingChannel, type PropertyIdentity } from "@/lib/portfolio";
+import { can, denyMessage, PERMISSION_LABEL, ROLE_LABEL, type Role } from "@/lib/rbac";
 
 /**
  * Portefeuille (US-020) : Propriétaires, Logements, Annonces et nom de l'espace. Les écrans (actions serveur) et l'API REST passent
@@ -13,7 +14,7 @@ import { LISTING_CHANNEL_LABEL, parseListingInput, parseOwnerInput, parsePropert
  * d'audit réussissent ou échouent ensemble (même transaction).
  */
 export type PortfolioActor = { id: string; name: string; tenantId: string };
-export type PortfolioErrorCode = "NOT_FOUND" | "INVALID" | "CONFLICT";
+export type PortfolioErrorCode = "NOT_FOUND" | "INVALID" | "CONFLICT" | "FORBIDDEN";
 export class PortfolioError extends Error {
   constructor(public code: PortfolioErrorCode, message: string) { super(message); this.name = "PortfolioError"; }
 }
@@ -153,12 +154,24 @@ export async function updatePropertyIdentity(u: PortfolioActor, id: string, raw:
   });
 }
 
+/** Refus avant toute lecture du logement : la réponse ne dit rien de son existence. La tentative est consignée. */
+async function needDelete(u: PortfolioActor & { role: Role }, propertyId: string) {
+  const permission = "property.delete";
+  if (can(u.role, permission)) return;
+  try {
+    await recordAudit(db, { tenantId: u.tenantId, actor: userActor(u.id), type: "access.denied", entity: "Property", entityId: propertyId.slice(0, 64), summary: `${u.name} (${ROLE_LABEL[u.role]}) : tentative refusée — ${PERMISSION_LABEL[permission]}.`, payload: { permission, role: u.role } });
+  } catch (e) { console.error("[rbac] refus non consigné", (e as Error).message); }
+  throw new PortfolioError("FORBIDDEN", denyMessage(u.role, permission));
+}
+
 /**
  * Suppression définitive d'un logement et de tout ce qui s'y rattache (réservations, calendrier, situations, actions, annonces, clés).
+ * Réservée aux rôles qui ont le droit `property.delete`.
  * Garde-fous : le nom doit être ressaisi, un logement de démonstration ne se supprime pas, et aucune action de revenu ne doit être en cours.
  * Le journal d'audit est conservé (ajout seul) et garde la trace de ce qui a été supprimé.
  */
-export async function deleteProperty(u: PortfolioActor, id: string, confirmName: unknown) {
+export async function deleteProperty(u: PortfolioActor & { role: Role }, id: string, confirmName: unknown) {
+  await needDelete(u, id);
   await db.transaction(async (tx) => {
     const p = await loadProperty(tx, u.tenantId, id);
     if (p.isDemo) throw invalid("Un logement de démonstration ne se supprime pas.");

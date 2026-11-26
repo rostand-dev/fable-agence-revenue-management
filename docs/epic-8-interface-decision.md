@@ -29,7 +29,7 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - **Rôles** : ceux du blueprint (§16.1) — administrateur, revenue manager, analyste, opérateur OTA, propriétaire du bien (lecture), auditeur — plus **« propriétaire du compte » (`OWNER`)**, rôle historique de tous les comptes existants, qui garde **tous** les droits : aucun compte existant ne perd quoi que ce soit.
 - **Rôle inconnu = lecture seule** : une valeur absente de la liste en base ne donne jamais de droit.
 - **Pas d'écran de gestion des rôles dans cet épic** : le rôle est une colonne de `users`. Sur Staging, un rôle se change en base (voir US-084). Une gestion d'équipe (invitations) est une US à part.
-- **Périmètre des droits** : le circuit de décision et la lecture du journal. Les réglages (clés, coûts, intégrations) ne sont pas encore soumis aux rôles.
+- **Périmètre des droits** : le circuit de décision et la lecture du journal. Les réglages (clés, coûts, intégrations) ne sont pas encore soumis aux rôles. *Depuis : la suppression d'un logement exige le droit `property.delete` (propriétaire du compte et administrateur seulement) ; elle n'apparaît pas dans la matrice ci-dessous, qui décrit l'épic 8.*
 
 ## US-084 — Approbation et rejet selon les rôles
 
