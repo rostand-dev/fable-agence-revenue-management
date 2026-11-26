@@ -2,7 +2,7 @@
  * Protection par mot de passe (HTTP Basic) des environnements de Preview.
  * Active uniquement si PREVIEW_BASIC_AUTH_USER ou PREVIEW_BASIC_AUTH_PASSWORD est défini : à poser dans les variables « Preview Deployment »
  * de Coolify (jamais dans celles de la production, de la démo ni du staging). Sans ces variables, rien ne change.
- * Fonctions pures et sans Buffer : elles tournent dans le middleware (environnement Edge) et restent testables.
+ * Fonctions pures et portables (Node.js et Edge, sans Buffer) : appelées par le proxy (src/proxy.ts, exécuté par Node.js depuis Next 16), elles restent testables.
  */
 export type PreviewAuthEnv = Record<string, string | undefined>;
 
