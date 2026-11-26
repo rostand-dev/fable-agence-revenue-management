@@ -39,7 +39,7 @@ export function PropertyForm({ existing, owners = [] }: { existing: Existing; ow
   const v = valuesOf(existing);
   const total = SECTIONS.flatMap((s) => s.fields).length, filled = Object.values(v).filter((x) => x !== "").length;
   return (
-    <ActionForm action={updatePropertyAction} hidden={{ propertyId: existing.id }}>
+    <ActionForm need="property.manage" action={updatePropertyAction} hidden={{ propertyId: existing.id }}>
       {existing && <p className="muted" style={{ margin: "0 0 4px" }}>{filled} champ{filled > 1 ? "s" : ""} renseigné{filled > 1 ? "s" : ""} sur {total}. Les champs vides restent « inconnus ».</p>}
       {SECTIONS.map((s) => (
         <section className="section" key={s.title} style={{ marginTop: 28 }}>

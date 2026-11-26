@@ -18,6 +18,7 @@ import { FALLBACK_LABEL, tokensUsedToday } from "@/lib/agents/runner";
 import { AGENT_BY_ID, agentName, WORKFLOWS, type AgentId } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
+import { RightsNotice } from "@/components/Rights";
 
 const TABS = [["poste", "Fiche de poste"], ["workflows", "Workflows"], ["activite", "Activité"], ["conversation", "Conversation"]] as const;
 
@@ -74,14 +75,14 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               <CapBanner cap={cap} />
               <p className="muted" style={{ margin: "0 0 12px" }}>{usesLlm ? "Ce modèle rédige les synthèses et répond dans la conversation de ce poste." : "Les calculs de ce poste restent déterministes : aucun modèle n'y intervient. Le modèle choisi sert uniquement à sa conversation."}</p>
               {llm.source === "utilisateur" ? (
-                <ActionForm action={saveAgentModelAction} hidden={{ agentId: a.id }}>
+                <><RightsNotice need="workspace.manage" /><ActionForm need="workspace.manage" action={saveAgentModelAction} hidden={{ agentId: a.id }}>
                   <div className="field" style={{ maxWidth: 560 }}>
                     <label htmlFor="agent-model">Modèle</label>
                     <AgentModelSelect id="agent-model" name="model" models={selectableModels(llm)} current={chosen} defaultLabel={AUTO_LABEL} />
                     <span className="help">Liste des modèles disponibles avec votre clé API.</span>
                   </div>
                   <div style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer le modèle</Submit></div>
-                </ActionForm>
+                </ActionForm></>
               ) : (
                 <p className="muted" style={{ margin: 0 }}>Pour choisir un modèle, <Link href="/modeles/cles">saisissez d'abord une clé API</Link> : la liste dépend d'elle.</p>
               )}

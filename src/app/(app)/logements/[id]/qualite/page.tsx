@@ -10,6 +10,8 @@ import { PROPERTY_STATUS } from "@/lib/labels";
 import type { QualityFix } from "@/lib/quality";
 import { PortfolioError } from "@/lib/services/portfolio";
 import { getQuality } from "@/lib/services/quality";
+import { RightsNotice } from "@/components/Rights";
+import { can } from "@/lib/rbac";
 
 export const metadata = { title: "Checklist de qualité" };
 const FIX = (id: string, k: QualityFix) => ({
@@ -38,7 +40,7 @@ export default async function Qualite({ params }: { params: Promise<{ id: string
           <State role={i.ok ? "sain" : i.severity === "BLOCKING" ? "violation" : "attention"}>{i.ok ? "satisfait" : i.severity === "BLOCKING" ? "bloquant" : "à surveiller"}</State>
         </div>
         <p style={{ margin: "6px 0 10px" }}>{i.detail}</p>
-        {!i.ok && <Link className="btn btn-ghost btn-sm" href={fix.href}><Icon name="sliders" />{fix.label}</Link>}
+        {!i.ok && (can(user.role, "property.manage") || (i.fix !== "dossier" && i.fix !== "couts")) && <Link className="btn btn-ghost btn-sm" href={fix.href}><Icon name="sliders" />{fix.label}</Link>}
       </li>
     );
   };
@@ -49,6 +51,7 @@ export default async function Qualite({ params }: { params: Promise<{ id: string
         <h1>Checklist de qualité</h1>
         <p>Un logement ne passe de l'observation à l'état actif que si tous les points bloquants sont satisfaits. Les points à surveiller n'empêchent pas l'activation.</p>
       </div>
+      <RightsNotice need="property.manage" />
       <p data-testid="quality-status"><State role="neutre">{statusLabel}</State> <State role={q.canActivate ? "sain" : "violation"}>{q.canActivate ? "checklist satisfaite" : `${q.blockers.length} point${q.blockers.length > 1 ? "s" : ""} bloquant${q.blockers.length > 1 ? "s" : ""}`}</State></p>
       <section aria-labelledby="q-block">
         <h2 id="q-block">Points bloquants</h2>
@@ -66,7 +69,7 @@ export default async function Qualite({ params }: { params: Promise<{ id: string
               : <Banner role="attention" title="Logement actif, mais la checklist n'est plus satisfaite">Ce logement est actif ; corrigez les points bloquants ci-dessus. La checklist est vérifiée à l'activation, puis affichée à jour sur cette page.</Banner>)
           : q.status === "ONBOARDING" ? <Banner role="tech" title="Création en cours">Terminez le parcours de création pour lancer l'observation ; l'activation vient ensuite.</Banner>
           : (
-            <ActionForm action={activatePropertyAction} hidden={{ propertyId: id }}>
+            <ActionForm need="property.manage" action={activatePropertyAction} hidden={{ propertyId: id }}>
               {!q.canActivate && <div id="q-act-why"><Banner role="attention" title="Activation impossible pour le moment" style={{ marginBottom: 12 }}>Corrigez les points bloquants ci-dessus.</Banner></div>}
               {q.canActivate
                 ? <Submit icon="check" pendingLabel="Activation…">Activer le logement</Submit>

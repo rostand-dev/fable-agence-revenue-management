@@ -17,6 +17,7 @@ import { parseMonthlyCapEur, setMonthlyCapEur, usdToEur } from "@/lib/llm-regist
 import { rejectPendingPrice, validatePendingPrice } from "@/lib/llm-registry/price-validation";
 import { refreshAvailabilityForKey } from "@/lib/llm-registry/sync";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { encryptSecret, secretHint } from "@/lib/secret";
 
@@ -57,8 +58,9 @@ async function pruneAgentModels(tenantId: string) {
 /** Enregistre la clé d'un fournisseur après l'avoir vérifiée : elle doit pouvoir lister des modèles. Jamais réaffichée en entier. Une clé par fournisseur. */
 export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
-  const refused = await confirmPasswordIfNeeded(u, fd); // clé API : mot de passe redemandé si la session vient de « Rester connecté »
-  if (refused) return refused;
+  const no = await refused(u, "workspace.manage"); if (no) return no;
+  const reauth = await confirmPasswordIfNeeded(u, fd); // clé API : mot de passe redemandé si la session vient de « Rester connecté »
+  if (reauth) return reauth;
   return run(async () => {
     const prov = provider(fd), label = PROVIDER_LABEL[prov];
     const key = txt(fd, "apiKey");
@@ -79,8 +81,9 @@ export async function saveLlmKeyAction(_: FormState, fd: FormData): Promise<Form
 
 export async function removeLlmKeyAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
-  const refused = await confirmPasswordIfNeeded(u, fd);
-  if (refused) return refused;
+  const no = await refused(u, "workspace.manage"); if (no) return no;
+  const reauth = await confirmPasswordIfNeeded(u, fd);
+  if (reauth) return reauth;
   const res = await run(async () => {
     const prov = provider(fd);
     await db.delete(schema.llmCredentials).where(and(eq(schema.llmCredentials.tenantId, u.tenantId), eq(schema.llmCredentials.provider, prov)));
@@ -117,6 +120,7 @@ async function accessibleIds(tenantId: string, wanted: string[]): Promise<Set<st
 
 export async function refreshModelsAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "workspace.manage"); if (no) return no;
   return run(async () => {
     const prov = provider(fd);
     const models = await refreshKeyModels(u.tenantId, prov);
@@ -130,6 +134,7 @@ export async function refreshModelsAction(_: FormState, fd: FormData): Promise<F
 /** Un modèle par agent, ou « Automatique » (vide). Chaque choix doit figurer dans la liste des modèles d'une clé du propriétaire ; il prime toujours sur le routeur. */
 export async function saveAgentModelsAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "workspace.manage"); if (no) return no;
   return run(async () => {
     const asked: Record<string, string> = {};
     for (const a of AGENTS) { const v = txt(fd, "model-" + a.id).slice(0, 120); if (v) asked[a.id] = v; }
@@ -147,6 +152,7 @@ export async function saveAgentModelsAction(_: FormState, fd: FormData): Promise
 /** Fiche agent : change le modèle d'un seul agent sans toucher aux autres. Vide = Automatique. */
 export async function saveAgentModelAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "workspace.manage"); if (no) return no;
   return run(async () => {
     const agentId = txt(fd, "agentId"), model = txt(fd, "model").slice(0, 120);
     const agent = AGENTS.find((a) => a.id === agentId);
@@ -169,9 +175,9 @@ export async function saveAgentModelAction(_: FormState, fd: FormData): Promise<
 /** Plafond mensuel de dépense des modèles, en euros. Vide = aucun plafond. À 100 %, les agents repassent en mode déterministe jusqu'au 1er du mois suivant (UTC). Réservé aux rôles qui administrent l'espace ; mot de passe redemandé si la session vient de « Rester connecté ». */
 export async function saveMonthlyCapAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
-  if (u.role !== "OWNER" && u.role !== "TENANT_ADMIN") return { error: "Seuls le propriétaire et l'administrateur de l'espace peuvent régler le plafond de dépense." };
-  const refused = await confirmPasswordIfNeeded(u, fd);
-  if (refused) return refused;
+  const no = await refused(u, "workspace.manage"); if (no) return no;
+  const reauth = await confirmPasswordIfNeeded(u, fd);
+  if (reauth) return reauth;
   return run(async () => {
     const p = parseMonthlyCapEur(txt(fd, "cap"));
     if (!p.ok) return { error: p.error };

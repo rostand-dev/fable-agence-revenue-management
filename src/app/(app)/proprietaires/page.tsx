@@ -5,6 +5,7 @@ import { Page } from "@/components/Page";
 import { State } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { listOwners } from "@/lib/services/portfolio";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Propriétaires" };
 
@@ -28,6 +29,7 @@ export default async function Proprietaires() {
         <h1>Propriétaires</h1>
         <p>Chaque logement appartient à un propriétaire : vous, une société, ou un client dont vous gérez le bien. Le propriétaire par défaut reçoit les logements créés sans choix.</p>
       </div>
+      <RightsNotice need="property.manage" />
       <div className="stack" data-testid="owners-list">
         {owners.map((o) => (
           <details className="fold" key={o.id} data-testid="owner-card">
@@ -37,7 +39,7 @@ export default async function Proprietaires() {
               <span className="muted" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>{o.propertyCount} logement{o.propertyCount > 1 ? "s" : ""}</span>
             </summary>
             <div className="fold-body">
-              <ActionForm action={updateOwnerAction} hidden={{ ownerId: o.id }}>
+              <ActionForm need="property.manage" action={updateOwnerAction} hidden={{ ownerId: o.id }}>
                 <OwnerFields o={o} prefix={"o-" + o.id} />
                 <div className="row-wrap" style={{ marginTop: 16 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer</Submit></div>
               </ActionForm>
@@ -46,7 +48,7 @@ export default async function Proprietaires() {
               ) : o.propertyCount > 0 ? (
                 <p className="muted" style={{ margin: "14px 0 0" }}>Ce propriétaire possède {o.propertyCount} logement{o.propertyCount > 1 ? "s" : ""} : changez leur propriétaire (Modifier le dossier) avant de le supprimer.</p>
               ) : (
-                <ActionForm action={deleteOwnerAction} hidden={{ ownerId: o.id }} style={{ marginTop: 14 }}><Submit className="btn btn-danger btn-sm" icon="cross" pendingLabel="Suppression…">Supprimer ce propriétaire</Submit></ActionForm>
+                <ActionForm need="property.manage" action={deleteOwnerAction} hidden={{ ownerId: o.id }} style={{ marginTop: 14 }}><Submit className="btn btn-danger btn-sm" icon="cross" pendingLabel="Suppression…">Supprimer ce propriétaire</Submit></ActionForm>
               )}
             </div>
           </details>
@@ -55,7 +57,7 @@ export default async function Proprietaires() {
       <section className="section">
         <h2>Ajouter un propriétaire</h2>
         <p className="section-note">Seul le nom est nécessaire. Vous pourrez ensuite rattacher des logements à ce propriétaire depuis « Modifier le dossier » ou à la création.</p>
-        <ActionForm action={createOwnerAction} resetOnOk>
+        <ActionForm need="property.manage" action={createOwnerAction} resetOnOk>
           <OwnerFields prefix="new" />
           <div className="row-wrap" style={{ marginTop: 16 }}><Submit icon="plus" pendingLabel="Ajout…">Ajouter le propriétaire</Submit></div>
         </ActionForm>

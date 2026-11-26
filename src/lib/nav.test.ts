@@ -61,3 +61,11 @@ describe("pastille des prix", () => {
     expect(items.filter(hasPriceBadge).map((n) => n.id)).toEqual(["parametres"]);
   });
 });
+
+describe("droits", () => {
+  it("l'entrée « Ajouter un logement » n'est proposée qu'à qui peut gérer les logements", () => {
+    const ids = (canAdd: boolean) => buildNav([], null, canAdd).flatMap((g) => g.items).flatMap((n) => n.children ?? []).map((n) => n.id);
+    expect(ids(true)).toContain("ajouter-logement");
+    expect(ids(false)).not.toContain("ajouter-logement");
+  });
+});

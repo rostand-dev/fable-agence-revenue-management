@@ -48,5 +48,7 @@ describe("destination des badges", () => {
     expect(badgeHref("pricelabs", "p1", "ONBOARDING")).toBe("/logements/p1/creation?etape=pricelabs");
     expect(badgeHref("superhote", "p1", "ONBOARDING")).toBe("/logements/p1/creation?etape=superhote");
     expect(badgeHref("pricelabs", "p1", "SHADOW")).toBe("/logements/p1?tab=pricelabs");
+    // sans le droit de gérer les logements, le parcours de création est réservé : le badge mène à l'onglet, lisible
+    expect(badgeHref("pricelabs", "p1", "ONBOARDING", false)).toBe("/logements/p1?tab=pricelabs");
   });
 });

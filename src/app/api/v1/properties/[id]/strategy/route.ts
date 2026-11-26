@@ -1,4 +1,4 @@
-import { apiError, apiUser, fromError, isResponse, json, originGuard, readObject } from "@/lib/api/v1";
+import { apiError, apiUser, apiWriter, fromError, isResponse, json, readObject } from "@/lib/api/v1";
 import { discardDraft, getStrategyState, saveDraft } from "@/lib/services/strategy";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET(_: Request, { params }: Ctx) {
 }
 /** PUT : enregistre le brouillon { objective?, positioning?, minStay?, maxDiscountStackPct?, maxPriceChangePct?, baseVersion? } ; baseVersion = version vue par l'appelant (409 si les réglages ont changé depuis). Aucun effet sur la stratégie en vigueur. */
 export async function PUT(req: Request, { params }: Ctx) {
-  const u = await apiUser(); if (isResponse(u)) return u;
+  const u = await apiWriter(req, "property.manage", (await params).id); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;
   const { id } = await params;
   const { baseVersion, ...values } = body as Record<string, unknown>;
@@ -25,8 +25,7 @@ export async function PUT(req: Request, { params }: Ctx) {
 }
 /** DELETE : abandonne le brouillon. */
 export async function DELETE(req: Request, { params }: Ctx) {
-  const u = await apiUser(); if (isResponse(u)) return u;
-  const refused = originGuard(req); if (refused) return refused;
+  const u = await apiWriter(req, "property.manage", (await params).id); if (isResponse(u)) return u;
   const { id } = await params;
   try { await discardDraft(u, id); return json({ ok: true }); } catch (e) { return fromError(e); }
 }

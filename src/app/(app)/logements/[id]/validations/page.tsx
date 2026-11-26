@@ -12,6 +12,7 @@ import { euro } from "@/lib/format";
 import { PortfolioError } from "@/lib/services/portfolio";
 import { getQuality } from "@/lib/services/quality";
 import { getValidations } from "@/lib/services/validations";
+import { IfRight, RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Validations avant activation" };
 const when = (iso: string | null) => iso ? new Date(iso).toLocaleDateString("fr-FR", { dateStyle: "long", timeZone: "Europe/Paris" }) : "";
@@ -38,6 +39,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
         <h1>Validations avant activation</h1>
         <p>Trois conditions précèdent le passage à « Actif » : {minDays === 0 ? "l'observation lancée (aucun délai minimum configuré)" : `une observation d'au moins ${minDays} jour${minDays > 1 ? "s" : ""}`}, des planchers validés par une personne et un échantillon de réservations rapproché.</p>
       </div>
+      <RightsNotice need="property.manage" />
       {!editable && <Banner role="tech" title="Validations en lecture seule" style={{ marginBottom: 16 }}>{v.isDemo ? "Un logement de démonstration ne se valide pas." : v.status === "ACTIVE" ? "Ce logement est déjà actif." : "Les validations se font une fois l'observation lancée."}</Banner>}
 
       <section aria-labelledby="va-shadow">
@@ -48,7 +50,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
       <section aria-labelledby="va-floors" style={{ marginTop: 28 }}>
         <h2 id="va-floors">Planchers</h2>
         <p data-testid="validation-floors"><State role={frState(v.floors.status === "OK")}>{v.floors.status === "OK" ? "validés" : v.floors.status === "STALE" ? "à valider de nouveau" : v.floors.status === "INCOMPLETE" ? "incomplets" : "non validés"}</State> {q.items.find((i) => i.key === "floors")!.detail}</p>
-        {v.floors.status === "INCOMPLETE" ? <Banner role="attention" title="Modèle économique incomplet">Les planchers se calculent à partir des coûts et commissions. <Link href={`/logements/${id}/couts`}>Compléter les coûts</Link></Banner> : (
+        {v.floors.status === "INCOMPLETE" ? <Banner role="attention" title="Modèle économique incomplet">Les planchers se calculent à partir des coûts et commissions. <IfRight need="property.manage"><Link href={`/logements/${id}/couts`}>Compléter les coûts</Link></IfRight></Banner> : (
           <>
             <p className="section-note">Les planchers saisonniers sont validés avec la grille et appliqués par l'auditeur selon les dates du séjour. Plancher dur : en dessous, le revenu net ne couvre pas la contribution minimale. Plancher stratégie : la contribution visée. Montants par nuit.</p>
             <div className="stack" style={{ gap: 16 }}>
@@ -68,7 +70,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
               ))}
             </div>
             {editable && (
-              <ActionForm action={validateFloorsAction} hidden={{ propertyId: id, fingerprint: v.fingerprint ?? "" }}>
+              <ActionForm need="property.manage" action={validateFloorsAction} hidden={{ propertyId: id, fingerprint: v.fingerprint ?? "" }}>
                 {field("note", "Commentaire (facultatif)", { type: "text", maxLength: 300, autoComplete: "off" })}
                 <Submit icon="check" pendingLabel="Validation…">{v.floors.status === "OK" ? "Valider de nouveau les planchers" : "Valider ces planchers"}</Submit>
               </ActionForm>
@@ -83,7 +85,7 @@ export default async function Validations({ params }: { params: Promise<{ id: st
         {v.reconciliationDetail && <p className="section-note">Source indiquée : {v.reconciliationDetail.source}{v.reconciliationDetail.note ? ` · ${v.reconciliationDetail.note}` : ""}. Fait le {when(v.reconciliation.at)}.</p>}
         <p className="section-note">Comparez au moins {RECONCILIATION_MIN_SAMPLE} réservations de l'outil de réservation avec les relevés des plateformes (montants, dates, frais). Indiquez le plus grand écart constaté : il ne doit pas dépasser {RECONCILIATION_MAX_GAP_PCT} %. Cette attestation sera remplacée par un calcul automatique quand l'ingestion SuperHote sera en place.</p>
         {editable && (
-          <ActionForm action={recordReconciliationAction} hidden={{ propertyId: id }}>
+          <ActionForm need="property.manage" action={recordReconciliationAction} hidden={{ propertyId: id }}>
             {field("sampleSize", "Réservations comparées", { type: "number", inputMode: "numeric", min: 1, max: 1000, step: 1, required: true }, `Au moins ${RECONCILIATION_MIN_SAMPLE}.`)}
             {field("maxGapPct", "Plus grand écart constaté (%)", { type: "text", inputMode: "decimal", required: true, placeholder: "0" }, `Au plus ${RECONCILIATION_MAX_GAP_PCT} % ; mettez 0 si tout concorde.`)}
             {field("source", "Source du rapprochement", { type: "text", maxLength: 120, required: true, autoComplete: "off" }, "Par exemple : SuperHote comparé aux relevés Airbnb et Booking.")}

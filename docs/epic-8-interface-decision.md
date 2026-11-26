@@ -29,7 +29,7 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - **Rôles** : ceux du blueprint (§16.1) — administrateur, revenue manager, analyste, opérateur OTA, propriétaire du bien (lecture), auditeur — plus **« propriétaire du compte » (`OWNER`)**, rôle historique de tous les comptes existants, qui garde **tous** les droits : aucun compte existant ne perd quoi que ce soit.
 - **Rôle inconnu = lecture seule** : une valeur absente de la liste en base ne donne jamais de droit.
 - **Pas d'écran de gestion des rôles dans cet épic** : le rôle est une colonne de `users`. Sur Staging, un rôle se change en base (voir US-084). Une gestion d'équipe (invitations) est une US à part.
-- **Périmètre des droits** : le circuit de décision et la lecture du journal. Les réglages (clés, coûts, intégrations) ne sont pas encore soumis aux rôles. *Depuis : la suppression d'un logement exige le droit `property.delete` (propriétaire du compte et administrateur seulement) ; elle n'apparaît pas dans la matrice ci-dessous, qui décrit l'épic 8.*
+- **Périmètre des droits** : le circuit de décision et la lecture du journal. Les réglages (clés, coûts, intégrations) ne sont pas encore soumis aux rôles. *Depuis : la suppression d'un logement exige le droit `property.delete` (propriétaire du compte et administrateur seulement) ; elle n'apparaît pas dans la matrice ci-dessous, qui décrit l'épic 8. Depuis aussi : toutes les autres écritures exigent `property.manage` (logements) ou `workspace.manage` (réglages de l'espace, dont la réinstallation de la démonstration) ; voir le README et `src/lib/rights-catalog.ts`.*
 
 ## US-084 — Approbation et rejet selon les rôles
 
@@ -51,7 +51,7 @@ Blueprint E8 : US-080 (tableau de bord portefeuille), US-081 (espace logement à
 - **Erreurs typées** : `DecisionError` porte un `kind` (`CONFLICT`, `VALIDATION`, `NOT_FOUND`, `FORBIDDEN`) ; les messages affichés ne changent pas.
 - **Staging (Coolify)** : **aucune migration, aucune variable d'environnement.** Tous les comptes existants ont déjà le rôle `OWNER` (valeur par défaut de la colonne `users.role`) et gardent tous leurs droits. Pour tester un autre rôle : `update users set role = 'ANALYST' where email = '…';` (valeurs : `TENANT_ADMIN`, `REVENUE_MANAGER`, `ANALYST`, `OTA_OPERATOR`, `OWNER_VIEWER`, `AUDITOR`), puis se reconnecter est inutile : le rôle est relu à chaque requête.
 
-**Limites connues** : pas d'écran de gestion des rôles ni d'invitation d'utilisateurs ; « Relancer la revue » reste ouvert à tous les rôles (il ne décide rien) ; les réglages ne sont pas encore soumis aux rôles.
+**Limites connues** : pas d'écran de gestion des rôles ni d'invitation d'utilisateurs ; « Relancer la revue » restait ouvert à tous les rôles (il exige désormais le droit de décider) ; les réglages n'étaient pas soumis aux rôles (corrigé depuis, voir « Périmètre des droits »).
 
 **Tests** : unitaires (`rbac.test.ts` : matrice, rôle inconnu, messages), base de données (`rbac.db.test.ts` : refus par rôle sans changement d'état, refus consigné sans fuite du commentaire, opérateur OTA manuel seulement, revenue manager et propriétaire du compte inchangés, API 401/400/403/404/409/200, origine étrangère, journal 403), E2E navigateur (`e2e/droits-roles.spec.ts`, bureau/390/360 : analyste en lecture seule sur la boîte, le dossier, l'historique et Réglages, refus 403 de l'API, auditeur lecteur du journal, revenue manager inchangé), non-régression (suites complètes, golden inchangé).
 

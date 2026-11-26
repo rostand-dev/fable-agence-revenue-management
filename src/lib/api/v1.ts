@@ -1,4 +1,6 @@
 import { getUser, type CurrentUser } from "@/lib/auth";
+import type { Permission } from "@/lib/rbac";
+import { refusal } from "@/lib/rights";
 import { DecisionError } from "@/lib/services/decisions";
 import { PortfolioError } from "@/lib/services/portfolio";
 
@@ -25,6 +27,16 @@ export function sameOrigin(req: Request): boolean {
 }
 /** Réponse 403 à renvoyer si la requête qui modifie vient d'une autre origine ; null sinon. */
 export const originGuard = (req: Request): Response | null => (sameOrigin(req) ? null : apiError(403, "FORBIDDEN_ORIGIN", "Origine de la requête refusée."));
+/**
+ * Utilisateur autorisé à écrire, ou la réponse à renvoyer telle quelle : 401, 403 FORBIDDEN_ORIGIN, ou 403 FORBIDDEN si le
+ * rôle n'a pas le droit (tentative consignée). Rien de la demande n'est lu avant. `propertyId` : le logement visé, pour le journal.
+ */
+export async function apiWriter(req: Request, permission: Permission, propertyId?: string): Promise<CurrentUser | Response> {
+  const u = await apiUser(); if (isResponse(u)) return u;
+  const origin = originGuard(req); if (origin) return origin;
+  const error = await refusal(u, permission, propertyId ? { entity: "Property", id: propertyId } : undefined);
+  return error ? apiError(403, "FORBIDDEN", error) : u;
+}
 /** Corps JSON objet ; sinon la réponse d'erreur à renvoyer. */
 export async function readObject(req: Request): Promise<Record<string, unknown> | Response> {
   const refused = originGuard(req); if (refused) return refused;

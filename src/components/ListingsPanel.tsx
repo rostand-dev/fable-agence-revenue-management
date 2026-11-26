@@ -44,15 +44,15 @@ export function ListingsPanel({ propertyId, listings, editable }: { propertyId: 
                 {l.url && <p style={{ margin: "0 0 12px" }}><a href={l.url} target="_blank" rel="noopener noreferrer">Ouvrir l'annonce sur le canal</a></p>}
                 {editable ? (
                   <>
-                    <ActionForm action={saveListingAction} hidden={{ propertyId, listingId: l.id }}>
+                    <ActionForm need="property.manage" action={saveListingAction} hidden={{ propertyId, listingId: l.id }}>
                       <ListingFields l={l} prefix={"l-" + l.id} channelFixed />
                       <div className="row-wrap" style={{ marginTop: 16 }}><Submit icon="check" pendingLabel="Enregistrement…">Enregistrer</Submit></div>
                     </ActionForm>
                     <div className="row-wrap" style={{ marginTop: 14 }}>
-                      <ActionForm action={setListingStatusAction} hidden={{ propertyId, listingId: l.id, status: l.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" }}>
+                      <ActionForm need="property.manage" action={setListingStatusAction} hidden={{ propertyId, listingId: l.id, status: l.status === "ACTIVE" ? "ARCHIVED" : "ACTIVE" }}>
                         <Submit className="btn btn-ghost btn-sm" pendingLabel="…">{l.status === "ACTIVE" ? "Archiver" : "Rétablir"}</Submit>
                       </ActionForm>
-                      <ActionForm action={deleteListingAction} hidden={{ propertyId, listingId: l.id }}><Submit className="btn btn-danger btn-sm" icon="cross" pendingLabel="Suppression…">Supprimer</Submit></ActionForm>
+                      <ActionForm need="property.manage" action={deleteListingAction} hidden={{ propertyId, listingId: l.id }}><Submit className="btn btn-danger btn-sm" icon="cross" pendingLabel="Suppression…">Supprimer</Submit></ActionForm>
                     </div>
                   </>
                 ) : <p className="muted">Ce logement est une démonstration : ses annonces ne se modifient pas.</p>}
@@ -64,7 +64,7 @@ export function ListingsPanel({ propertyId, listings, editable }: { propertyId: 
       {editable && (
         <div style={{ marginTop: 24 }}>
           <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>Ajouter une annonce</h3>
-          <ActionForm action={saveListingAction} hidden={{ propertyId }} resetOnOk>
+          <ActionForm need="property.manage" action={saveListingAction} hidden={{ propertyId }} resetOnOk>
             <ListingFields prefix="new-listing" />
             <div className="row-wrap" style={{ marginTop: 16 }}><Submit icon="plus" pendingLabel="Ajout…">Ajouter l'annonce</Submit></div>
           </ActionForm>

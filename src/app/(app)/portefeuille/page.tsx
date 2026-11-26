@@ -15,6 +15,7 @@ import { portfolioOccupation, summarizePortfolio } from "@/lib/portfolio-summary
 import { loadProviderFacts } from "@/lib/services/capabilities";
 import { ingestionErrorCount } from "@/lib/services/ingestion-errors";
 import type { InboxItem } from "@/lib/inbox";
+import { can, denyMessage } from "@/lib/rbac";
 
 export const metadata = { title: "Tableau de bord" };
 const ST: Record<ProviderStatus, [string, "sain" | "tech" | "attention" | "neutre"]> = { DEMO: ["Source simulée", "tech"], CONNECTED: ["Connectée", "sain"], NOT_CONNECTED: ["Non connectée", "neutre"], DEGRADED: ["Dégradée", "attention"] };
@@ -48,7 +49,7 @@ export default async function Portefeuille() {
     return (
       <Page title="Tableau de bord" sub="Portefeuille" crumbs={[{ label: "Tableau de bord" }]}>
         <div className="page-head"><h1>Votre portefeuille est vide</h1><p>Le tableau de bord se remplit dès le premier logement.</p></div>
-        <div className="empty"><h3>Aucun logement</h3><p style={{ marginBottom: 16 }}>Ajoutez votre premier logement pour commencer.</p><Link className="btn btn-primary" href="/logements/nouveau">Ajouter un logement</Link></div>
+        <div className="empty"><h3>Aucun logement</h3>{can(user.role, "property.manage") ? <><p style={{ marginBottom: 16 }}>Ajoutez votre premier logement pour commencer.</p><Link className="btn btn-primary" href="/logements/nouveau">Ajouter un logement</Link></> : <p>{denyMessage(user.role, "property.manage")}</p>}</div>
       </Page>
     );
   }

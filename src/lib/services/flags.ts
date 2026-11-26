@@ -18,7 +18,7 @@ export async function flagFor(tenantId: string, flag: FlagId, ctx: FlagContext =
 }
 
 /**
- * Active ou désactive un drapeau à un niveau. Seul le propriétaire du compte y accède (appelé depuis l'action serveur),
+ * Active ou désactive un drapeau à un niveau. L'action serveur contrôle le droit `property.manage` avant l'appel ;
  * le logement doit lui appartenir, et le changement s'inscrit au journal dans la même transaction. Rejouable : sans changement, rien n'est écrit.
  */
 export async function setFlag(actor: Actor, input: { flag: string; scope: string; scopeId: string; enabled: boolean }): Promise<"changed" | "unchanged"> {

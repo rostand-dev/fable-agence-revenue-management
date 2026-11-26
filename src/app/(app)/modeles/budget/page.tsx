@@ -10,6 +10,7 @@ import { fmtEur } from "@/lib/llm-registry/cap-message";
 import { getSpendState } from "@/lib/llm-registry/cap-state";
 import { usdEurRate } from "@/lib/llm-registry/config";
 import { agentCosts, TREND_LABEL } from "@/lib/llm-registry/overview";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Budget" };
 export default async function Budget() {
@@ -21,6 +22,7 @@ export default async function Budget() {
     <Page title="Budget" sub="Plafond mensuel et coût par agent" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "IA & modèles", href: "/modeles" }, { label: "Budget" }]}>
       <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href="/modeles"><Icon name="back" />Retour à IA &amp; modèles</Link></p>
       <div className="page-head"><h1>Budget</h1><p>La dépense du mois sur vos clés, et la limite que vous fixez.</p></div>
+      <RightsNotice need="workspace.manage" />
       <CapBanner cap={cap} link={false} />
 
       <section className="section" id="plafond" style={{ marginTop: 0 }}>
@@ -30,7 +32,7 @@ export default async function Budget() {
           ["Dépensé ce mois-ci", `${fmtEur(cap.spentEur)}${cap.capEur === null ? "" : ` sur ${fmtEur(cap.capEur)} (${Math.floor((cap.ratio ?? 0) * 100)} %)`}`, true],
           ["Taux appliqué", `1 $ = ${rate.toLocaleString("fr-FR", { maximumFractionDigits: 4 })} € (variable d'environnement LLM_USD_EUR_RATE)`, true],
         ]} />
-        <ActionForm action={saveMonthlyCapAction} style={{ marginTop: 16, maxWidth: 420 }}>
+        <ActionForm need="workspace.manage" action={saveMonthlyCapAction} style={{ marginTop: 16, maxWidth: 420 }}>
           <div className="field">
             <label htmlFor="cap">Plafond mensuel (€)</label>
             <input id="cap" name="cap" type="text" inputMode="decimal" autoComplete="off" defaultValue={cap.capEur === null ? "" : String(cap.capEur).replace(".", ",")} placeholder="Aucun plafond" />

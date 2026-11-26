@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import type { Role } from "@/lib/rbac";
 import type { FormState } from "@/components/forms";
 import * as D from "@/lib/services/decisions";
@@ -33,7 +34,10 @@ export async function interruptStuckAction(_: FormState, fd: FormData) { return 
 export async function reviewAction(_: FormState, __: FormData) {
   return run(async (a) => { await D.requireDecide(a); const r = await runDailyReview(a.tenantId, "MANUAL"); return r; }, "Revue terminée.");
 }
-export async function resetDemoAction(_: FormState, __: FormData) { return run(async (a) => { await D.requireDecide(a); return seedDemo(a.tenantId); }, "Démonstration réinstallée à la date du jour."); }
+export async function resetDemoAction(_: FormState, __: FormData) {
+  const no = await refused(await requireUser(), "workspace.manage"); if (no) return no;
+  return run((a) => seedDemo(a.tenantId), "Démonstration réinstallée à la date du jour.");
+}
 export async function chatAction(_: FormState, fd: FormData) {
   const q = s(fd, "question").trim();
   if (q.length < 2) return { error: "Écrivez une question." };

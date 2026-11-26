@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { PortfolioError } from "@/lib/services/portfolio";
 import { recordReconciliation, validateFloors } from "@/lib/services/validations";
 
@@ -19,11 +20,13 @@ async function run(fn: () => Promise<void>, ok: string): Promise<FormState> {
 /** Validation des planchers (grille canal × 2/7/28 nuits) par une personne. Règles et audit : lib/services/validations.ts. */
 export async function validateFloorsAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", fd.get("propertyId")); if (no) return no;
   return run(() => validateFloors(u, txt(fd, "propertyId"), txt(fd, "fingerprint"), txt(fd, "note")), "Planchers validés.");
 }
 
 /** Attestation du rapprochement d'un échantillon de réservations. */
 export async function recordReconciliationAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", fd.get("propertyId")); if (no) return no;
   return run(() => recordReconciliation(u, txt(fd, "propertyId"), { sampleSize: txt(fd, "sampleSize"), maxGapPct: txt(fd, "maxGapPct"), source: txt(fd, "source"), note: txt(fd, "note") }), "Rapprochement enregistré.");
 }

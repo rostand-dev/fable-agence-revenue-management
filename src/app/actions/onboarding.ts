@@ -7,6 +7,7 @@ import { recordAudit } from "@/lib/audit/log";
 import { userActor } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { advance, identityComplete, isStep, launchBlockers, stepLabel, type OnboardingState, type StepKey } from "@/lib/onboarding";
@@ -37,8 +38,9 @@ async function setState(id: string, state: OnboardingState) {
   await db.update(schema.properties).set({ onboarding: state }).where(eq(schema.properties.id, id));
 }
 /** Exécute l'action ; une erreur métier revient près du formulaire, une redirection passe telle quelle. */
-async function guard(fn: (u: Awaited<ReturnType<typeof requireUser>>) => Promise<string>): Promise<FormState> {
+async function guard(fd: FormData, fn: (u: Awaited<ReturnType<typeof requireUser>>) => Promise<string>): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", fd.get("propertyId")); if (no) return no;
   let to: string;
   try { to = await fn(u); } catch (e) {
     if (e instanceof SyncError || e instanceof PortfolioError) return { error: e.message };
@@ -57,7 +59,7 @@ const identityError = (v: { name: string; city: string; kind: string }) =>
 
 /** Étape 1 : création du dossier (sans identifiant) ou mise à jour. intent = next | quit. */
 export async function saveLogementAction(_: FormState, fd: FormData): Promise<FormState> {
-  return guard(async (u) => {
+  return guard(fd, async (u) => {
     const quit = txt(fd, "intent") === "quit";
     const v = readIdentity(fd), id0 = txt(fd, "propertyId");
     if (!quit) { const err = identityError(v); if (err) throw new SyncError(err); }
@@ -87,7 +89,7 @@ export async function saveLogementAction(_: FormState, fd: FormData): Promise<Fo
 
 /** Étape 4 : séjour minimum et majorations SuperHote par canal. */
 export async function saveReglesAction(_: FormState, fd: FormData): Promise<FormState> {
-  return guard(async (u) => {
+  return guard(fd, async (u) => {
     const p = await load(u.tenantId, txt(fd, "propertyId"));
     const quit = txt(fd, "intent") === "quit";
     const mk = parseMarkupList(fd.getAll("markupLabel").map(String), fd.getAll("markupPct").map(String));
@@ -105,7 +107,7 @@ export async function saveReglesAction(_: FormState, fd: FormData): Promise<Form
 
 /** Étapes sans saisie (connexions, vérification) : quitter, reporter ou continuer. */
 export async function stepAction(_: FormState, fd: FormData): Promise<FormState> {
-  return guard(async (u) => {
+  return guard(fd, async (u) => {
     const p = await load(u.tenantId, txt(fd, "propertyId"));
     const step = txt(fd, "step"), intent = txt(fd, "intent");
     if (!isStep(step)) throw new SyncError("Étape inconnue.");
@@ -126,7 +128,7 @@ export async function stepAction(_: FormState, fd: FormData): Promise<FormState>
 
 /** Confirmation du logement SuperHote, puis étape suivante. La première lecture des réservations se fait ici. */
 export async function funnelSelectRentalAction(_: FormState, fd: FormData): Promise<FormState> {
-  return guard(async (u) => {
+  return guard(fd, async (u) => {
     const p = await load(u.tenantId, txt(fd, "propertyId"));
     await selectRental(u.tenantId, p.id, txt(fd, "rentalId"), "user:" + u.id);
     const next = advance(p.onboarding, "superhote", "next");
@@ -136,7 +138,7 @@ export async function funnelSelectRentalAction(_: FormState, fd: FormData): Prom
 }
 /** Confirmation de l'annonce PriceLabs (première lecture de la grille), puis étape suivante. */
 export async function funnelSelectListingAction(_: FormState, fd: FormData): Promise<FormState> {
-  return guard(async (u) => {
+  return guard(fd, async (u) => {
     const p = await load(u.tenantId, txt(fd, "propertyId"));
     await selectListing(u.tenantId, p.id, txt(fd, "listingId"), "user:" + u.id);
     const next = advance(p.onboarding, "pricelabs", "next");
@@ -147,7 +149,7 @@ export async function funnelSelectListingAction(_: FormState, fd: FormData): Pro
 
 /** Étape 6 : lancement de l'observation. Bloqué tant que l'identité, PriceLabs ou les coûts manquent. */
 export async function launchAction(_: FormState, fd: FormData): Promise<FormState> {
-  return guard(async (u) => {
+  return guard(fd, async (u) => {
     const p = await load(u.tenantId, txt(fd, "propertyId"));
     if (txt(fd, "intent") === "quit") { await setState(p.id, advance(p.onboarding, "verification", "stay")); return QUIT; }
     const missing = missingEconomics(p.economics as EconomicModel).length;

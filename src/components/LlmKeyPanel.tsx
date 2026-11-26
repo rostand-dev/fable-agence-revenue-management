@@ -39,7 +39,7 @@ export function LlmKeyPanel({ status }: { status: LlmStatus }) {
                 ["Modèles disponibles", k ? String(k.models.length) : <Vq>saisissez votre clé pour les lister</Vq>, true],
                 ["Dernière vérification", k?.verifiedAt ? fmtDateTime(k.verifiedAt) : <Vq>jamais</Vq>, true],
               ]} />
-              <ActionForm action={saveLlmKeyAction} hidden={{ provider: p }} style={{ marginTop: 12 }}>
+              <ActionForm need="workspace.manage" action={saveLlmKeyAction} hidden={{ provider: p }} style={{ marginTop: 12 }}>
                 <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
                   <label htmlFor={`llm-apiKey-${p}`}>{k ? `Remplacer ma clé API ${label}` : `Ma clé API ${label}`}</label>
                   <input id={`llm-apiKey-${p}`} name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={20} aria-describedby={`llm-apiKey-${p}-h`} />
@@ -59,8 +59,8 @@ export function LlmKeyPanel({ status }: { status: LlmStatus }) {
               </details>
               {k && (
                 <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 12 }}>
-                  <ActionForm action={refreshModelsAction} hidden={{ provider: p }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo" pendingLabel="Actualisation…">Actualiser les modèles</Submit></ActionForm>
-                  <ActionForm action={removeLlmKeyAction} hidden={{ provider: p }} className="inline"><Submit className="btn btn-danger btn-sm" icon="ban" pendingLabel="Suppression…">Supprimer ma clé</Submit></ActionForm>
+                  <ActionForm need="workspace.manage" action={refreshModelsAction} hidden={{ provider: p }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo" pendingLabel="Actualisation…">Actualiser les modèles</Submit></ActionForm>
+                  <ActionForm need="workspace.manage" action={removeLlmKeyAction} hidden={{ provider: p }} className="inline"><Submit className="btn btn-danger btn-sm" icon="ban" pendingLabel="Suppression…">Supprimer ma clé</Submit></ActionForm>
                 </div>
               )}
             </section>

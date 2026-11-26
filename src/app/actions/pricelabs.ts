@@ -2,14 +2,16 @@
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { connectPriceLabs, detachListing, disconnectPriceLabs, selectListing, setChannelOverrides, SyncError, syncPriceLabs, testPriceLabsConnection } from "@/lib/services/pricelabs-sync";
 import { runDailyReview } from "@/lib/services/review";
 
 /** `sensitive` : formulaire d'une action qui touche à une clé API ; une session rétablie par « Rester connecté » doit d'abord confirmer le mot de passe. */
-async function run(fn: (u: { id: string; tenantId: string }) => Promise<string | void>, sensitive?: FormData): Promise<FormState> {
+async function run(fn: (u: { id: string; tenantId: string }) => Promise<string | void>, fd: FormData, sensitive?: boolean): Promise<FormState> {
   const u = await requireUser();
-  if (sensitive) { const refused = await confirmPasswordIfNeeded(u, sensitive); if (refused) return refused; }
+  const no = await refused(u, "property.manage", fd.get("propertyId")); if (no) return no;
+  if (sensitive) { const reauth = await confirmPasswordIfNeeded(u, fd); if (reauth) return reauth; }
   let ok: string | void;
   try { ok = await fn(u); } catch (e) { if (e instanceof SyncError) return { error: e.message }; console.error("[pricelabs]", e instanceof Error ? e.message : e); return { error: "Erreur technique. Rien n'a été modifié." }; }
   revalidatePath("/", "layout");
@@ -21,19 +23,19 @@ export async function connectPriceLabsAction(_: FormState, fd: FormData) {
   return run(async (u) => {
     const r = await connectPriceLabs(u.tenantId, s(fd, "propertyId"), s(fd, "apiKey"), "user:" + u.id);
     return `Clé vérifiée : ${r.listings} annonce${r.listings > 1 ? "s" : ""} sur ce compte. Confirmez celle de ce logement.`;
-  }, fd);
+  }, fd, true);
 }
 export async function selectListingAction(_: FormState, fd: FormData) {
-  return run(async (u) => { await selectListing(u.tenantId, s(fd, "propertyId"), s(fd, "listingId"), "user:" + u.id); await runDailyReview(u.tenantId, "MANUAL"); return "Annonce rattachée et première lecture effectuée."; });
+  return run(async (u) => { await selectListing(u.tenantId, s(fd, "propertyId"), s(fd, "listingId"), "user:" + u.id); await runDailyReview(u.tenantId, "MANUAL"); return "Annonce rattachée et première lecture effectuée."; }, fd);
 }
 export async function detachListingAction(_: FormState, fd: FormData) {
-  return run(async (u) => { await detachListing(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Annonce détachée. Choisissez celle de ce logement."; });
+  return run(async (u) => { await detachListing(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Annonce détachée. Choisissez celle de ce logement."; }, fd);
 }
 export async function syncPriceLabsAction(_: FormState, fd: FormData) {
-  return run(async (u) => { const r = await syncPriceLabs(u.tenantId, s(fd, "propertyId")); await runDailyReview(u.tenantId, "MANUAL"); return `Lecture terminée : ${r.days} jours de grille, ${r.reservations} réservations. Revue relancée.`; });
+  return run(async (u) => { const r = await syncPriceLabs(u.tenantId, s(fd, "propertyId")); await runDailyReview(u.tenantId, "MANUAL"); return `Lecture terminée : ${r.days} jours de grille, ${r.reservations} réservations. Revue relancée.`; }, fd);
 }
 export async function disconnectPriceLabsAction(_: FormState, fd: FormData) {
-  return run(async (u) => { await disconnectPriceLabs(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Clé supprimée."; }, fd);
+  return run(async (u) => { await disconnectPriceLabs(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return "Clé supprimée."; }, fd, true);
 }
 export async function channelOverridesAction(_: FormState, fd: FormData) {
   return run(async (u) => {
@@ -42,8 +44,8 @@ export async function channelOverridesAction(_: FormState, fd: FormData) {
     const n = await setChannelOverrides(u.tenantId, s(fd, "propertyId"), choices, "user:" + u.id);
     await runDailyReview(u.tenantId, "MANUAL");
     return `${n} réservation${n > 1 ? "s" : ""} précisée${n > 1 ? "s" : ""}. Lecture et revue relancées.`;
-  });
+  }, fd);
 }
 export async function testPriceLabsAction(_: FormState, fd: FormData) {
-  return run(async (u) => { const r = await testPriceLabsConnection(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return r.ok === null ? "Clé valide. Rattachez une annonce pour tester la lecture des prix." : r.ok ? "Test terminé : l'essentiel est disponible." : "Test terminé : un point bloque la lecture, voir le détail ci-dessous."; });
+  return run(async (u) => { const r = await testPriceLabsConnection(u.tenantId, s(fd, "propertyId"), "user:" + u.id); return r.ok === null ? "Clé valide. Rattachez une annonce pour tester la lecture des prix." : r.ok ? "Test terminé : l'essentiel est disponible." : "Test terminé : un point bloque la lecture, voir le détail ci-dessous."; }, fd);
 }

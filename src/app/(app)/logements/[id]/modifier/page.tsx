@@ -11,6 +11,7 @@ import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { can } from "@/lib/rbac";
 import { listOwners } from "@/lib/services/portfolio";
+import { Reserved } from "@/components/Reserved";
 
 export const metadata = { title: "Dossier du logement" };
 export default async function Modifier({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ enregistre?: string }> }) {
@@ -20,6 +21,11 @@ export default async function Modifier({ params, searchParams }: { params: Promi
   if (!p || p.isDemo) notFound();
   // pendant la création, le dossier se complète dans le parcours guidé
   if (p.status === "ONBOARDING") redirect(`/logements/${p.id}/creation?etape=logement`);
+  if (!can(user.role, "property.manage")) return (
+    <Page title="Modifier le dossier" sub={p.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Modifier" }]}>
+      <Reserved role={user.role} need="property.manage" back={{ href: `/logements/${p.id}`, label: "Retour à la fiche" }} />
+    </Page>
+  );
   const owners = await listOwners(user.tenantId);
   return (
     <Page title="Modifier le dossier" sub={p.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Modifier" }]}>

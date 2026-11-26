@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { apiError, apiUser, fromError, isResponse, json, propertyView, readObject } from "@/lib/api/v1";
+import { apiError, apiUser, apiWriter, fromError, isResponse, json, propertyView, readObject } from "@/lib/api/v1";
 import { deleteProperty, updatePropertyIdentity } from "@/lib/services/portfolio";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function GET(_: Request, { params }: Ctx) {
 }
 /** PATCH /api/v1/properties/{id} : champs d'identité présents (name, city, kind, bedrooms, capacity, positioning, objective) et ownerId. */
 export async function PATCH(req: Request, { params }: Ctx) {
-  const u = await apiUser(); if (isResponse(u)) return u;
+  const u = await apiWriter(req, "property.manage", (await params).id); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;
   try { await updatePropertyIdentity(u, (await params).id, body); return json({ ok: true }); } catch (e) { return fromError(e); }
 }

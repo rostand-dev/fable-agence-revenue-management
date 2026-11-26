@@ -4,6 +4,7 @@ import { Page } from "@/components/Page";
 import { requireUser } from "@/lib/auth";
 import { IMPLEMENTED_PLAYBOOKS, PLAYBOOKS } from "@/lib/engine/playbooks";
 import { EXECUTION_MODES, MODE_LABEL, RISK_LABEL, RISKS, resolveScoring, SCORING_LIMITS } from "@/lib/engine/scoring";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Priorisation des dossiers" };
 export default async function Priorisation() {
@@ -13,9 +14,10 @@ export default async function Priorisation() {
     <Page title="Priorisation des dossiers" sub="Le classement de la file des opportunités" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Priorisation des dossiers" }]}>
       <section className="section" id="priorisation" data-testid="priorisation" style={{ marginTop: 0 }}>
         <div className="page-head"><h1>Priorisation des dossiers</h1></div>
+        <RightsNotice need="workspace.manage" />
         <p className="section-note">Les dossiers sont classés par : gain net attendu × confiance × urgence × poids du playbook − coût d'exécution − pénalité de risque. Ce classement organise le travail ; il ne contourne jamais un veto ni une approbation, et les dossiers sous veto restent en tête.</p>
         <p className="section-note">Laissez les valeurs par défaut tant que vous n'avez pas de raison de les changer (poids : 1 = neutre). Saisissez les décimales avec un point.</p>
-        <ActionForm action={saveScoringAction} resetOnField="retablir">
+        <ActionForm need="workspace.manage" action={saveScoringAction} resetOnField="retablir">
           <h2 className="sub">Poids par playbook</h2>
           <div className="form-grid">
             {IMPLEMENTED_PLAYBOOKS.map((c) => (

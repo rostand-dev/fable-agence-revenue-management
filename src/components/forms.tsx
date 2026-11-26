@@ -1,7 +1,9 @@
 "use client";
 import { useActionState, useEffect, useId, useRef } from "react";
 import { useFormStatus } from "react-dom";
+import type { Permission } from "@/lib/rbac";
 import { Icon } from "./Icon";
+import { useRefusal } from "./Rights";
 
 /** `reauth` : l'action demande le mot de passe (session rétablie par « Rester connecté »). Le formulaire affiche alors le champ `confirmPassword`. */
 export type FormState = { error?: string; ok?: string; reauth?: boolean } | null;
@@ -14,10 +16,12 @@ export function Submit({ children, className = "btn btn-primary", icon, pendingL
 
 /** Formulaire relié à une action serveur : l'erreur revient près du formulaire, jamais en alerte de navigateur. */
 /** `resetOnOk` : formulaire d'ajout. Après un succès, les champs reviennent à leur valeur initiale (vide) au lieu de garder la saisie, pour ne pas ajouter deux fois la même chose. */
+/** `need` : droit exigé par l'action ; sans lui, les champs restent lisibles mais verrouillés (le serveur refuse de toute façon). */
 /** `resetOnField` : nom d'un bouton d'envoi (ex. « Rétablir les valeurs par défaut ») après lequel les champs reprennent les valeurs enregistrées au lieu de la saisie. */
-export function ActionForm({ action, children, hidden, style, className, id, resetOnOk, resetOnField }: { action: ServerAction; children: React.ReactNode; hidden?: Record<string, string | number>; style?: React.CSSProperties; className?: string; id?: string; resetOnOk?: boolean; resetOnField?: string }) {
+export function ActionForm({ action, children, hidden, style, className, id, resetOnOk, resetOnField, need }: { need?: Permission; action: ServerAction; children: React.ReactNode; hidden?: Record<string, string | number>; style?: React.CSSProperties; className?: string; id?: string; resetOnOk?: boolean; resetOnField?: string }) {
   const [state, formAction, isPending] = useActionState(action, null);
   const reauthId = useId();
+  const locked = useRefusal(need) !== null;
   const ref = useRef<HTMLFormElement>(null), sent = useRef<FormData | null>(null);
   // React 19 vide les champs non contrôlés une fois l'action terminée, même en cas d'erreur : on remet ce que la personne avait saisi.
   const keep = (fd: FormData) => { sent.current = fd; return formAction(fd); };
@@ -38,7 +42,7 @@ export function ActionForm({ action, children, hidden, style, className, id, res
   return (
     <form ref={ref} action={keep} style={style} className={className} id={id} data-pending={isPending ? "" : undefined} aria-busy={isPending || undefined}>
       {hidden && Object.entries(hidden).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-      {children}
+      {locked ? <fieldset className="locked" disabled>{children}</fieldset> : children}
       {state?.reauth && (
         <div className="field reauth-field" style={{ marginTop: 12 }}>
           <label htmlFor={reauthId}>Confirmez votre mot de passe</label>

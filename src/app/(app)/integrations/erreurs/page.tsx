@@ -7,6 +7,7 @@ import { Banner, Recap, State } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { fmtDateTime } from "@/lib/dates";
 import { listIngestionErrors, type DeliveryRow } from "@/lib/services/ingestion-errors";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Erreurs d'ingestion" };
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ export default async function IngestionErrors() {
         <h1>Réservations SuperHote qui n'ont pas pu être appliquées</h1>
         <p>Chaque livraison de webhook est enregistrée avant d'être traitée. Quand elle échoue, elle apparaît ici avec la raison ; SuperHote réessaie seul tant que le traitement est possible (3 tentatives). Vous pouvez la rejouer (sans risque de doublon) ou l'écarter ; la lecture planifiée de SuperHote rattrape de toute façon les réservations manquantes.</p>
       </div>
+      <RightsNotice need="property.manage" />
       {nothing && <Banner role="sain" title="Aucune erreur d'ingestion">Toutes les livraisons reçues ont été appliquées et les dernières lectures ont réussi.</Banner>}
       {e.readFailures.length > 0 && (
         <section className="stack" data-testid="read-failures" style={{ marginBottom: 20 }}>
@@ -45,7 +47,7 @@ export default async function IngestionErrors() {
         <section className="stack" data-testid="deliveries">
           <div className="row-wrap" style={{ alignItems: "center" }}>
             <h2 style={{ margin: 0 }}>Livraisons en échec <span className="muted">({e.total})</span></h2>
-            <ActionForm action={replayAllDeliveriesAction} className="inline" style={{ marginLeft: "auto" }}><Submit icon="spin" pendingLabel="Rejeu en cours…">Tout rejouer</Submit></ActionForm>
+            <ActionForm need="property.manage" action={replayAllDeliveriesAction} className="inline" style={{ marginLeft: "auto" }}><Submit icon="spin" pendingLabel="Rejeu en cours…">Tout rejouer</Submit></ActionForm>
           </div>
           {e.abandoned > 0 && <Banner role="attention" title={`${e.abandoned} livraison${e.abandoned > 1 ? "s abandonnées" : " abandonnée"}`}>Les tentatives automatiques sont épuisées. Rejouez-les une fois la cause levée, ou écartez-les.</Banner>}
           {e.deliveries.map((d) => {
@@ -62,8 +64,8 @@ export default async function IngestionErrors() {
                   ]} />
                   {!d.replayable && <p className="muted" style={{ margin: 0 }}>Le webhook de cette livraison a été supprimé : elle ne peut plus être rejouée.</p>}
                   <div className="row-wrap">
-                    {d.replayable && <ActionForm action={replayDeliveryAction} hidden={{ id: d.id }} className="inline"><Submit icon="spin" pendingLabel="Rejeu…" ariaLabel={`Rejouer la livraison de la réservation ${d.externalId ?? d.deliveryId}`}>Rejouer</Submit></ActionForm>}
-                    <ActionForm action={dismissDeliveryAction} hidden={{ id: d.id }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="cross" ariaLabel={`Écarter la livraison de la réservation ${d.externalId ?? d.deliveryId}`}>Écarter</Submit></ActionForm>
+                    {d.replayable && <ActionForm need="property.manage" action={replayDeliveryAction} hidden={{ id: d.id }} className="inline"><Submit icon="spin" pendingLabel="Rejeu…" ariaLabel={`Rejouer la livraison de la réservation ${d.externalId ?? d.deliveryId}`}>Rejouer</Submit></ActionForm>}
+                    <ActionForm need="property.manage" action={dismissDeliveryAction} hidden={{ id: d.id }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="cross" ariaLabel={`Écarter la livraison de la réservation ${d.externalId ?? d.deliveryId}`}>Écarter</Submit></ActionForm>
                   </div>
                 </div>
               </article>

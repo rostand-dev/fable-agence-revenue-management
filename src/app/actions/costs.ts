@@ -5,6 +5,7 @@ import { db, newId, schema } from "@/db";
 import { recordAudit } from "@/lib/audit/log";
 import { userActor } from "@/lib/audit/types";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { modelFromAnswers, type CostAnswers } from "@/lib/engine/costs";
 import { missingEconomics } from "@/lib/engine/economics";
 import { parseSeasons } from "@/lib/engine/seasons";
@@ -20,6 +21,7 @@ const KEYS = ["airbnbPct", "bookingPct", "bookingFeePct", "cleaningFee", "cleani
 /** `question` : dans le parcours de création, la question où reprendre (0 à 7). */
 export async function saveCostsAction(propertyId: string, raw: CostAnswers, final: boolean, question?: number): Promise<{ error?: string; done?: boolean }> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", propertyId); if (no) return no;
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, propertyId), eq(schema.properties.tenantId, u.tenantId)));
   if (!p) return { error: "Logement introuvable." };
   if (p.isDemo) return { error: "Un logement de démonstration ne se modifie pas." };

@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
 import { MAX_SEASONS } from "@/lib/engine/seasons";
 import type { EconomicModel } from "@/lib/engine/types";
+import { IfRight, RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Saisons du plancher" };
 const eur = (c: number) => (c / 100).toFixed(2).replace(".", ",");
@@ -31,9 +32,10 @@ export default async function Saisons({ params }: { params: Promise<{ id: string
         <h1>Saisons du plancher</h1>
         <p>Une saison change la couverture des charges fixes par nuit vendue, donc le plancher stratégique, pendant une période qui revient chaque année. Le seuil de dérangement (plancher absolu) ne change jamais. Hors saison, la valeur de base s'applique{model.strategyContributionPerNightCents != null ? ` (${eur(model.strategyContributionPerNightCents)} € par nuit)` : ""}.</p>
       </div>
-      {missingEconomics(model).length > 0 && <Banner role="attention" title="Modèle économique incomplet">Renseignez d'abord les coûts et seuils : les saisons s'appuient sur eux. <Link href={`/logements/${p.id}/couts`}>Compléter les coûts</Link></Banner>}
+      <RightsNotice need="property.manage" />
+      {missingEconomics(model).length > 0 && <Banner role="attention" title="Modèle économique incomplet">Renseignez d'abord les coûts et seuils : les saisons s'appuient sur eux. <IfRight need="property.manage"><Link href={`/logements/${p.id}/couts`}>Compléter les coûts</Link></IfRight></Banner>}
       <Banner role="tech" title="Appliquées par l'auditeur et le simulateur">Pour un séjour qui traverse plusieurs saisons, le plancher le plus exigeant s'applique.</Banner>
-      <ActionForm action={saveSeasonsAction} hidden={{ propertyId: p.id }} className="stack" style={{ gap: 16 }}>
+      <ActionForm need="property.manage" action={saveSeasonsAction} hidden={{ propertyId: p.id }} className="stack" style={{ gap: 16 }}>
         {Array.from({ length: rows }, (_, i) => {
           const s = seasons[i];
           return (
