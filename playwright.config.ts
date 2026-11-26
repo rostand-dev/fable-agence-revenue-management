@@ -20,13 +20,16 @@ const fakePriceLabs = (() => { try { const u = new URL(process.env.PRICELABS_API
 
 const fakeLlm = (() => { try { const u = new URL(process.env.ANTHROPIC_API_BASE ?? ""); return u.hostname === "127.0.0.1" || u.hostname === "localhost" ? u : null; } catch { return null; } })();
 
-// Les largeurs mobiles couvrent les petits téléphones (360 px) et les courants (390 px).
+// Les largeurs mobiles couvrent les petits téléphones (360 px) et les courants (390 px). Elles se présentent comme un téléphone Android :
+// l'application y sert le mode poche (version allégée). Les tests d'un écran réservé à l'ordinateur choisissent la version complète (e2e/helpers/view.ts).
+const PHONE_UA = devices["Pixel 7"].userAgent;
 const chromium = (name: string, viewport: { width: number; height: number }, mobile: boolean) => ({
   name,
   dependencies: ["setup"],
   testIgnore: /auth\.setup\.ts/,
   use: {
     ...devices["Desktop Chrome"],
+    ...(mobile ? { userAgent: PHONE_UA } : {}),
     viewport,
     isMobile: mobile,
     hasTouch: mobile,

@@ -2,6 +2,10 @@ import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-052 : planchers par saison. Modèle économique écrit en base ; saisie par l'écran, lecture et écriture par l'API, bureau et mobile (390 et 360 px).
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

@@ -3,7 +3,8 @@
  * Fonctions pures, sans React : testées dans nav.test.ts.
  */
 export type NavBadge = "open" | "alerts" | "prices";
-export type NavNode = { id: string; label: string; href?: string; icon?: string; badge?: NavBadge; action?: boolean; children?: NavNode[] };
+/** `desk` : écran réservé à l'ordinateur (voir DESK_RULES), signalé comme tel en mode poche. */
+export type NavNode = { id: string; label: string; href?: string; icon?: string; badge?: NavBadge; action?: boolean; desk?: boolean; children?: NavNode[] };
 export type NavGroup = { label: string; items: NavNode[] };
 export type NavProperty = { id: string; name: string; status: string };
 
@@ -40,6 +41,58 @@ export function menuProperties(all: NavProperty[], currentPropertyId: string | n
   return { shown: all.filter((p) => recent.has(p.id) || p.id === currentPropertyId), truncated: true };
 }
 
+/* ---------- Mode poche : écrans réservés à l'ordinateur ---------- */
+
+type DeskRule = { path: RegExp; /** rubrique affichée au-dessus du titre ; null : le sous-titre de l'écran (nom du logement) */ section: string | null; why: string; /** choix « Afficher quand même » partagé par plusieurs chemins */ group?: string };
+
+const LOGEMENT = "/logements/[^/]+";
+/** Source unique des écrans réservés à l'ordinateur : le menu (champ `desk`) et l'encart s'en déduisent. Un écran absent d'ici s'affiche normalement sur téléphone. */
+export const DESK_RULES: DeskRule[] = [
+  { path: /^\/parametres(\/(compte|priorisation|demo))?$/, section: "Paramètres", why: "Les réglages demandent de la place et de l'attention." },
+  { path: /^\/proprietaires$/, section: "Paramètres", why: "La gestion des propriétaires demande de la place et de l'attention." },
+  { path: /^\/integrations(\/erreurs)?$/, section: "Paramètres", why: "Le réglage des connexions et le diagnostic des erreurs demandent de la place et de l'attention." },
+  { path: /^\/modeles(\/(cles|agents|budget|catalogue))?$/, section: "IA & modèles", why: "La saisie des clés et le choix des modèles demandent de la place et de l'attention." },
+  // le parcours de création est un seul écran pour la personne : l'étape 1 et la suite du dossier partagent le même choix
+  { path: new RegExp(`^(/logements/nouveau|${LOGEMENT}/creation)$`), section: "Logements", why: "La création d'un logement enchaîne des formulaires longs et des montants à saisir.", group: "creation" },
+  { path: new RegExp(`^${LOGEMENT}/(modifier|supprimer)$`), section: null, why: "La modification et la suppression d'un logement demandent de l'attention." },
+  { path: new RegExp(`^${LOGEMENT}/(couts|saisons|strategie|compilateur|versions-economie)$`), section: null, why: "Les coûts, les seuils et la stratégie se règlent avec de nombreuses saisies chiffrées." },
+  { path: new RegExp(`^${LOGEMENT}/(mapping|qualite|validations|ecarts-reservations)$`), section: null, why: "Ces contrôles comparent des tableaux larges, plus lisibles sur un grand écran." },
+  { path: /^\/bilan$/, section: "Analyse", why: "Cette lecture longue est plus confortable sur un grand écran." },
+  { path: /^\/methode$/, section: "Agence IA", why: "Cette lecture longue est plus confortable sur un grand écran." },
+];
+
+export type DeskScreen = { /** clé du choix « Afficher quand même » */ key: string; section: string | null; why: string; /** retour vers un écran disponible sur téléphone */ back: string };
+
+/** L'écran réservé à l'ordinateur qui correspond à ce chemin (sans paramètres), ou null. */
+export function deskScreen(pathname: string): DeskScreen | null {
+  const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const rule = DESK_RULES.find((r) => r.path.test(path));
+  if (!rule) return null;
+  const property = propertyIdOf(path);
+  return { key: rule.group ?? path, section: rule.section, why: rule.why, back: rule.group ? "/logements" : property ? `/logements/${property}` : "/" };
+}
+
+/** Feuille « Plus » en mode poche : [identifiant du nœud, libellé, précision]. */
+const POCKET_LINKS: [string, string, string?][] = [["historique", "Historique des décisions"], ["equipe", "Équipe de l'agence"], ["rapports", "Rapports mensuels", "lecture"], ["glossaire", "Glossaire"]];
+const POCKET_DESK_LINKS: [string, string][] = [["parametres", "Paramètres"], ["modeles", "IA & modèles"], ["integrations", "Intégrations"], ["ajouter-logement", "Création d'un logement"], ["bilan", "Analyse"], ["methode", "Méthode"]];
+/** Le coupe-circuit reste utilisable sur téléphone : il s'affiche au-dessus de l'encart de l'écran Intégrations. */
+export const KILL_SWITCH_HREF = "/integrations";
+
+export type PocketLink = { id: string; label: string; href: string; hint?: string };
+/** Liens de la feuille allégée, tirés de l'arborescence : un nœud absent (droit manquant) n'est pas proposé. */
+export function pocketMenu(groups: NavGroup[]): { links: PocketLink[]; desk: PocketLink[] } {
+  const all = new Map<string, NavNode>();
+  const walk = (nodes: NavNode[]) => nodes.forEach((n) => { all.set(n.id, n); walk(n.children ?? []); });
+  walk(groups.flatMap((g) => g.items));
+  const pick = ([id, label, hint]: [string, string, string?]): PocketLink[] => { const href = all.get(id)?.href; return href ? [{ id, label, href, hint }] : []; };
+  return { links: POCKET_LINKS.flatMap(pick).filter((l) => !all.get(l.id)!.desk), desk: POCKET_DESK_LINKS.flatMap(pick).filter((l) => all.get(l.id)!.desk) };
+}
+
+/** En-tête posé par le proxy (src/proxy.ts) : chemin et paramètres de la page demandée, lus côté serveur. */
+export const PATH_HEADER = "x-ns-chemin";
+/** Bascule entre version allégée et version complète (route GET /vue). À utiliser avec un lien `<a>` : un `<Link>` la préchargerait et changerait de mode tout seul. */
+export const viewHref = (mode: "poche" | "complet", retour: string) => `/vue?mode=${mode}&retour=${encodeURIComponent(retour)}`;
+
 /** `properties` : du plus ancien au plus récent. `canAdd` : le rôle permet d'ajouter un logement. */
 export function buildNav(properties: NavProperty[], currentPropertyId: string | null = null, canAdd = true): NavGroup[] {
   const { shown, truncated } = menuProperties(properties, currentPropertyId);
@@ -49,7 +102,7 @@ export function buildNav(properties: NavProperty[], currentPropertyId: string | 
   }));
   if (truncated) logements.push({ id: "tous-les-logements", label: `Tous les logements (${properties.length})`, href: "/logements" });
   if (canAdd) logements.push({ id: "ajouter-logement", label: "Ajouter un logement", href: "/logements/nouveau", icon: "plus", action: true });
-  return [
+  const groups: NavGroup[] = [
     { label: "Pilotage", items: [
       { id: "tableau-de-bord", label: "Tableau de bord", href: "/portefeuille", icon: "chart" },
       { id: "opportunites", label: "Opportunités", href: "/", icon: "inbox", badge: "open" },
@@ -82,6 +135,12 @@ export function buildNav(properties: NavProperty[], currentPropertyId: string | 
       ] },
     ] },
   ];
+  const mark = (n: NavNode): NavNode => ({
+    ...n,
+    ...(n.href && deskScreen(n.href.split("?")[0]) ? { desk: true } : {}),
+    ...(n.children ? { children: n.children.map(mark) } : {}),
+  });
+  return groups.map((g) => ({ ...g, items: g.items.map(mark) }));
 }
 
 /** Vrai si ce nœud ou l'un de ses descendants porte la pastille des prix : une rubrique repliée la reprend, pour qu'elle reste visible. */

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow, friezeViolations } from "./helpers/layout";
+import { versionComplete } from "./helpers/view";
 
 // Régression : sur mobile (390 px), les libellés de la frise du cycle (Observer, Diagnostiquer…) étaient très serrés et se chevauchaient.
 test("frise du cycle d'un dossier : libellés lisibles, sans chevauchement", async ({ page }) => {
@@ -17,6 +18,7 @@ test("frise du cycle d'un dossier : libellés lisibles, sans chevauchement", asy
 });
 
 test("frise de la page Méthode : libellés lisibles, sans chevauchement", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   await page.goto("/methode");
   await expect(page.locator("ol.frieze")).toBeVisible();
   expect(await friezeViolations(page)).toEqual([]);
@@ -25,6 +27,7 @@ test("frise de la page Méthode : libellés lisibles, sans chevauchement", async
 // Paliers de la grille : 2 colonnes (< 640 px), 4 colonnes (≥ 640 px), 8 colonnes (≥ 1500 px). Aucun défilement horizontal, aucun texte coupé.
 for (const [largeur, colonnes] of [[360, 2], [700, 4], [1280, 4], [1600, 8]] as const) {
   test(`frise de la page Méthode à ${largeur} px : ${colonnes} colonnes`, async ({ page }) => {
+    await versionComplete(page.context()); // écran réservé à l'ordinateur
     await page.setViewportSize({ width: largeur, height: 900 });
     await page.goto("/methode");
     await expect(page.locator("ol.frieze")).toBeVisible();

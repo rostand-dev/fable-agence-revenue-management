@@ -9,6 +9,8 @@ import { reportableMonths } from "@/lib/reports/monthly";
 import { listProperties } from "@/lib/queries";
 import { activeFilters, filtersQuery, parseHistoryFilters } from "@/lib/reports/filters";
 import { OUTCOME_LABEL, OUTCOMES } from "@/lib/experiments/outcome";
+import { DeskNote } from "@/components/DeskOnly";
+import { getViewContext } from "@/lib/view-mode";
 import { listMeasures, listReports } from "@/lib/services/reports";
 
 export const metadata = { title: "Rapports mensuels" };
@@ -29,6 +31,7 @@ export default async function Rapports({ searchParams }: { searchParams: Promise
   const qs = filtersQuery(f), nf = activeFilters(f);
   const months = reportableMonths(todayISO()).map((m) => ({ value: m, label: fmtMonth(m) }));
   const canWrite = can(user.role, "report.certify");
+  const view = await getViewContext();
   const hasDraft = new Set(all.filter((r) => r.status === "DRAFT").map((r) => r.month));
   return (
     <Page title="Rapports mensuels" sub={p.name} crumbs={crumbs}>
@@ -39,10 +42,12 @@ export default async function Rapports({ searchParams }: { searchParams: Promise
       </div>
       <section className="section">
         <h2>Préparer un rapport</h2>
-        {canWrite
+        {canWrite && view.mode === "poche"
+          ? <DeskNote current={view.current} />
+          : canWrite
           ? <ReportStart propertyId={p.id} months={months} label="Préparer ou actualiser le rapport" />
           : <div data-testid="rapport-reserve"><Banner role="tech" icon="shield" title="Lecture seule">{denyMessage(user.role, "report.certify")} Il est possible pour : {rolesWith("report.certify").map((r) => ROLE_LABEL[r].toLowerCase()).join(", ")}.</Banner></div>}
-        {canWrite && all.some((r) => r.status === "CERTIFIED") && <p className="muted" style={{ marginTop: 8 }}>Sur un mois déjà certifié, la préparation ouvre une nouvelle version ; la version certifiée reste intacte.</p>}
+        {canWrite && view.mode === "complet" && all.some((r) => r.status === "CERTIFIED") && <p className="muted" style={{ marginTop: 8 }}>Sur un mois déjà certifié, la préparation ouvre une nouvelle version ; la version certifiée reste intacte.</p>}
       </section>
       <section className="section" data-testid="rapports-liste">
         <h2>Historique des rapports</h2>
@@ -57,7 +62,7 @@ export default async function Rapports({ searchParams }: { searchParams: Promise
           <div className="btn-row"><button type="submit" className="btn btn-secondary btn-sm">Filtrer</button>{nf > 0 && <Link className="btn btn-ghost btn-sm" href={`/rapports?logement=${p.id}`} data-testid="rapports-reinit">Réinitialiser</Link>}</div>
         </form>
         <p className="muted" data-testid="rapports-compteur" style={{ margin: "8px 0" }}>{rows.length} rapport{rows.length > 1 ? "s" : ""} sur {all.length}{f.etat || f.annee ? " (filtres actifs)" : ""}.</p>
-        {rows.length === 0 ? <p className="muted" data-testid="rapports-vide">{all.length === 0 ? "Aucun rapport pour ce logement : choisissez un mois ci-dessus." : "Aucun rapport ne correspond à ces filtres."}</p> : (
+        {rows.length === 0 ? <p className="muted" data-testid="rapports-vide">{all.length === 0 ? (view.mode === "poche" ? "Aucun rapport pour ce logement." : "Aucun rapport pour ce logement : choisissez un mois ci-dessus.") : "Aucun rapport ne correspond à ces filtres."}</p> : (
           <div className="table-wrap"><table className="econ"><thead><tr><th scope="col">Mois</th><th scope="col">Version</th><th scope="col">État</th><th scope="col">Certifié</th></tr></thead>
             <tbody>{rows.map((r) => (
               <tr key={r.id} data-testid="rapport-ligne" data-status={r.status}>

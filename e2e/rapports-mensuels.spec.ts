@@ -3,6 +3,10 @@ import pg from "pg";
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-112 : rapport mensuel certifié : préparer, retoucher (nombre inventé refusé), certifier, figé, nouvelle version, lecture seule.
 // Trois largeurs, sans débordement. Les trois projets tournent en parallèle sur le même logement : chacun travaille sur son propre mois.

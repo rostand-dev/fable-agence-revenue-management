@@ -3,6 +3,10 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { fingerprintToken } from "../src/lib/integrations/superhote-webhook";
 import { encryptSecret } from "../src/lib/secret";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-033 : écran des erreurs d'ingestion SuperHote. Les livraisons en échec sont inscrites en base ; le test les rejoue et les écarte depuis l'écran.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

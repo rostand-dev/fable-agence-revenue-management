@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-062 : écran de réglage de la priorisation et explication du rang dans le dossier. Bureau, mobile 390 et 360 px. Rien n'est enregistré (compte de démo partagé).
 test("Priorisation : la page est lisible, avec ses bornes, sans débordement", async ({ page }) => {

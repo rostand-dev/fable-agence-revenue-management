@@ -1,6 +1,10 @@
 import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-023 : Strategy Builder. Le logement est créé par l'API puis « lancé » en base (la création guidée est couverte ailleurs). Trois formats d'écran.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

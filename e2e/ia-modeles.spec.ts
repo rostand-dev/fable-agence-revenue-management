@@ -3,6 +3,10 @@ import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
 import { httpCredentials } from "./helpers/env";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // Hub « IA & modèles » : quatre cartes avec leur état et leur origine, anciennes ancres, Intégrations sans les clés. Trois formats d'écran.
 const CARTES = [["cles", "Clés fournisseurs"], ["agents", "Agents"], ["budget", "Budget"], ["catalogue", "Catalogue des modèles"]] as const;

@@ -2,6 +2,10 @@ import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-024 : checklist de qualité bloquant l'activation. Logement créé par l'API puis mis « en observation » en base. Trois formats d'écran.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

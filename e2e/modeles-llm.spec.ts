@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // « IA & modèles » : budget (plafond mensuel en euros, coût par agent avec tendance) et catalogue (état, prix, qualification, test).
 // Bureau, mobile 390 et 360 px. Les trois formats partagent le compte de démo : le plafond posé (large, sans effet sur les agents) est retiré à la fin de chaque test.

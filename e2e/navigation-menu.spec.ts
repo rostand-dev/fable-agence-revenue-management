@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // Menu à deux niveaux (bureau), barre basse et feuille « Plus » (mobile), rangée et feuille filtrée (tablette).
 const largeur = (page: Page) => page.viewportSize()!.width;

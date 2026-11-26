@@ -1,6 +1,10 @@
 import { Client } from "pg";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-021 : mapping des identifiants externes. Les trois projets (bureau, mobile 390 et 360) partagent le même compte : chaque test crée son propre logement.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

@@ -3,6 +3,7 @@ import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { withApprovedManualDossier } from "./helpers/dossier";
 import { hasDatabase } from "./helpers/roles";
+import { versionComplete } from "./helpers/view";
 
 // US-111 : résultat d'une expérience (positif, neutre, négatif ou non concluant), motifs, méthode. Trois largeurs, sans débordement.
 test.skip(!hasDatabase(), "DATABASE_URL absent : dossier de test non créable sur cet environnement");
@@ -53,6 +54,7 @@ test("Historique : les quatre résultats sont comptés, la mesure d'une action r
 });
 
 test("Méthode : la lecture d'un résultat est expliquée (seuils, dilution, non concluant)", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   await page.goto("/methode");
   const s = page.getByTestId("methode-mesure");
   await s.scrollIntoViewIfNeeded();
