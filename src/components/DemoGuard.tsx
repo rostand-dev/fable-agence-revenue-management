@@ -4,7 +4,7 @@ import { DEMO_READONLY_MESSAGE } from "@/lib/demo-mode";
 
 /**
  * Démo en lecture seule : un envoi de formulaire est intercepté avant d'atteindre le serveur et explique pourquoi rien ne se passe.
- * Le vrai verrou est côté serveur (middleware) ; ceci n'est que le message.
+ * Le vrai verrou est côté serveur (src/proxy.ts) ; ceci n'est que le message.
  */
 export function DemoGuard({ signupUrl }: { signupUrl: string | null }) {
   const [shown, setShown] = useState(false);

@@ -128,7 +128,7 @@ Pour laisser un visiteur essayer le produit sans compte, on déploie une **secon
 
 Comment ça marche :
 
-- Un verrou central (`src/middleware.ts`) refuse tout ce qui n'est pas une lecture (les actions serveur sont des POST), sauf le suivi d'activité de session. Une action ajoutée plus tard est donc verrouillée d'office.
+- Un verrou central (`src/proxy.ts`) refuse tout ce qui n'est pas une lecture (les actions serveur sont des POST), sauf le suivi d'activité de session. Une action ajoutée plus tard est donc verrouillée d'office.
 - `/demo` ouvre la session du compte de démo. Elle n'existe que si `DEMO_READONLY=true` **et** que le compte de démo est autorisé sur ce domaine ; ailleurs elle répond « introuvable ». Limitée à 60 ouvertures par heure et par adresse IP.
 - Sur la démo, connexion, inscription et mot de passe oublié redirigent vers `/demo` (ou vers `DEMO_SIGNUP_URL`). Après 15 minutes d'inactivité, la session expire et `/demo` en rouvre une.
 - Un bandeau « Démo en lecture seule » propose « Créer mon compte » ; un clic sur un formulaire affiche un message plutôt qu'une erreur.
