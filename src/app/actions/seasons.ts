@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import type { FormState } from "@/components/forms";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { MAX_SEASONS } from "@/lib/engine/seasons";
 import { PortfolioError } from "@/lib/services/portfolio";
 import { saveSeasons } from "@/lib/services/seasons";
@@ -13,6 +14,7 @@ const toMinorUnits = (s: string) => (/^\d+([.,]\d{1,2})?$/.test(s) ? Math.round(
 /** Enregistre les saisons du plancher d'un logement (lignes `label_i`, `from_i`, `to_i`, `eur_i`). Une ligne entièrement vide est ignorée. Règles : lib/engine/seasons.ts. */
 export async function saveSeasonsAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", fd.get("propertyId")); if (no) return no;
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < MAX_SEASONS; i++) {
     const label = txt(fd, `label_${i}`), from = txt(fd, `from_${i}`), to = txt(fd, `to_${i}`), eur = txt(fd, `eur_${i}`), id = txt(fd, `id_${i}`);

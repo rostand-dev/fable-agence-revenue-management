@@ -9,6 +9,7 @@ import { userActor } from "@/lib/audit/types";
 import type { FormState } from "@/components/forms";
 import { AGENTS } from "@/lib/agents/registry";
 import { requireUser } from "@/lib/auth";
+import { refused } from "@/lib/rights";
 import { confirmPasswordIfNeeded } from "@/lib/reauth";
 import { capabilitiesOf, capabilityFlags, isProvider, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, type Provider } from "@/lib/integrations/capabilities";
 import { missingEconomics } from "@/lib/engine/economics";
@@ -50,6 +51,7 @@ const readMarkups = (fd: FormData) => parseMarkupList(fd.getAll("markupLabel").m
 /** Reprise ou correction d'un dossier. Les prix de base, minimum et maximum lus dans PriceLabs ne sont pas touchés. */
 export async function updatePropertyAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", fd.get("propertyId")); if (no) return no;
   const id = txt(fd, "propertyId");
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, u.tenantId)));
   if (!p) return { error: "Logement introuvable." };
@@ -58,7 +60,7 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
   if (p.status === "ONBOARDING") return { error: "Ce logement est en cours de création : terminez-la dans le parcours guidé." };
   // une clé API saisie ici est une modification sensible : mot de passe redemandé (avant toute écriture) si la session vient de « Rester connecté »
   const plKey = p.pricelabs?.apiKeyEnc ? "" : txt(fd, "pricelabsKey"), shKey = p.superhote?.apiKeyEnc ? "" : txt(fd, "superhoteKey");
-  if (plKey || shKey) { const refused = await confirmPasswordIfNeeded(u, fd); if (refused) return refused; }
+  if (plKey || shKey) { const reauth = await confirmPasswordIfNeeded(u, fd); if (reauth) return reauth; }
   const draft = txt(fd, "intent") === "draft";
   const v = readProperty(fd);
   const err = check(v, draft);
@@ -99,6 +101,7 @@ export async function updatePropertyAction(_: FormState, fd: FormData): Promise<
 
 export async function renameAgentsAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "workspace.manage"); if (no) return no;
   const names: Record<string, string> = {};
   for (const a of AGENTS) { const v = txt(fd, "agent-" + a.id).slice(0, 24); if (v && v !== a.name) names[a.id] = v; }
   await db.transaction(async (tx) => {
@@ -113,6 +116,7 @@ export async function renameAgentsAction(_: FormState, fd: FormData): Promise<Fo
 /** Priorisation des dossiers (US-062) : poids par playbook, pénalités de risque, coûts d'exécution. Seuls les écarts au réglage par défaut sont enregistrés. */
 export async function saveScoringAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "workspace.manage"); if (no) return no;
   const group = (prefix: string, keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, txt(fd, `${prefix}-${k}`)]).filter(([, v]) => v !== ""));
   const reset = txt(fd, "retablir") === "1";
   const checked = reset ? { ok: true as const, config: DEFAULT_SCORING } : validateScoringInput({ strategicWeight: group("w", IMPLEMENTED_PLAYBOOKS), riskPenalty: group("r", RISKS), executionCost: group("c", EXECUTION_MODES) });
@@ -139,6 +143,7 @@ const realFlags = (provider: Provider) => { const f = capabilityFlags({ isDemo: 
 
 export async function killSwitchAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage"); if (no) return no;
   const provider = txt(fd, "provider"), on = txt(fd, "on") === "1";
   // seuls les fournisseurs du catalogue ont un coupe-circuit : aucune ligne ni audit pour un nom inventé
   if (!isProvider(provider) || (on && !KILL_SWITCH_PROVIDERS.includes(provider))) return { error: "Intégration inconnue." };
@@ -157,6 +162,7 @@ export async function killSwitchAction(_: FormState, fd: FormData): Promise<Form
 /** Active ou désactive une fonction à un niveau (propriétaire, logement, intégration) : US-013, journalisé dans la même transaction. */
 export async function setFlagAction(_: FormState, fd: FormData): Promise<FormState> {
   const u = await requireUser();
+  const no = await refused(u, "property.manage", fd.get("scope") === "PROPERTY" ? fd.get("scopeId") : null); if (no) return no;
   const en = txt(fd, "enabled"), flag = txt(fd, "flag"), scope = txt(fd, "scope"), scopeId = txt(fd, "scopeId");
   if ((en !== "0" && en !== "1") || flag.length > 40 || scope.length > 20 || scopeId.length > 80) return { error: "Demande invalide." };
   try {

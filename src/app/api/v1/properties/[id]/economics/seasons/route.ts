@@ -1,4 +1,4 @@
-import { apiError, apiUser, fromError, isResponse, json, readObject } from "@/lib/api/v1";
+import { apiError, apiWriter, fromError, isResponse, json, readObject } from "@/lib/api/v1";
 import { saveSeasons } from "@/lib/services/seasons";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export const runtime = "nodejs";
  * 400 (INVALID) si une saison est incorrecte ou chevauche une autre ; crée une version du modèle économique et invalide la validation des planchers.
  */
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const u = await apiUser(); if (isResponse(u)) return u;
+  const u = await apiWriter(req, "property.manage", (await params).id); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;
   if (!Array.isArray(body.seasons)) return apiError(400, "INVALID", "Champ « seasons » : une liste est attendue (vide pour supprimer les saisons).");
   const { id } = await params;

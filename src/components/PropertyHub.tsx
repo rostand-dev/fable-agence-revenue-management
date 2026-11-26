@@ -28,7 +28,7 @@ export function HubCards({ cards, label }: { cards: HubCard[]; label: string }) 
  * Vue d'ensemble : les trois rubriques, chacune avec un raccourci vers chacun de ses écrans, puis les écrans hors rubrique.
  * Sans ces raccourcis, un écran de rubrique demanderait plus de trois gestes depuis l'accueil sur tablette et mobile.
  */
-export function PropertyHubLinks({ property, canDelete }: { property: PropertyRef; canDelete: boolean }) {
+export function PropertyHubLinks({ property, canEdit, canDelete }: { property: PropertyRef; canEdit: boolean; canDelete: boolean }) {
   const base = `/logements/${property.id}`;
   return (
     <>
@@ -50,7 +50,7 @@ export function PropertyHubLinks({ property, canDelete }: { property: PropertyRe
       <ul className="hub-shortcuts hub-others" aria-label="Autres écrans du logement">
         <li><Link href={`${base}?tab=calendrier`}>Calendrier 90 jours</Link></li>
         <li><Link href={`${base}?tab=historique`}>Historique du logement</Link></li>
-        {isLaunched(property) && <li><Link href={`${base}/modifier`}>Modifier le dossier</Link></li>}
+        {canEdit && isLaunched(property) && <li><Link href={`${base}/modifier`}>Modifier le dossier</Link></li>}
         {canDelete && isLaunched(property) && <li><Link className="hub-shortcut-danger" href={`${base}/supprimer`}>Supprimer le logement</Link></li>}
       </ul>
     </>

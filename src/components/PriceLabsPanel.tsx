@@ -5,6 +5,7 @@ import { ActionForm, Submit } from "./forms";
 import type { getSnapshotState } from "@/lib/services/snapshots";
 import { PriceLabsGuide } from "./PriceLabsGuide";
 import { Banner, Recap, State, Vq } from "./ui";
+import { IfRight } from "./Rights";
 
 const CHECK_ROLE: Record<string, "sain" | "attention" | "violation" | "neutre"> = { OK: "sain", WARN: "attention", FAIL: "violation", SKIPPED: "neutre" };
 const CHECK_WORD: Record<string, string> = { OK: "disponible", WARN: "à vérifier", FAIL: "en échec", SKIPPED: "non vérifié" };
@@ -121,7 +122,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
       {!pl?.apiKeyEnc ? (
         <>
           <Banner role="tech" title="PriceLabs n'est pas connecté à ce logement">Sans clé, l'équipe ne peut lire ni la grille de prix, ni le marché, ni les réservations : aucune revue n'est faite.</Banner>
-          <ActionForm action={connectPriceLabsAction} hidden={{ propertyId }}>
+          <ActionForm need="property.manage" action={connectPriceLabsAction} hidden={{ propertyId }}>
             <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
               <label htmlFor="apiKey">Clé API PriceLabs <span className="req" aria-hidden="true">*</span></label>
               <input id="apiKey" name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={20} aria-describedby="apiKey-h" />
@@ -148,7 +149,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
               ["Marché", ls.marketError ? <Vq key="m" kind="obsolete">indisponible — {ls.marketError}</Vq> : `${ls.marketDays} jours · ${ls.marketListings ?? "?"} annonces comparables · catégorie ${ls.marketCategory === "-1" ? "chambre" : ls.marketCategory + " chambre(s)"} · ${ls.marketSource ?? ""}`],
             ] as [string, React.ReactNode][] : []),
           ]} />
-          {pl.listingId && costsMissing > 0 && <Banner role="attention" title="Étape suivante : vos coûts et vos seuils">PriceLabs est lu, mais il manque {costsMissing} valeur{costsMissing > 1 ? "s" : ""} pour calculer vos planchers : sans elles, aucune situation n'est ouverte. <a href={`/logements/${propertyId}/couts`}>Les renseigner pas à pas</a></Banner>}
+          {pl.listingId && costsMissing > 0 && <Banner role="attention" title="Étape suivante : vos coûts et vos seuils">PriceLabs est lu, mais il manque {costsMissing} valeur{costsMissing > 1 ? "s" : ""} pour calculer vos planchers : sans elles, aucune situation n'est ouverte. <IfRight need="property.manage"><a href={`/logements/${propertyId}/couts`}>Les renseigner pas à pas</a></IfRight></Banner>}
           {ls && !ls.ok && <Banner role="attention" title="Dernière lecture en échec">{ls.error} Les données précédentes sont conservées.</Banner>}
           {ls?.ok && ls.pushEnabled === false && <Banner role="attention" title="Synchronisation désactivée dans PriceLabs">Les prix lus ne sont peut-être pas ceux réellement publiés sur vos canaux.</Banner>}
           {!pl.listingId && (() => {
@@ -163,12 +164,12 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
                 {free.length === 0 ? (
                   <Banner role="tech" title="Aucune annonce disponible sur ce compte">Toutes les annonces de ce compte PriceLabs sont déjà rattachées à vos autres logements. Ajoutez d'abord ce logement dans PriceLabs, ou utilisez la clé du compte qui le contient.</Banner>
                 ) : free.length === 1 ? (
-                  <ActionForm action={selectListingAction} hidden={{ propertyId, listingId: free[0].id }}>
+                  <ActionForm need="property.manage" action={selectListingAction} hidden={{ propertyId, listingId: free[0].id }}>
                     <Recap rows={[["Annonce PriceLabs", free[0].name], ["Ville", free[0].city ?? <Vq key="v">inconnue</Vq>], ["Chambres", free[0].bedrooms ?? <Vq key="b">inconnu</Vq>], ["PMS", free[0].pms], ["Identifiant", free[0].id, true]]} />
                     <div style={{ marginTop: 14 }}><Submit icon="check" pendingLabel="Première lecture…">Oui, c'est bien ce logement : rattacher</Submit></div>
                   </ActionForm>
                 ) : (
-                  <ActionForm action={selectListingAction} hidden={{ propertyId }}>
+                  <ActionForm need="property.manage" action={selectListingAction} hidden={{ propertyId }}>
                     <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
                       <label htmlFor="listingId">Quelle annonce PriceLabs correspond à ce logement ? <span className="req" aria-hidden="true">*</span></label>
                       <select id="listingId" name="listingId" required defaultValue="">
@@ -203,7 +204,7 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
             return (
               <section>
                 <h2 style={{ fontSize: 17, margin: "8px 0 2px" }}>Réservations transmises sans canal{todo.length > 0 && <span className="rail-count" style={{ marginLeft: 8, verticalAlign: "middle" }}>{todo.length}</span>}</h2>
-                <ActionForm action={channelOverridesAction} hidden={{ propertyId }}>
+                <ActionForm need="property.manage" action={channelOverridesAction} hidden={{ propertyId }}>
                   {todo.length > 0 ? (
                     <>
                       <p className="section-note" style={{ margin: "0 0 10px" }}>Votre PMS a transmis {todo.length > 1 ? "ces réservations" : "cette réservation"} sans indiquer la plateforme. Précisez-la si vous la connaissez : la ligne quitte alors cette liste, et votre choix est réappliqué à chaque lecture.</p>
@@ -229,10 +230,10 @@ export function PriceLabsPanel({ propertyId, propertyName, propertyCity, isDemo,
           {ls?.listingChanges?.length > 0 && <Banner role="attention" title="Annonce modifiée chez PriceLabs">{ls.listingChanges.join(" ; ")}. Vérifiez que l'annonce correspond toujours à ce logement.</Banner>}
           {pl.lastCheck && <ConnectionCheckResult check={pl.lastCheck} />}
           <div className="row-wrap">
-            <ActionForm action={testPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="check" pendingLabel="Test en cours…">Tester la connexion</Submit></ActionForm>
-            {pl.listingId && <ActionForm action={syncPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire PriceLabs maintenant</Submit></ActionForm>}
-            {pl.listingId && <ActionForm action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}
-            <ActionForm action={disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer la clé</Submit></ActionForm>
+            <ActionForm need="property.manage" action={testPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="check" pendingLabel="Test en cours…">Tester la connexion</Submit></ActionForm>
+            {pl.listingId && <ActionForm need="property.manage" action={syncPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire PriceLabs maintenant</Submit></ActionForm>}
+            {pl.listingId && <ActionForm need="property.manage" action={detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer d'annonce</Submit></ActionForm>}
+            <ActionForm need="property.manage" action={disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer la clé</Submit></ActionForm>
           </div>
           <p className="muted" style={{ margin: 0 }}>Lecture seule. PriceLabs est relu une à deux fois par jour, selon le rythme de suivi de ce logement ; ses prix sont recalculés par PriceLabs toutes les 24 heures.</p>
           <PriceLabsGuide />

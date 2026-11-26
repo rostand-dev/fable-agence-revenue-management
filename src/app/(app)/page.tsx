@@ -23,7 +23,7 @@ import {
 export default async function Inbox({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await requireUser();
   const raw = await searchParams;
-  const canDecide = can(user.role, "decision.decide");
+  const canDecide = can(user.role, "decision.decide"), canManage = can(user.role, "property.manage");
   const [props, all, review] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN", "DEFERRED", "DECIDED"]), lastReview(user.tenantId)]);
   const llmOn = (await getLlmStatus(user.tenantId)).source !== "aucune";
   const playbooks = [...new Set(all.map((o) => o.playbook))].sort();
@@ -56,8 +56,10 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<Re
         </div>
         <div className="empty">
           <h3>Aucun logement pour le moment</h3>
-          <p style={{ marginBottom: 16 }}>Vous pourrez enregistrer votre saisie et la reprendre plus tard.</p>
-          <Link className="btn btn-primary" href="/logements/nouveau"><Icon name="plus" />Ajouter mon premier logement</Link>
+          {canManage ? <>
+            <p style={{ marginBottom: 16 }}>Vous pourrez enregistrer votre saisie et la reprendre plus tard.</p>
+            <Link className="btn btn-primary" href="/logements/nouveau"><Icon name="plus" />Ajouter mon premier logement</Link>
+          </> : <p>{denyMessage(user.role, "property.manage")}</p>}
         </div>
       </Page>
     );
@@ -69,7 +71,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<Re
         <div className="mode-strip" style={{ marginBottom: 20 }}>
           <State role="tech">Mode démonstration</State>
           <span>Les logements marqués « démo » reposent sur des <strong>données synthétiques</strong>{anchor ? `, ancrées au ${fmtDate(anchor)}` : ""}. Les écritures PriceLabs y sont simulées.</span>
-          {stale >= 3 && canDecide && <ActionForm action={resetDemoAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo" pendingLabel="Réinstallation…">Réancrer à aujourd'hui</Submit></ActionForm>}
+          {stale >= 3 && can(user.role, "workspace.manage") && <ActionForm need="workspace.manage" action={resetDemoAction} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo" pendingLabel="Réinstallation…">Réancrer à aujourd'hui</Submit></ActionForm>}
         </div>
       )}
       <div className="page-head">

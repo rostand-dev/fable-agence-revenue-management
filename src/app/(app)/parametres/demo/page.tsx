@@ -15,8 +15,8 @@ export default async function Demonstration() {
         <div className="page-head"><h1>Démonstration</h1></div>
         <p className="section-note">Les deux logements de démonstration sont ancrés à une date. Les réinstaller efface leurs dossiers et repart d'aujourd'hui ; vos propres logements ne sont pas touchés.</p>
         <Recap rows={[["Ancrage actuel", user.settings.demoAnchor ? fmtDate(user.settings.demoAnchor) : "aucun", true]]} />
-        {can(user.role, "decision.decide") && <ActionForm action={resetDemoAction} style={{ marginTop: 14 }}><Submit className="btn btn-danger" icon="undo" pendingLabel="Réinstallation…">Réinstaller la démonstration à la date du jour</Submit></ActionForm>}
-        {!can(user.role, "decision.decide") && <p className="muted">La réinstallation est réservée aux rôles qui décident. {denyMessage(user.role, "decision.decide")}</p>}
+        {can(user.role, "workspace.manage") && <ActionForm need="workspace.manage" action={resetDemoAction} style={{ marginTop: 14 }}><Submit className="btn btn-danger" icon="undo" pendingLabel="Réinstallation…">Réinstaller la démonstration à la date du jour</Submit></ActionForm>}
+        {!can(user.role, "workspace.manage") && <p className="muted">La réinstallation est réservée au propriétaire du compte et à l'administrateur. {denyMessage(user.role, "workspace.manage")}</p>}
       </section>
     </Page>
   );

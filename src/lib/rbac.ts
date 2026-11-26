@@ -6,7 +6,8 @@
  *
  * Périmètre de l'épic 8 : le circuit de décision (approuver, rejeter, différer, rouvrir, exécuter, vérifier, revenir en arrière)
  * et la lecture du journal d'audit ; épic 10 : la tenue du registre des promotions (`promotion.manage`). La suppression d'un logement, définitive, est réservée
- * au propriétaire du compte et à l'administrateur (`property.delete`). Les autres réglages (coûts, clés, intégrations) ne sont pas encore soumis aux rôles.
+ * au propriétaire du compte et à l'administrateur (`property.delete`). Toutes les autres écritures sont aussi soumises aux rôles :
+ * les logements (`property.manage`) et les réglages de l'espace (`workspace.manage`). Le détail, écriture par écriture, est dans lib/rights-catalog.ts.
  */
 export const ROLES = ["OWNER", "TENANT_ADMIN", "REVENUE_MANAGER", "ANALYST", "OTA_OPERATOR", "OWNER_VIEWER", "AUDITOR"] as const;
 export type Role = (typeof ROLES)[number];
@@ -23,14 +24,14 @@ export const ROLE_LABEL: Record<Role, string> = {
 export const ROLE_SUMMARY: Record<Role, string> = {
   OWNER: "Crée le compte : tous les droits, dont la suppression d'un logement.",
   TENANT_ADMIN: "Tous les droits, dont la lecture du journal d'audit et la suppression d'un logement.",
-  REVENUE_MANAGER: "Arbitre les dossiers, supervise l'exécution et peut revenir en arrière ; ne supprime pas de logement.",
+  REVENUE_MANAGER: "Arbitre les dossiers, supervise l'exécution et peut revenir en arrière ; gère les logements, sans les supprimer ni régler l'espace.",
   ANALYST: "Lit les dossiers, les analyses et les preuves ; ne décide rien.",
   OTA_OPERATOR: "Applique et prouve les procédures manuelles sur les canaux, tient le registre des promotions, puis relit ; ne décide pas.",
   OWNER_VIEWER: "Suit la performance et les décisions du bien, en lecture seule.",
   AUDITOR: "Lit les dossiers et le journal d'audit, sans pouvoir rien modifier.",
 };
 
-export const PERMISSIONS = ["decision.decide", "action.execute.api", "action.execute.manual", "action.verify", "action.rollback", "audit.read", "promotion.manage", "report.certify", "property.delete"] as const;
+export const PERMISSIONS = ["decision.decide", "action.execute.api", "action.execute.manual", "action.verify", "action.rollback", "audit.read", "promotion.manage", "report.certify", "property.delete", "property.manage", "workspace.manage"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const PERMISSION_LABEL: Record<Permission, string> = {
@@ -43,6 +44,8 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "promotion.manage": "Tenir le registre des promotions (déclarer, modifier, terminer)",
   "report.certify": "Préparer, retoucher et certifier le rapport mensuel",
   "property.delete": "Supprimer un logement",
+  "property.manage": "Gérer les logements : dossier, annonces, connexions, stratégie et coupe-circuits",
+  "workspace.manage": "Régler l'espace : nom, clés et modèles d'IA, plafond, priorisation et démonstration",
 };
 /** Verbe de refus, à la forme infinitive : « votre rôle ne permet pas de … ». */
 const DENY_VERB: Record<Permission, string> = {
@@ -55,6 +58,8 @@ const DENY_VERB: Record<Permission, string> = {
   "promotion.manage": "tenir le registre des promotions (déclarer, modifier ou terminer une promotion)",
   "report.certify": "préparer, retoucher ou certifier un rapport mensuel",
   "property.delete": "supprimer un logement",
+  "property.manage": "gérer les logements (dossier, annonces, connexions, stratégie, coupe-circuits)",
+  "workspace.manage": "régler l'espace (nom, clés et modèles d'IA, plafond, priorisation, démonstration)",
 };
 
 const FULL: readonly Permission[] = PERMISSIONS;
@@ -62,7 +67,7 @@ const FULL: readonly Permission[] = PERMISSIONS;
 export const GRANTS: Record<Role, readonly Permission[]> = {
   OWNER: FULL,
   TENANT_ADMIN: FULL,
-  REVENUE_MANAGER: FULL.filter((p) => p !== "property.delete"),
+  REVENUE_MANAGER: FULL.filter((p) => p !== "property.delete" && p !== "workspace.manage"),
   ANALYST: [],
   OTA_OPERATOR: ["action.execute.manual", "action.verify", "promotion.manage"],
   OWNER_VIEWER: [],

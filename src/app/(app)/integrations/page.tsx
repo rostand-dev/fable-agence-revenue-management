@@ -9,6 +9,7 @@ import { AVAILABILITY, capabilitiesOf, KILL_SWITCH_PROVIDERS, PROVIDER_INFO, PRO
 import { loadProviderFacts } from "@/lib/services/capabilities";
 import { ingestionErrorCount } from "@/lib/services/ingestion-errors";
 import Link from "next/link";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Intégrations" };
 const ST: Record<ProviderStatus, [string, "sain" | "tech" | "attention" | "neutre"]> = { DEMO: ["Source simulée", "tech"], CONNECTED: ["Connectée", "sain"], NOT_CONNECTED: ["Non connectée", "neutre"], DEGRADED: ["Dégradée", "attention"] };
@@ -27,6 +28,7 @@ export default async function Integrations() {
         <h1>Ce que l'agence peut lire et écrire</h1>
         <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. L'écriture chez PriceLabs n'existe que pour les logements réels, une fois ouverte par l'hébergeur de l'application (verrou d'environnement) et tant que le coupe-circuit est levé ; sinon, toute modification passe par une procédure manuelle guidée, avec preuve.</p>
       </div>
+      <RightsNotice need="property.manage" />
       {/* avis temporaire, à retirer à la version suivante */}
       <Banner role="tech" title="Les clés IA ont déménagé" style={{ marginBottom: 18 }}><span data-testid="cles-demenagees">Les clés Anthropic, OpenAI et Mistral sont désormais dans <Link href="/modeles/cles">IA &amp; modèles › Clés fournisseurs</Link>.</span></Banner>
       <Banner role="tech" title="Démonstration simulée, logements réels en lecture (écriture PriceLabs verrouillée par défaut)" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
@@ -63,7 +65,7 @@ export default async function Integrations() {
                   </div>
                 )}
                 {KILL_SWITCH_PROVIDERS.includes(k) && (
-                <ActionForm action={killSwitchAction} hidden={{ provider: k, on: f.killSwitch ? "0" : "1" }}>
+                <ActionForm need="property.manage" action={killSwitchAction} hidden={{ provider: k, on: f.killSwitch ? "0" : "1" }}>
                   <Submit className={f.killSwitch ? "btn btn-ghost btn-sm" : "btn btn-danger btn-sm"} icon={f.killSwitch ? "check" : "ban"}>{f.killSwitch ? "Lever le coupe-circuit" : "Activer le coupe-circuit"}</Submit>
                   <span className="metric-source" style={{ marginLeft: 10 }}>Bloque l'écriture automatique par API vers {info.name}, immédiatement. Les procédures manuelles restent possibles.</span>
                 </ActionForm>

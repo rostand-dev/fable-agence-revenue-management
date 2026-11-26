@@ -17,6 +17,8 @@ import type { ChannelMarkup } from "@/lib/pricing/published";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { listOwners } from "@/lib/services/portfolio";
 import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
+import { Reserved } from "@/components/Reserved";
+import { can } from "@/lib/rbac";
 
 export const metadata = { title: "Création d'un logement" };
 
@@ -29,6 +31,7 @@ export default async function Creation({ params, searchParams }: { params: Promi
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, user.tenantId)));
   if (!p || p.isDemo) notFound();
   if (p.status !== "ONBOARDING") redirect(`/logements/${p.id}`);
+  if (!can(user.role, "property.manage")) return <><FunnelHeader title={`Nouveau logement · ${p.name}`} saved={savedLabel(p.onboarding?.savedAt)} quit="link" /><main className="fn-wrap" id="contenu"><Reserved role={user.role} need="property.manage" back={{ href: `/logements/${p.id}`, label: "Retour à la fiche" }} /></main></>;
   const model = p.economics as EconomicModel, strat = (p.strategy ?? {}) as Strategy;
   const miss = missingEconomics(model);
   const facts: FunnelFacts = { identityOk: identityComplete(p), superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: miss.length, onboarding: p.onboarding };

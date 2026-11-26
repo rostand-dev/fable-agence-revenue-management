@@ -17,7 +17,7 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
       {!sh?.apiKeyEnc ? (
         <>
           <Banner role="tech" title="SuperHote n'est pas connecté à ce logement">Sans lui, les réservations transmises sans canal restent à préciser à la main, et le prix réellement publié ne peut pas être comparé à l'estimation.</Banner>
-          <ActionForm action={connectSuperhoteAction} hidden={{ propertyId }}>
+          <ActionForm need="property.manage" action={connectSuperhoteAction} hidden={{ propertyId }}>
             <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
               <label htmlFor="shKey">Jeton API SuperHote <span className="req" aria-hidden="true">*</span></label>
               <input id="shKey" name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={20} aria-describedby="shKey-h" />
@@ -62,12 +62,12 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
                 {free.length === 0 ? (
                   <Banner role="tech" title="Aucun logement disponible sur ce compte">Tous les logements visibles avec ce jeton sont déjà rattachés à vos autres logements.</Banner>
                 ) : free.length === 1 ? (
-                  <ActionForm action={selectRentalAction} hidden={{ propertyId, rentalId: String(free[0].id) }}>
+                  <ActionForm need="property.manage" action={selectRentalAction} hidden={{ propertyId, rentalId: String(free[0].id) }}>
                     <Recap rows={[["Logement SuperHote", free[0].name], ["Ville", free[0].city ?? <Vq key="v">inconnue</Vq>], ["Identifiant", String(free[0].id), true]]} />
                     <div style={{ marginTop: 14 }}><Submit icon="check" pendingLabel="Première lecture…">Oui, c'est bien ce logement : rattacher</Submit></div>
                   </ActionForm>
                 ) : (
-                  <ActionForm action={selectRentalAction} hidden={{ propertyId }}>
+                  <ActionForm need="property.manage" action={selectRentalAction} hidden={{ propertyId }}>
                     <div className="field" style={{ marginBottom: 12, maxWidth: 560 }}>
                       <label htmlFor="rentalId">Quel logement SuperHote correspond à celui-ci ? <span className="req" aria-hidden="true">*</span></label>
                       <select id="rentalId" name="rentalId" required defaultValue="">
@@ -94,16 +94,16 @@ export function SuperhotePanel({ propertyId, propertyName, propertyCity, isDemo,
               {!webhook.active && webhook.reason && <p className="muted" style={{ margin: 0 }}>{webhook.reason}</p>}
               <div className="row-wrap">
                 {!webhook.active
-                  ? <ActionForm action={enableWebhookAction} hidden={{ propertyId }} className="inline"><Submit icon="plug" pendingLabel="Activation…">Activer les webhooks</Submit></ActionForm>
-                  : <ActionForm action={disableWebhookAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="cross">Désactiver les webhooks</Submit></ActionForm>}
+                  ? <ActionForm need="property.manage" action={enableWebhookAction} hidden={{ propertyId }} className="inline"><Submit icon="plug" pendingLabel="Activation…">Activer les webhooks</Submit></ActionForm>
+                  : <ActionForm need="property.manage" action={disableWebhookAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="cross">Désactiver les webhooks</Submit></ActionForm>}
               </div>
               <p className="muted" style={{ margin: 0 }}>Avec les webhooks, SuperHote prévient NuitSignal à chaque réservation créée, modifiée ou annulée, sans attendre la prochaine lecture. Le jeton doit porter le scope « public-api:webhooks.manage ». Un seul webhook sert tous les logements d'un même compte SuperHote.</p>
             </div>
           )}
           <div className="row-wrap">
-            {sh.rentalId && <ActionForm action={syncSuperhoteAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire SuperHote maintenant</Submit></ActionForm>}
-            {sh.rentalId && <ActionForm action={detachRentalAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de logement</Submit></ActionForm>}
-            <ActionForm action={disconnectSuperhoteAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer le jeton</Submit></ActionForm>
+            {sh.rentalId && <ActionForm need="property.manage" action={syncSuperhoteAction} hidden={{ propertyId }} className="inline"><Submit icon="spin" pendingLabel="Lecture en cours…">Relire SuperHote maintenant</Submit></ActionForm>}
+            {sh.rentalId && <ActionForm need="property.manage" action={detachRentalAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de logement</Submit></ActionForm>}
+            <ActionForm need="property.manage" action={disconnectSuperhoteAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-danger btn-sm" icon="cross">Supprimer le jeton</Submit></ActionForm>
           </div>
           <p className="muted" style={{ margin: 0 }}>Lecture seule. Les réservations et disponibilités SuperHote sont relues de toutes les heures à toutes les 6 h, selon le rythme de suivi de ce logement.{!plLinked && " Rattachez aussi PriceLabs pour que les canaux relevés et la comparaison de prix soient appliqués."}</p>
         </>

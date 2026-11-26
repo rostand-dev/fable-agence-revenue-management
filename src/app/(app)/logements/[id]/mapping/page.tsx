@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { MAPPING_STATUS_LABEL, type MappingState } from "@/lib/mapping";
 import { getMapping } from "@/lib/services/mapping";
 import { fmtDate } from "@/lib/dates";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Mapping des identifiants" };
 const ROLE: Record<MappingState, "sain" | "attention" | "neutre"> = { ok: "sain", warning: "attention", missing: "neutre" };
@@ -30,6 +31,7 @@ export default async function Mapping({ params }: { params: Promise<{ id: string
         <h1>Mapping des identifiants</h1>
         <p>Un mauvais rattachement fausse les prix, les réservations et les planchers sans que rien ne signale d'erreur. Vérifiez que chaque outil désigne bien ce logement, puis confirmez.</p>
       </div>
+      <RightsNotice need="property.manage" />
       <p data-testid="mapping-status"><State role={m.status === "CONFIRMED" ? "sain" : m.status === "INCOMPLETE" ? "violation" : "attention"}>{MAPPING_STATUS_LABEL[m.status]}</State>{m.confirmedAt && <small> · confirmé le {fmtDate(m.confirmedAt.slice(0, 10))}</small>}</p>
       <section aria-labelledby="map-items">
         <h2 id="map-items">Ce que chaque outil désigne</h2>

@@ -2077,3 +2077,8 @@ table.cascade .delta-neu { color: var(--quiet); }
 .toc-title { margin: 0 0 6px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
 .toc ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 18px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); }
 .toc a { display: flex; align-items: center; min-height: 40px; font-size: 14px; }
+
+/* Droits par rôle : formulaire verrouillé (champs lisibles, aucune saisie) ; la mise en page reste celle du formulaire. */
+fieldset.locked { display: contents; }
+fieldset.locked :is(input, select, textarea):disabled { opacity: .55; cursor: not-allowed; }
+.rights-notice { margin: 16px 0; }

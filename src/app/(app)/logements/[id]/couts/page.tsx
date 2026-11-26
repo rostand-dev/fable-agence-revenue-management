@@ -11,6 +11,8 @@ import { todayISO } from "@/lib/dates";
 import { answersFromModel } from "@/lib/engine/costs";
 import { lastMonths, medianLos, monthlyKpis } from "@/lib/engine/metrics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
+import { Reserved } from "@/components/Reserved";
+import { can } from "@/lib/rbac";
 
 export const metadata = { title: "Coûts et seuils" };
 export default async function Couts({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ etape?: string }> }) {
@@ -20,6 +22,11 @@ export default async function Couts({ params, searchParams }: { params: Promise<
   if (!p || p.isDemo) notFound();
   // pendant la création, le dossier se complète dans le parcours guidé
   if (p.status === "ONBOARDING") redirect(`/logements/${p.id}/creation?etape=couts`);
+  if (!can(user.role, "property.manage")) return (
+    <Page title="Coûts et seuils" sub={p.name} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name, href: `/logements/${p.id}` }, { label: "Coûts et seuils" }]}>
+      <Reserved role={user.role} need="property.manage" back={{ href: `/logements/${p.id}?tab=hub-economie`, label: "Retour à Économie" }} />
+    </Page>
+  );
   const resas = await db.select().from(schema.reservations).where(eq(schema.reservations.propertyId, p.id));
   const k = monthlyKpis(resas, lastMonths(todayISO(), 12)).filter((m) => m.nights > 0);
   const nightsSold = k.length ? k.reduce((a, m) => a + m.nights, 0) : null;

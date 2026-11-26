@@ -1,4 +1,4 @@
-import { apiUser, fromError, isResponse, json, readObject } from "@/lib/api/v1";
+import { apiUser, apiWriter, fromError, isResponse, json, readObject } from "@/lib/api/v1";
 import { confirmMapping, getMapping } from "@/lib/services/mapping";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +16,7 @@ export async function GET(_: Request, { params }: Ctx) {
 }
 /** POST /api/v1/properties/{id}/mapping : { fingerprint, acknowledge? } confirme (fingerprint : celui lu par le GET, pour confirmer ce qui a été vu ; acknowledge exigé s'il y a des écarts) le mapping (acknowledge exigé s'il y a des écarts). */
 export async function POST(req: Request, { params }: Ctx) {
-  const u = await apiUser(); if (isResponse(u)) return u;
+  const u = await apiWriter(req, "property.manage", (await params).id); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;
   const { id } = await params;
   try { await confirmMapping(u, id, body.acknowledge === true, body.fingerprint); return json({ ok: true }); } catch (e) { return fromError(e); }

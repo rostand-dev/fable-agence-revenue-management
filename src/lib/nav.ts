@@ -40,15 +40,15 @@ export function menuProperties(all: NavProperty[], currentPropertyId: string | n
   return { shown: all.filter((p) => recent.has(p.id) || p.id === currentPropertyId), truncated: true };
 }
 
-/** `properties` : du plus ancien au plus récent. */
-export function buildNav(properties: NavProperty[], currentPropertyId: string | null = null): NavGroup[] {
+/** `properties` : du plus ancien au plus récent. `canAdd` : le rôle permet d'ajouter un logement. */
+export function buildNav(properties: NavProperty[], currentPropertyId: string | null = null, canAdd = true): NavGroup[] {
   const { shown, truncated } = menuProperties(properties, currentPropertyId);
   const logements: NavNode[] = shown.map((p) => ({
     id: `property:${p.id}`, label: p.name || "Logement sans nom", href: `/logements/${p.id}`,
     children: PROPERTY_SECTIONS.map((s) => ({ id: sectionNodeId(p.id, s.key), label: s.label, href: sectionHref(p.id, s.key) })),
   }));
   if (truncated) logements.push({ id: "tous-les-logements", label: `Tous les logements (${properties.length})`, href: "/logements" });
-  logements.push({ id: "ajouter-logement", label: "Ajouter un logement", href: "/logements/nouveau", icon: "plus", action: true });
+  if (canAdd) logements.push({ id: "ajouter-logement", label: "Ajouter un logement", href: "/logements/nouveau", icon: "plus", action: true });
   return [
     { label: "Pilotage", items: [
       { id: "tableau-de-bord", label: "Tableau de bord", href: "/portefeuille", icon: "chart" },

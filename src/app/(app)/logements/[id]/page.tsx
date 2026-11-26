@@ -38,6 +38,7 @@ import { Performance } from "./_sections/Performance";
 import { QualiteDonnees } from "./_sections/QualiteDonnees";
 import { Canaux, StrategieEnVigueur } from "./_sections/Strategie";
 import { todoItems } from "./_sections/todo";
+import { RightsNotice } from "@/components/Rights";
 
 async function noChannelRows(propertyId: string, overrides: Record<string, string>) {
   const rows = await db.select().from(schema.reservations).where(eq(schema.reservations.propertyId, propertyId));
@@ -75,7 +76,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
   const section = sectionOfTab(tab);
   const hub = hubByTab(tab);
-  const canDelete = can(user.role, "property.delete");
+  const canDelete = can(user.role, "property.delete"), canManage = can(user.role, "property.manage");
   // lien de retour d'un écran vers sa rubrique (les hubs et les écrans de premier niveau n'en ont pas)
   const parent = tab === "performance" ? { href: `/logements/${p.id}`, label: "Vue d'ensemble" }
     : !hub && HUBS.some((h) => h.key === section.key) ? { href: sectionHref(p.id, section.key), label: section.label } : null;
@@ -91,15 +92,15 @@ export default async function Logement({ params, searchParams }: { params: Promi
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>
           <div className="idmeta"><span>{p.kind || "type non renseigné"}{p.bedrooms ? ` · ${p.bedrooms} chambres` : ""}{p.capacity ? ` · ${p.capacity} voyageurs` : ""}</span><span>{p.city || "ville non renseignée"}</span><span>{p.profile?.positioning ?? "positionnement non renseigné"}</span>{owner && <span data-testid="property-owner">propriétaire : {owner.name}</span>}</div>
         </div>
-        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{([["pricelabs", pricelabsBadge(p.pricelabs, p.isDemo)], ["superhote", superhoteBadge(p.superhote, p.isDemo)]] as const).map(([k, b]) => b && <Link key={k} href={badgeHref(k, p.id, p.status)} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
+        <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{([["pricelabs", pricelabsBadge(p.pricelabs, p.isDemo)], ["superhote", superhoteBadge(p.superhote, p.isDemo)]] as const).map(([k, b]) => b && <Link key={k} href={badgeHref(k, p.id, p.status, canManage)} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
-      {onboarding && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link>{canDelete && <> <Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce brouillon</Link></>}</span></Banner>}
+      {onboarding && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé.{canManage && " Reprenez le parcours de création là où vous l'avez laissé."} {(canManage || canDelete) && <span style={{ display: "block", marginTop: 10 }}>{canManage && <Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link>}{canDelete && <> <Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce brouillon</Link></>}</span>}</Banner>}
       {sp.lance && <Banner role="sain" title="Observation lancée" style={{ marginBottom: 16 }}>Le dossier est complet : l'équipe lit vos données et vous proposera ses premières situations, sans rien appliquer sans votre accord.</Banner>}
       <TodoCard items={todoItems(fiche, tab)} />
       <div className="fiche-bar">
         <Suspense fallback={null}><SectionSwitcher property={p.name} sections={sections} active={section.key} tab={tab} /></Suspense>
-        {isLaunched(p) && <Suspense fallback={null}><ManageMenu propertyId={p.id} canDelete={canDelete} /></Suspense>}
+        {isLaunched(p) && <Suspense fallback={null}><ManageMenu propertyId={p.id} canEdit={canManage} canDelete={canDelete} /></Suspense>}
       </div>
       {parent && <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={parent.href}><Icon name="back" />{parent.label}</Link></p>}
 
@@ -111,6 +112,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
       {tab === "canaux" && <Canaux {...fiche} />}
       {tab === "economie" && <Economie {...fiche} />}
       {!p.isDemo && (tab === "annonces" || tab === "pricelabs" || tab === "superhote") && <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/mapping`}><Icon name="link" />Mapping des identifiants</Link></p>}
+      {!p.isDemo && (tab === "annonces" || tab === "pricelabs" || tab === "superhote") && <RightsNotice need="property.manage" />}
       {tab === "annonces" && <ListingsPanel propertyId={p.id} listings={await listListings(user.tenantId, p.id)} editable={!p.isDemo} />}
       {tab === "pricelabs" && <PriceLabsPanel costsMissing={miss.length} propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} pl={p.pricelabs ?? null} error={sp.erreur} taken={!p.isDemo ? Object.fromEntries(await linkedElsewhere(user.tenantId, p.id)) : {}} noChannel={!p.isDemo ? await noChannelRows(p.id, p.pricelabs?.overrides ?? {}) : []} snapshots={!p.isDemo && p.pricelabs?.apiKeyEnc ? await getSnapshotState(user.tenantId, p.id, { limit: 5 }) : null} />}
       {tab === "superhote" && <SuperhotePanel propertyId={p.id} propertyName={p.name} propertyCity={p.city} isDemo={p.isDemo} sh={p.superhote ?? null} plLinked={!!p.pricelabs?.listingId} taken={!p.isDemo ? Object.fromEntries(await rentalLinkedElsewhere(user.tenantId, p.id)) : {}} error={sp.erreurSh} webhook={!p.isDemo && p.superhote?.apiKeyEnc ? await webhookStatus(user.tenantId, p.id) : undefined} />}

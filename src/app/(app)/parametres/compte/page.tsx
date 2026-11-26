@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { can, PERMISSIONS, PERMISSION_LABEL, ROLE_LABEL, ROLE_SUMMARY } from "@/lib/rbac";
 import { rememberDaysFromEnv } from "@/lib/remember-policy";
 import { loadFlags } from "@/lib/services/flags";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Compte & sécurité" };
 /** L'équipe IA a rejoint « IA & modèles › Agents » : les anciens liens y mènent. */
@@ -26,7 +27,8 @@ export default async function Compte() {
       <section className="section" style={{ marginTop: 0 }}>
         <h2>Compte</h2>
         <Recap rows={[["Nom", user.name], ["Adresse e-mail", user.email, true], ["Rôle", ROLE_LABEL[user.role]]]} />
-        <ActionForm action={renameTenantAction} style={{ marginTop: 18, maxWidth: 520 }}>
+        <RightsNotice need="workspace.manage" />
+        <ActionForm need="workspace.manage" action={renameTenantAction} style={{ marginTop: 18, maxWidth: 520 }}>
           <div className="field">
             <label htmlFor="tenantName">Nom de l'espace</label>
             <input id="tenantName" name="tenantName" type="text" required minLength={2} maxLength={80} defaultValue={user.tenantName} autoComplete="off" />
@@ -37,7 +39,7 @@ export default async function Compte() {
       </section>
       <section className="section" id="droits" data-testid="droits">
         <h2>Vos droits</h2>
-        <p className="section-note"><strong>{ROLE_LABEL[user.role]}.</strong> {ROLE_SUMMARY[user.role]} Les droits couvrent le circuit de décision et la suppression d'un logement ; le serveur les vérifie à chaque action, et un refus est inscrit au journal d'audit.</p>
+        <p className="section-note"><strong>{ROLE_LABEL[user.role]}.</strong> {ROLE_SUMMARY[user.role]} Le serveur les vérifie à chaque écriture, et un refus est inscrit au journal d'audit. Poser une question aux agents reste ouvert à tous les rôles.</p>
         <div className="table-wrap"><table className="econ rights-table">
           <caption className="visually-hidden">Ce que votre rôle permet</caption>
           <thead><tr><th scope="col">Action</th><th scope="col">Votre rôle</th></tr></thead>
@@ -47,6 +49,7 @@ export default async function Compte() {
       <section className="section" id="fonctions">
         <h2>Fonctions activées</h2>
         <p className="section-note">Chaque fonction est active par défaut. Vous pouvez la couper pour tout votre espace, pour un logement ou pour une intégration. Couper n'ouvre jamais rien de plus : un niveau coupé ne peut pas être rétabli par un niveau plus fin, et chaque changement est inscrit au journal.</p>
+        <RightsNotice need="property.manage" />
         <FlagsPanel rows={flagRows} properties={props} />
       </section>
       <section className="section" id="securite">

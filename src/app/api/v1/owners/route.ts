@@ -1,4 +1,4 @@
-import { apiUser, fromError, isResponse, json, ownerView, readObject } from "@/lib/api/v1";
+import { apiUser, apiWriter, fromError, isResponse, json, ownerView, readObject } from "@/lib/api/v1";
 import { createOwner, listOwners } from "@/lib/services/portfolio";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export async function GET() {
 }
 /** POST /api/v1/owners : { name, email?, notes? } */
 export async function POST(req: Request) {
-  const u = await apiUser(); if (isResponse(u)) return u;
+  const u = await apiWriter(req, "property.manage"); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;
   try { return json({ id: await createOwner(u, body) }, 201); } catch (e) { return fromError(e); }
 }

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { createContext, Fragment, Suspense, useContext, useEffect, useRef, useState } from "react";
 import { Icon, Logo } from "./Icon";
+import { useRefusal } from "./Rights";
 import { logoutAction } from "@/app/actions/auth";
 import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, hasPriceBadge, propertyIdOf, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
 
@@ -23,7 +24,8 @@ function Count({ badge, counts, className = "rail-count" }: { badge?: NavBadge; 
 /** Colonne latérale : arborescence dépliable. La branche de l'écran courant s'ouvre seule ; les ouvertures manuelles sont gardées dans le navigateur. */
 function RailTree({ properties, tab, counts }: { properties: NavProperty[]; tab: string | null; counts: Counts }) {
   const path = usePathname();
-  const groups = buildNav(properties, propertyIdOf(path));
+  const canAdd = useRefusal("property.manage") === null;
+  const groups = buildNav(properties, propertyIdOf(path), canAdd);
   const current = currentNodeId(path, tab);
   const trail = ancestorIds(groups, current);
   // sur une fiche, la branche du logement affiché montre ses sections
@@ -116,7 +118,8 @@ export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, prop
   }, []);
 
   const counts = { open, alerts, prices, pricesDecide };
-  const groups = buildNav(properties, propertyIdOf(path));
+  const canAdd = useRefusal("property.manage") === null;
+  const groups = buildNav(properties, propertyIdOf(path), canAdd);
   const current = currentNodeId(path, null);
   const trail = ancestorIds(groups, current);
   // la rubrique elle-même compte aussi : l'accueil des Paramètres est une page, pas un ancêtre

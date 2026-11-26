@@ -10,6 +10,7 @@ import { euro } from "@/lib/format";
 import { STRATEGY_SOURCE_LABEL } from "@/lib/strategy";
 import { PortfolioError } from "@/lib/services/portfolio";
 import { getStrategyState } from "@/lib/services/strategy";
+import { RightsNotice } from "@/components/Rights";
 
 export const metadata = { title: "Strategy Builder" };
 const when = (d: Date) => d.toLocaleString("fr-FR", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Paris" });
@@ -47,6 +48,7 @@ export default async function StrategyBuilder({ params }: { params: Promise<{ id
         <h1>Strategy Builder</h1>
         <p>Préparez vos réglages en brouillon, comparez-les à la stratégie en vigueur, puis publiez. Rien ne change avant la publication, et chaque version reste consultable et restaurable.</p>
       </div>
+      <RightsNotice need="property.manage" />
       <p data-testid="strategy-status"><State role="sain">version {s.version} en vigueur</State>{s.draft && <> <State role={s.draft.stale ? "attention" : "neutre"}>{s.draft.stale ? "brouillon périmé" : "brouillon en cours"}</State></>}</p>
       <Banner role="tech" title="Prix de base, minimum et maximum : pilotés par PriceLabs" style={{ marginBottom: 16 }}>
         Base {euro(s.current.basePriceCents ?? null)} · minimum {euro(s.current.minPriceCents ?? null)} · maximum {euro(s.current.maxPriceCents ?? null)}. Ils suivent PriceLabs et les actions que vous approuvez ; le Builder règle le reste.
@@ -54,7 +56,7 @@ export default async function StrategyBuilder({ params }: { params: Promise<{ id
       {!editable ? <Banner role="tech" title="Réglages non modifiables ici">{s.isDemo ? "Un logement de démonstration ne se modifie pas." : "Ce logement est en cours de création : la stratégie se règle dans le parcours guidé."}</Banner> : (
         <section aria-labelledby="sb-draft">
           <h2 id="sb-draft">Brouillon</h2>
-          <ActionForm action={saveStrategyDraftAction} hidden={{ propertyId: p.id, baseVersion: s.version }}>
+          <ActionForm need="property.manage" action={saveStrategyDraftAction} hidden={{ propertyId: p.id, baseVersion: s.version }}>
             <div className="form-grid">
               <div style={{ gridColumn: "1 / -1" }}>{field("objective", "Objectif", { type: "text", maxLength: 160, defaultValue: form.objective ?? "", placeholder: "ex. protéger le revenu net des séjours professionnels", autoComplete: "off" })}</div>
               <div style={{ gridColumn: "1 / -1" }}>{field("positioning", "Positionnement", { type: "text", maxLength: 120, defaultValue: form.positioning ?? "", autoComplete: "off" })}</div>
@@ -71,12 +73,12 @@ export default async function StrategyBuilder({ params }: { params: Promise<{ id
               {s.draft.changes.length === 0 ? <p className="section-note">Le brouillon est identique à la stratégie en vigueur : rien à publier.</p> : <ChangeList changes={s.draft.changes} label="Changements du brouillon" />}
               <div className="row-wrap" style={{ marginTop: 16, alignItems: "flex-start" }}>
                 {!s.draft.stale && s.draft.changes.length > 0 && (
-                  <ActionForm action={publishStrategyAction} hidden={{ propertyId: p.id }} style={{ flex: "1 1 280px" }}>
+                  <ActionForm need="property.manage" action={publishStrategyAction} hidden={{ propertyId: p.id }} style={{ flex: "1 1 280px" }}>
                     <div className="field"><label htmlFor="sb-note">Note de publication (facultative)</label><input id="sb-note" name="note" type="text" maxLength={300} autoComplete="off" /></div>
                     <div className="row-wrap" style={{ marginTop: 12 }}><Submit icon="check" pendingLabel="Publication…">Publier la stratégie</Submit></div>
                   </ActionForm>
                 )}
-                <ActionForm action={discardStrategyDraftAction} hidden={{ propertyId: p.id }}>
+                <ActionForm need="property.manage" action={discardStrategyDraftAction} hidden={{ propertyId: p.id }}>
                   <Submit className="btn btn-ghost" icon="cross" pendingLabel="Abandon…">Abandonner le brouillon</Submit>
                 </ActionForm>
               </div>
@@ -98,7 +100,7 @@ export default async function StrategyBuilder({ params }: { params: Promise<{ id
                 {v.note && <p style={{ margin: "0 0 12px" }}>« {v.note} »</p>}
                 {v.changes.length === 0 ? <p style={{ margin: 0 }}>Version de départ : stratégie reprise telle quelle.</p> : <ChangeList changes={v.changes} label={`Changements de la version ${v.version}`} />}
                 {editable && v.version !== s.version && (
-                  <ActionForm action={rollbackStrategyAction} hidden={{ propertyId: p.id, version: v.version }} style={{ marginTop: 16 }}>
+                  <ActionForm need="property.manage" action={rollbackStrategyAction} hidden={{ propertyId: p.id, version: v.version }} style={{ marginTop: 16 }}>
                     <div className="field"><label htmlFor={"rb-" + v.version}>Note (facultative)</label><input id={"rb-" + v.version} name="note" type="text" maxLength={300} autoComplete="off" /></div>
                     <div className="row-wrap" style={{ marginTop: 12 }}><Submit className="btn btn-ghost btn-sm" icon="history" pendingLabel="Restauration…">Restaurer les réglages de cette version</Submit></div>
                     <p className="section-note" style={{ margin: "8px 0 0" }}>Crée une nouvelle version avec ces réglages. Les prix de base, minimum et maximum ne sont pas restaurés.</p>

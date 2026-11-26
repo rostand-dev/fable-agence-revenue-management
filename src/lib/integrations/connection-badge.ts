@@ -18,6 +18,6 @@ export function connectionBadge(kind: Integration, conn: Record<string, any> | n
 export const superhoteBadge = (sh: Record<string, any> | null | undefined, isDemo: boolean) => connectionBadge("superhote", sh, isDemo);
 export const pricelabsBadge = (pl: Record<string, any> | null | undefined, isDemo: boolean) => connectionBadge("pricelabs", pl, isDemo);
 
-/** Destination du badge : l'étape du parcours de création tant que le logement n'est pas lancé, sinon l'onglet de la fiche. */
-export const badgeHref = (kind: Integration, propertyId: string, status: string) =>
-  status === "ONBOARDING" ? `/logements/${propertyId}/creation?etape=${kind}` : `/logements/${propertyId}?tab=${kind}`;
+/** Destination du badge : l'étape du parcours de création tant que le logement n'est pas lancé (et si le rôle peut s'en servir), sinon l'onglet de la fiche. */
+export const badgeHref = (kind: Integration, propertyId: string, status: string, canManage = true) =>
+  status === "ONBOARDING" && canManage ? `/logements/${propertyId}/creation?etape=${kind}` : `/logements/${propertyId}?tab=${kind}`;

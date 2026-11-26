@@ -16,11 +16,13 @@ import { db, schema } from "@/db";
 import { eq } from "drizzle-orm";
 import { Banner } from "@/components/ui";
 import { FUNNEL_STEPS, resumeStep, stepIndex, stepLabel } from "@/lib/onboarding";
+import { can, denyMessage } from "@/lib/rbac";
 
 export const metadata = { title: "Logements" };
 
 export default async function Logements({ searchParams }: { searchParams: Promise<{ enregistre?: string; supprime?: string }> }) {
   const user = await requireUser();
+  const canManage = can(user.role, "property.manage");
   const sp = await searchParams, saved = !!sp.enregistre, deleted = !!sp.supprime;
   const [props, opps, resas] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["OPEN"]), db.select().from(schema.reservations).where(eq(schema.reservations.tenantId, user.tenantId))]);
   const months = lastMonths(todayISO(), 3);
@@ -32,7 +34,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
       </div>
       {deleted && <Banner role="sain" title="Logement supprimé" style={{ marginBottom: 16 }}>Le logement et ses données ont été supprimés. Le journal d'audit en garde la trace.</Banner>}
       {saved && <Banner role="sain" title="Saisie enregistrée" style={{ marginBottom: 16 }}>Vous reprendrez la création exactement là où vous vous êtes arrêtée, avec « Reprendre la création ».</Banner>}
-      <p style={{ margin: "0 0 18px" }}><Link className="btn btn-primary" href="/logements/nouveau"><Icon name="plus" />Ajouter un logement</Link></p>
+      {canManage && <p style={{ margin: "0 0 18px" }}><Link className="btn btn-primary" href="/logements/nouveau"><Icon name="plus" />Ajouter un logement</Link></p>}
       <div className="stack">
         {props.map((p) => {
           const k = monthlyKpis(resas.filter((r) => r.propertyId === p.id), months);
@@ -45,7 +47,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
             const resume = resumeStep({ identityOk: p.name.length >= 2 && p.city.length >= 2 && !!p.kind, superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: miss.length, onboarding: p.onboarding });
             const i = stepIndex(resume) + 1, later = (p.onboarding?.skipped ?? []).filter((k: string) => !(k === "superhote" ? p.superhote?.rentalId : p.pricelabs?.listingId));
             return (
-              <Link key={p.id} href={`/logements/${p.id}/creation`} className="idhead" style={{ textDecoration: "none", color: "inherit", marginBottom: 0 }}>
+              <Link key={p.id} href={canManage ? `/logements/${p.id}/creation` : `/logements/${p.id}`} className="idhead" style={{ textDecoration: "none", color: "inherit", marginBottom: 0 }}>
                 <div>
                   <h1 style={{ fontSize: 19 }}>{p.name}</h1>
                   <div className="idmeta"><span>{[p.kind, p.city].filter(Boolean).join(" · ") || "type et ville non renseignés"}</span></div>
@@ -57,7 +59,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
                 <div className="idsync">
                   <Badge family="prep" icon="clock">Création en cours</Badge>
                   {later.map((k: string) => <State key={k} role="attention">{k === "superhote" ? "SuperHote" : "PriceLabs"} à faire plus tard</State>)}
-                  <span className="btn btn-primary btn-sm"><Icon name="arrow" />Reprendre la création</span>
+                  {canManage && <span className="btn btn-primary btn-sm"><Icon name="arrow" />Reprendre la création</span>}
                 </div>
               </Link>
             );
@@ -81,7 +83,7 @@ export default async function Logements({ searchParams }: { searchParams: Promis
             </Link>
           );
         })}
-        {props.length === 0 && <div className="empty"><h3>Aucun logement</h3><p>Ajoutez votre premier logement pour que l'équipe puisse commencer son onboarding.</p></div>}
+        {props.length === 0 && <div className="empty"><h3>Aucun logement</h3><p>{canManage ? "Ajoutez votre premier logement pour que l'équipe puisse commencer son onboarding." : denyMessage(user.role, "property.manage")}</p></div>}
       </div>
     </Page>
   );

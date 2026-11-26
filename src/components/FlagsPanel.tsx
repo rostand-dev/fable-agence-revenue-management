@@ -15,7 +15,7 @@ function Toggle({ flag, scope, scopeId, label, on, blockedAbove }: { flag: strin
         <span className={"flag-state " + (on && !held ? "is-on" : "is-off") + (held ? " is-held" : "")}>{held ? "Désactivée (par « Tout mon espace »)" : on ? "Active" : "Désactivée"}</span>
       </div>
       {!held && (
-        <ActionForm action={setFlagAction} hidden={{ flag, scope, scopeId, enabled: on ? "0" : "1" }} className="flag-form">
+        <ActionForm need="property.manage" action={setFlagAction} hidden={{ flag, scope, scopeId, enabled: on ? "0" : "1" }} className="flag-form">
           <Submit className={on ? "btn btn-ghost btn-sm" : "btn btn-primary btn-sm"} pendingLabel="Enregistrement…">{on ? "Désactiver" : "Réactiver"}</Submit>
         </ActionForm>
       )}

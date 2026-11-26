@@ -45,7 +45,7 @@ export function LogementStep({ p, owners = [], ownerId }: { p?: { id: string; na
   return (
     <>
       <div className="fn-head"><h1>Parlez-nous du logement</h1><p>Nom, ville et type suffisent pour continuer. Le reste peut rester « inconnu » : rien n'est jamais remplacé par zéro.</p></div>
-      <ActionForm action={saveLogementAction} id="funnel-form" hidden={p ? { propertyId: p.id } : undefined}>
+      <ActionForm need="property.manage" action={saveLogementAction} id="funnel-form" hidden={p ? { propertyId: p.id } : undefined}>
         {/* bouton par défaut : la touche Entrée vaut toujours « Continuer » */}
         <button type="submit" name="intent" value="next" className="sr-only" tabIndex={-1} aria-hidden="true">Continuer</button>
         <div className="fn-card">
@@ -91,7 +91,7 @@ export function ConnectStep({ kind, propertyId, propertyName, propertyCity, conn
 
       {!conn?.apiKeyEnc ? (
         <div className="fn-card">
-          <ActionForm action={sh ? connectSuperhoteAction : connectPriceLabsAction} hidden={{ propertyId }}>
+          <ActionForm need="property.manage" action={sh ? connectSuperhoteAction : connectPriceLabsAction} hidden={{ propertyId }}>
             <div className="field" style={{ marginBottom: 14, maxWidth: 560 }}>
               <label htmlFor="apiKey">{sh ? "Jeton API SuperHote" : "Clé API PriceLabs"}<span className="req" aria-hidden="true">*</span></label>
               <input id="apiKey" name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={sh ? undefined : 20} placeholder={`collez ${sh ? "le jeton" : "la clé"} ici`} aria-describedby="apiKey-h" />
@@ -110,7 +110,7 @@ export function ConnectStep({ kind, propertyId, propertyName, propertyCity, conn
             ["Première lecture", ls?.at ? (ls.ok ? (sh ? `${ls.reservations ?? "?"} réservations lues` : `${ls.days ?? "?"} jours de grille, ${ls.reservations ?? "?"} réservations${ls.historyFrom ? ` depuis le ${fmtDate(ls.historyFrom)}` : ""}`) : <Vq key="e" kind="obsolete">en échec — {ls.error}</Vq>) : <Vq key="n">pas encore faite</Vq>],
           ]} />
           <div className="row-wrap" style={{ marginTop: 12 }}>
-            <ActionForm action={sh ? detachRentalAction : detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de {sh ? "logement" : "annonce"}</Submit></ActionForm>
+            <ActionForm need="property.manage" action={sh ? detachRentalAction : detachListingAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de {sh ? "logement" : "annonce"}</Submit></ActionForm>
           </div>
         </div>
       ) : (
@@ -123,7 +123,7 @@ export function ConnectStep({ kind, propertyId, propertyName, propertyCity, conn
           {free.length === 0 ? (
             <Banner role="tech" title={`Aucun${sh ? "" : "e"} ${sh ? "logement" : "annonce"} disponible sur ce compte`}>Tou{sh ? "s" : "tes"} {sh ? "les logements" : "les annonces"} de ce compte {sh ? "sont déjà rattachés" : "sont déjà rattachées"} à vos autres logements. Utilisez {sh ? "le jeton" : "la clé"} du compte qui contient celui-ci, ou reportez cette étape.</Banner>
           ) : (
-            <ActionForm action={select} hidden={{ propertyId }}>
+            <ActionForm need="property.manage" action={select} hidden={{ propertyId }}>
               <div className="options" role="radiogroup" aria-label={sh ? "Logements SuperHote" : "Annonces PriceLabs"}>
                 {free.map((c, i) => (
                   <label key={c.id} className="option fn-opt">
@@ -139,12 +139,12 @@ export function ConnectStep({ kind, propertyId, propertyName, propertyCity, conn
           )}
           {cands.filter((c) => c.taken).map((c) => <p key={c.id} className="muted" style={{ margin: "10px 0 0", fontSize: 13.5 }}>« {c.label} » est déjà rattaché{sh ? "" : "e"} à votre logement « {c.taken} » : {sh ? "il n'est" : "elle n'est"} pas proposé{sh ? "" : "e"}.</p>)}
           <div className="row-wrap" style={{ marginTop: 14 }}>
-            <ActionForm action={sh ? disconnectSuperhoteAction : disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de {keyName}</Submit></ActionForm>
+            <ActionForm need="property.manage" action={sh ? disconnectSuperhoteAction : disconnectPriceLabsAction} hidden={{ propertyId }} className="inline"><Submit className="btn btn-ghost btn-sm" icon="undo">Changer de {keyName}</Submit></ActionForm>
           </div>
         </div>
       )}
 
-      <ActionForm action={stepAction} id="funnel-form" hidden={{ propertyId, step: kind }}>
+      <ActionForm need="property.manage" action={stepAction} id="funnel-form" hidden={{ propertyId, step: kind }}>
         <Foot back={stepHref(propertyId, sh ? "logement" : "superhote")}>
           {!linked && <Submit className="btn btn-ghost" name="intent" value="skip" icon="clock" pendingLabel="Enregistrement…">Je le ferai plus tard</Submit>}
           {linked ? <Submit icon="arrow" name="intent" value="next" pendingLabel="Enregistrement…">Continuer</Submit> : <button type="button" className="btn btn-primary" disabled aria-disabled="true" title={`Confirmez d'abord ${sh ? "le logement" : "l'annonce"}, ou reportez cette étape`}><Icon name="arrow" />Continuer</button>}
@@ -159,7 +159,7 @@ export function ReglesStep({ propertyId, minStay, markups, seenNote }: { propert
   return (
     <>
       <div className="fn-head"><h1>Vos règles de vente</h1><p>La durée minimale d'un séjour, et ce que SuperHote ajoute au prix PriceLabs sur chaque canal.</p></div>
-      <ActionForm action={saveReglesAction} id="funnel-form" hidden={{ propertyId }}>
+      <ActionForm need="property.manage" action={saveReglesAction} id="funnel-form" hidden={{ propertyId }}>
         {/* bouton par défaut : la touche Entrée vaut toujours « Continuer » */}
         <button type="submit" name="intent" value="next" className="sr-only" tabIndex={-1} aria-hidden="true">Continuer</button>
         <div className="fn-card">
@@ -201,7 +201,7 @@ export function VerificationStep({ propertyId, checks, blockers, ines, shMissing
         ))}
       </ul>
       <Banner role="tech" title="Ce qui se passe au lancement" style={{ marginTop: 18 }}>Le logement passe en Observation : l'équipe lit vos données et propose des situations, sans rien appliquer sans votre accord.</Banner>
-      <ActionForm action={launchAction} id="funnel-form" hidden={{ propertyId }}>
+      <ActionForm need="property.manage" action={launchAction} id="funnel-form" hidden={{ propertyId }}>
         <Foot back={stepHref(propertyId, "couts")} note={blockers.length ? `À compléter avant le lancement : ${blockers.map((b) => stepLabel(b)).join(", ")}.` : undefined}>
           {blockers.length
             ? <button type="button" className="btn btn-primary" disabled aria-disabled="true"><Icon name="check" />Lancer l'observation</button>

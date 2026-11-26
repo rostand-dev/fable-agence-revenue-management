@@ -10,14 +10,15 @@ import { seasonalFloorGrid } from "@/lib/engine/seasons";
 import { CHANNEL_LABEL, type Channel } from "@/lib/engine/types";
 import { euro } from "@/lib/format";
 import type { Fiche } from "./context";
+import { can } from "@/lib/rbac";
 
 /** Commissions, coûts, seuils et planchers par canal. */
-export function Economie({ p, input, today, model, strat, names, miss }: Fiche) {
+export function Economie({ user, p, input, today, model, strat, names, miss }: Fiche) {
   const los = medianLos(input.resas);
   return (
         <section className="stack">
           {!p.isDemo && p.economicsVersion > 0 && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/versions-economie`}><Icon name="history" />Versions du modèle économique (en vigueur : v{p.economicsVersion})</Link></p>}
-          {!p.isDemo && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/couts`}><Icon name="chat" />{miss.length ? "Renseigner" : "Revoir"} coûts et seuils avec {agentName("onboarding", names)}</Link></p>}
+          {!p.isDemo && can(user.role, "property.manage") && <p style={{ margin: 0 }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/couts`}><Icon name="chat" />{miss.length ? "Renseigner" : "Revoir"} coûts et seuils avec {agentName("onboarding", names)}</Link></p>}
           <Recap rows={[
             ...(["AIRBNB", "BOOKING"] as Channel[]).map((c) => [`Commission ${CHANNEL_LABEL[c]}`, model.channels?.[c] ? `${String(model.channels[c]!.commissionPct).replace(".", ",")} % + ${String(model.channels[c]!.paymentFeePct).replace(".", ",")} % de frais de paiement` : <Vq>inconnue</Vq>, true] as [string, React.ReactNode, boolean]),
             [<Term key="m1" id="menage">Frais de ménage facturés</Term>, <Money key="1" cents={model.cleaningFeeChargedCents} />, true], ["Coût du ménage", <Money key="2" cents={model.cleaningCostCents} />, true], ["Coût du linge", <Money key="3" cents={model.linenCostCents} />, true],

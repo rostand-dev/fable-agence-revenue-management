@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { db, schema } from "@/db";
-import { apiUser, fromError, isResponse, json, propertyView, readObject } from "@/lib/api/v1";
+import { apiUser, apiWriter, fromError, isResponse, json, propertyView, readObject } from "@/lib/api/v1";
 import { createProperty } from "@/lib/services/portfolio";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ export async function GET() {
 }
 /** POST /api/v1/properties : { name, city, kind, bedrooms?, capacity?, positioning?, objective?, ownerId? }. Crée un dossier en cours de création (ONBOARDING). */
 export async function POST(req: Request) {
-  const u = await apiUser(); if (isResponse(u)) return u;
+  const u = await apiWriter(req, "property.manage"); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;
   try { const c = await createProperty(u, body); return json({ id: c.id, name: c.name, status: "ONBOARDING" }, 201); } catch (e) { return fromError(e); }
 }

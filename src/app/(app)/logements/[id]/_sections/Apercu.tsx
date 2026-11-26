@@ -34,7 +34,7 @@ export function Apercu({ user, p, input, opps, model, hasHistory, months, kpis, 
           <p style={{ margin: "0 0 4px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=performance`}>Revenu mensuel et rythme de réservation <Icon name="arrow" /></Link></p>
           <section className="section">
             <h2>Aller plus loin</h2>
-            <PropertyHubLinks property={p} canDelete={can(user.role, "property.delete")} />
+            <PropertyHubLinks property={p} canEdit={can(user.role, "property.manage")} canDelete={can(user.role, "property.delete")} />
           </section>
           <section className="section">
             <h2>Situations ouvertes{opps.length > SHOWN ? ` · ${SHOWN} sur ${opps.length}` : ""}</h2>

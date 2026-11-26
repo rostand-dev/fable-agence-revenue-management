@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { IfRight } from "@/components/Rights";
 import { Fragment } from "react";
 import { Metric, Vq } from "@/components/ui";
 import { addDays, fmtDate, fmtDay } from "@/lib/dates";
@@ -57,7 +58,7 @@ export function Calendrier({ p, sp, input, opps, hasCal }: Fiche) {
               </Link>
             );
           })}</div>
-          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix recommandé par PriceLabs × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu.{!p.isDemo && <> <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</>}</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
+          <p className="foot">{channel ? <>« ~ » : prix publié <strong>estimé</strong> sur {channel.label} = prix recommandé par PriceLabs × (1 + {String(channel.pct).replace(".", ",")} %), arrondi à l'euro. Ce n'est pas le prix lu chez SuperHote.{unknownChannels.length > 0 && <> Majoration non renseignée : {unknownChannels.join(", ")}.</>}</> : <>Prix envoyé à SuperHote, avant majoration des canaux : aucune majoration n'est renseignée, le prix publié aux voyageurs est donc inconnu.{!p.isDemo && <IfRight need="property.manage"> <Link href={`/logements/${p.id}/modifier`}>Renseigner les majorations</Link>.</IfRight>}</>} « m. » : occupation du marché ; « rés. » : nuit réservée ; ★ : événement déclaré. Touchez une case pour le détail.</p>
           {sp.jour && !detailDay && <p className="foot">Date hors du calendrier lu.</p>}
           {detailDay && (
             <div className="date-detail" aria-live="polite">
