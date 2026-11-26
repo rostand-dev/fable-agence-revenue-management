@@ -18,7 +18,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const body = await readObject(req); if (isResponse(body)) return body;
   try { await updatePropertyIdentity(u, (await params).id, body); return json({ ok: true }); } catch (e) { return fromError(e); }
 }
-/** DELETE /api/v1/properties/{id} : { "confirmName": "<nom exact du logement>" } obligatoire. */
+/** DELETE /api/v1/properties/{id} : { "confirmName": "<nom exact du logement>" } obligatoire. 403 si le rôle ne permet pas de supprimer un logement. */
 export async function DELETE(req: Request, { params }: Ctx) {
   const u = await apiUser(); if (isResponse(u)) return u;
   const body = await readObject(req); if (isResponse(body)) return body;

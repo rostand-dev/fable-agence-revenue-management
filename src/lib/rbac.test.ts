@@ -28,6 +28,11 @@ describe("rôles et droits (US-084)", () => {
     expect(rolesWith("report.certify").sort()).toEqual(["OWNER", "REVENUE_MANAGER", "TENANT_ADMIN"]);
     for (const r of ["ANALYST", "OWNER_VIEWER", "AUDITOR", "OTA_OPERATOR"] as const) expect(can(r, "report.certify"), r).toBe(false);
   });
+  it("la suppression d'un logement, définitive, est réservée au propriétaire du compte et à l'administrateur", () => {
+    expect(rolesWith("property.delete").sort()).toEqual(["OWNER", "TENANT_ADMIN"]);
+    for (const r of ["REVENUE_MANAGER", "ANALYST", "OTA_OPERATOR", "OWNER_VIEWER", "AUDITOR"] as const) expect(can(r, "property.delete"), r).toBe(false);
+    expect(denyMessage("ANALYST", "property.delete")).toBe("Votre rôle (Analyste) ne permet pas de supprimer un logement.");
+  });
   it("le registre des promotions (US-100) est tenu par les rôles de décision et l'opérateur OTA, jamais par la lecture seule", () => {
     expect(rolesWith("promotion.manage").sort()).toEqual(["OTA_OPERATOR", "OWNER", "REVENUE_MANAGER", "TENANT_ADMIN"]);
     for (const r of ["ANALYST", "OWNER_VIEWER", "AUDITOR"] as const) expect(can(r, "promotion.manage"), r).toBe(false);

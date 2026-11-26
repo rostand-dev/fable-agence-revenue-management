@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { db, newId, schema } from "@/db";
 import { withTenant } from "@/db/tenant";
 import { makeProperty, makeTenant } from "@/test/db";
+import { ROLES } from "@/lib/rbac";
 import { createListing, createOwner, createProperty, deleteListing, deleteOwner, deleteProperty, ensureDefaultOwner, listListings, listOwners, PortfolioError, renameTenant, setListingStatus, updateListing, updateOwner, updatePropertyIdentity } from "./portfolio";
 
 type T = Awaited<ReturnType<typeof makeTenant>>;
@@ -120,6 +121,19 @@ describe("logements (US-020)", () => {
     expect(await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.opportunityId, oid))).toHaveLength(0);
     expect(await db.select().from(schema.chatMessages).where(eq(schema.chatMessages.opportunityId, oid))).toHaveLength(0);
     expect(await db.select().from(schema.featureFlags).where(and(eq(schema.featureFlags.tenantId, a.tenantId), eq(schema.featureFlags.scopeId, pid)))).toHaveLength(0);
+  });
+  it("suppression réservée au propriétaire du compte et à l'administrateur : refus sans rien effacer, consigné au journal", async () => {
+    const pid = await makeProperty(a.tenantId, "Protégé");
+    const denied = async () => (await audit(a, "access.denied")).filter((e) => e.entityId === pid);
+    const others = ROLES.filter((r) => r !== "OWNER" && r !== "TENANT_ADMIN");
+    for (const role of others) expect(await code(deleteProperty({ ...a.actor, role }, pid, "Protégé")), role).toMatch(/^FORBIDDEN: Votre rôle \(.+\) ne permet pas de supprimer un logement/);
+    expect(await db.select().from(schema.properties).where(eq(schema.properties.id, pid))).toHaveLength(1);
+    expect(await denied()).toHaveLength(others.length);
+    expect((await denied())[0].payload).toMatchObject({ permission: "property.delete" });
+    // le refus ne dit rien de l'existence du logement
+    expect(await code(deleteProperty({ ...a.actor, role: "ANALYST" }, "prop_inconnu", "x"))).toMatch(/^FORBIDDEN/);
+    await deleteProperty({ ...a.actor, role: "TENANT_ADMIN" }, pid, "Protégé");
+    expect(await db.select().from(schema.properties).where(eq(schema.properties.id, pid))).toHaveLength(0);
   });
   it("suppression refusée tant qu'une action de revenu est en cours", async () => {
     const pid = await makeProperty(a.tenantId, "Avec action");

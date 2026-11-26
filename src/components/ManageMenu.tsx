@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 
 /** « Gérer le logement » : les actions sur le dossier, repliées. Se ferme avec Échap, un clic ailleurs ou un changement d'écran. */
-export function ManageMenu({ propertyId }: { propertyId: string }) {
+export function ManageMenu({ propertyId, canDelete }: { propertyId: string; canDelete: boolean }) {
   const box = useRef<HTMLDetailsElement>(null);
   const path = usePathname(), query = useSearchParams().toString();
   useEffect(() => { if (box.current) box.current.open = false; }, [path, query]);
@@ -25,7 +25,7 @@ export function ManageMenu({ propertyId }: { propertyId: string }) {
       <summary className="btn btn-ghost btn-sm"><Icon name="sliders" />Gérer le logement<span className="manage-chevron" aria-hidden="true"><Icon name="caret" /></span></summary>
       <ul>
         <li><Link href={`/logements/${propertyId}/modifier`}><Icon name="sliders" />Modifier le dossier</Link></li>
-        <li><Link href={`/logements/${propertyId}/supprimer`}><Icon name="cross" />Supprimer</Link></li>
+        {canDelete && <li><Link href={`/logements/${propertyId}/supprimer`}><Icon name="cross" />Supprimer</Link></li>}
       </ul>
     </details>
   );

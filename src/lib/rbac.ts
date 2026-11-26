@@ -5,7 +5,8 @@
  * (services de décision, API) ; les écrans ne font que masquer ce que le serveur refuserait de toute façon.
  *
  * Périmètre de l'épic 8 : le circuit de décision (approuver, rejeter, différer, rouvrir, exécuter, vérifier, revenir en arrière)
- * et la lecture du journal d'audit ; épic 10 : la tenue du registre des promotions (`promotion.manage`). Les réglages (coûts, clés, intégrations) ne sont pas encore soumis aux rôles.
+ * et la lecture du journal d'audit ; épic 10 : la tenue du registre des promotions (`promotion.manage`). La suppression d'un logement, définitive, est réservée
+ * au propriétaire du compte et à l'administrateur (`property.delete`). Les autres réglages (coûts, clés, intégrations) ne sont pas encore soumis aux rôles.
  */
 export const ROLES = ["OWNER", "TENANT_ADMIN", "REVENUE_MANAGER", "ANALYST", "OTA_OPERATOR", "OWNER_VIEWER", "AUDITOR"] as const;
 export type Role = (typeof ROLES)[number];
@@ -20,16 +21,16 @@ export const ROLE_LABEL: Record<Role, string> = {
   AUDITOR: "Auditeur",
 };
 export const ROLE_SUMMARY: Record<Role, string> = {
-  OWNER: "Crée le compte : tous les droits de décision, comme avant l'arrivée des rôles.",
-  TENANT_ADMIN: "Tous les droits de décision et la lecture du journal d'audit.",
-  REVENUE_MANAGER: "Arbitre les dossiers, supervise l'exécution et peut revenir en arrière.",
+  OWNER: "Crée le compte : tous les droits, dont la suppression d'un logement.",
+  TENANT_ADMIN: "Tous les droits, dont la lecture du journal d'audit et la suppression d'un logement.",
+  REVENUE_MANAGER: "Arbitre les dossiers, supervise l'exécution et peut revenir en arrière ; ne supprime pas de logement.",
   ANALYST: "Lit les dossiers, les analyses et les preuves ; ne décide rien.",
   OTA_OPERATOR: "Applique et prouve les procédures manuelles sur les canaux, tient le registre des promotions, puis relit ; ne décide pas.",
   OWNER_VIEWER: "Suit la performance et les décisions du bien, en lecture seule.",
   AUDITOR: "Lit les dossiers et le journal d'audit, sans pouvoir rien modifier.",
 };
 
-export const PERMISSIONS = ["decision.decide", "action.execute.api", "action.execute.manual", "action.verify", "action.rollback", "audit.read", "promotion.manage", "report.certify"] as const;
+export const PERMISSIONS = ["decision.decide", "action.execute.api", "action.execute.manual", "action.verify", "action.rollback", "audit.read", "promotion.manage", "report.certify", "property.delete"] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
 export const PERMISSION_LABEL: Record<Permission, string> = {
@@ -41,6 +42,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "audit.read": "Lire le journal d'audit",
   "promotion.manage": "Tenir le registre des promotions (déclarer, modifier, terminer)",
   "report.certify": "Préparer, retoucher et certifier le rapport mensuel",
+  "property.delete": "Supprimer un logement",
 };
 /** Verbe de refus, à la forme infinitive : « votre rôle ne permet pas de … ». */
 const DENY_VERB: Record<Permission, string> = {
@@ -52,6 +54,7 @@ const DENY_VERB: Record<Permission, string> = {
   "audit.read": "lire le journal d'audit",
   "promotion.manage": "tenir le registre des promotions (déclarer, modifier ou terminer une promotion)",
   "report.certify": "préparer, retoucher ou certifier un rapport mensuel",
+  "property.delete": "supprimer un logement",
 };
 
 const FULL: readonly Permission[] = PERMISSIONS;
@@ -59,7 +62,7 @@ const FULL: readonly Permission[] = PERMISSIONS;
 export const GRANTS: Record<Role, readonly Permission[]> = {
   OWNER: FULL,
   TENANT_ADMIN: FULL,
-  REVENUE_MANAGER: FULL,
+  REVENUE_MANAGER: FULL.filter((p) => p !== "property.delete"),
   ANALYST: [],
   OTA_OPERATOR: ["action.execute.manual", "action.verify", "promotion.manage"],
   OWNER_VIEWER: [],

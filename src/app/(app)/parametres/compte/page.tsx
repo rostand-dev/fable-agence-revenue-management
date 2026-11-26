@@ -37,8 +37,8 @@ export default async function Compte() {
       </section>
       <section className="section" id="droits" data-testid="droits">
         <h2>Vos droits</h2>
-        <p className="section-note"><strong>{ROLE_LABEL[user.role]}.</strong> {ROLE_SUMMARY[user.role]} Les droits s'appliquent au circuit de décision ; le serveur les vérifie à chaque action, et un refus est inscrit au journal d'audit.</p>
-        <div className="table-wrap"><table className="econ">
+        <p className="section-note"><strong>{ROLE_LABEL[user.role]}.</strong> {ROLE_SUMMARY[user.role]} Les droits couvrent le circuit de décision et la suppression d'un logement ; le serveur les vérifie à chaque action, et un refus est inscrit au journal d'audit.</p>
+        <div className="table-wrap"><table className="econ rights-table">
           <caption className="visually-hidden">Ce que votre rôle permet</caption>
           <thead><tr><th scope="col">Action</th><th scope="col">Votre rôle</th></tr></thead>
           <tbody>{PERMISSIONS.map((p) => <tr key={p}><th scope="row">{PERMISSION_LABEL[p]}</th><td>{can(user.role, p) ? "Autorisé" : "Non autorisé"}</td></tr>)}</tbody>

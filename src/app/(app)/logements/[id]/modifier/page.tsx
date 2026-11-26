@@ -9,6 +9,7 @@ import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
 import { missingEconomics } from "@/lib/engine/economics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
+import { can } from "@/lib/rbac";
 import { listOwners } from "@/lib/services/portfolio";
 
 export const metadata = { title: "Dossier du logement" };
@@ -29,7 +30,7 @@ export default async function Modifier({ params, searchParams }: { params: Promi
       </div>
       {(await searchParams).enregistre && <Banner role="sain" title="Saisie enregistrée" style={{ marginBottom: 8 }}>Vos modifications sont enregistrées.</Banner>}
       <PropertyForm existing={{ id: p.id, name: p.name, city: p.city, kind: p.kind, bedrooms: p.bedrooms, capacity: p.capacity, economics: p.economics as EconomicModel, strategy: p.strategy as Strategy, profile: p.profile, hasKey: !!p.pricelabs?.apiKeyEnc, hasShKey: !!p.superhote?.apiKeyEnc, channelMarkups: p.channelMarkups ?? [], ownerId: p.ownerId }} owners={owners} />
-      <section className="section" style={{ marginTop: 36 }}><h2>Supprimer le logement</h2><p className="section-note">Suppression définitive du dossier et de tout ce qui s'y rattache.</p><Link className="btn btn-danger btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce logement…</Link></section>
+      {can(user.role, "property.delete") && <section className="section" style={{ marginTop: 36 }}><h2>Supprimer le logement</h2><p className="section-note">Suppression définitive du dossier et de tout ce qui s'y rattache.</p><Link className="btn btn-danger btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce logement…</Link></section>}
     </Page>
   );
 }

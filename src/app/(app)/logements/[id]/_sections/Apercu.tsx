@@ -6,12 +6,13 @@ import { Metric, Vq } from "@/components/ui";
 import { fmtDate, fmtDay } from "@/lib/dates";
 import { computeKpi, monthPeriod, nightFactsFromResas, NET_STATUS_LABEL } from "@/lib/metrics/kpi";
 import { euro, pct } from "@/lib/format";
+import { can } from "@/lib/rbac";
 import type { Fiche } from "./context";
 
 /** Situations montrées sur la vue d'ensemble : les vetos d'abord, puis les plus prioritaires. */
 const SHOWN = 3;
 
-export function Apercu({ p, input, opps, model, hasHistory, months, kpis, period, trend }: Fiche) {
+export function Apercu({ user, p, input, opps, model, hasHistory, months, kpis, period, trend }: Fiche) {
   const firstStay = input.resas.filter((r) => r.status === "CONFIRMED").map((r) => r.checkIn).sort()[0];
   const partial = !!firstStay && firstStay.slice(0, 7) > months[0];
   const sum = (f: (k: (typeof kpis)[number]) => number) => kpis.reduce((a, k) => a + f(k), 0);
@@ -33,7 +34,7 @@ export function Apercu({ p, input, opps, model, hasHistory, months, kpis, period
           <p style={{ margin: "0 0 4px" }}><Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}?tab=performance`}>Revenu mensuel et rythme de réservation <Icon name="arrow" /></Link></p>
           <section className="section">
             <h2>Aller plus loin</h2>
-            <PropertyHubLinks property={p} />
+            <PropertyHubLinks property={p} canDelete={can(user.role, "property.delete")} />
           </section>
           <section className="section">
             <h2>Situations ouvertes{opps.length > SHOWN ? ` · ${SHOWN} sur ${opps.length}` : ""}</h2>

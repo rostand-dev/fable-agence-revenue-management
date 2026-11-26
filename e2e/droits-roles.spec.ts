@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
-import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
+import { createRoleUser, deleteUser, hasDatabase, markLaunched, removeProperty } from "./helpers/roles";
 
 // US-084 : un rôle sans droit lit les dossiers mais ne peut ni approuver, ni rejeter, ni différer ; le serveur refuse aussi (403).
 // Les comptes de test vivent dans l'espace du compte de démo ; ils exigent DATABASE_URL (ignorés sur une Preview distante).
@@ -46,6 +46,9 @@ test("Analyste : lecture seule dans la boîte d'opportunités, le dossier et l'h
     const droits = page.getByTestId("droits");
     await expect(droits).toContainText("Analyste");
     await expect(droits.getByRole("row", { name: /Approuver, rejeter/ })).toContainText("Non autorisé");
+    await expect(droits.getByRole("row", { name: /Supprimer un logement/ })).toContainText("Non autorisé");
+    // la réponse tient dans le tableau, sans défilement latéral
+    expect(await droits.locator(".table-wrap").evaluate((el) => el.scrollWidth - el.clientWidth), "tableau des droits coupé").toBeLessThanOrEqual(1);
     await expectNoHorizontalOverflow(page, "compte : droits");
 
     await page.goto("/parametres/demo");
@@ -96,3 +99,63 @@ test("Revenue manager : décide comme le propriétaire du compte (non-régressio
     await expectNoHorizontalOverflow(page, "dossier du revenue manager");
   } finally { await deleteUser(u.id); }
 });
+
+// La suppression d'un logement est définitive : seuls le propriétaire du compte et l'administrateur la voient et l'obtiennent.
+for (const role of ["ANALYST", "REVENUE_MANAGER"] as const) {
+  test(`Suppression d'un logement : ${role} n'a ni lien ni formulaire, le serveur refuse ; l'administrateur supprime`, async ({ page, browser }) => {
+    test.setTimeout(90_000); // deux connexions, six écrans et une suppression
+    const name = `Droits ${role} ${tag()}`, users: string[] = [];
+    let propertyId: string | null = null;
+    try {
+      const u = await createRoleUser(role, tag()); users.push(u.id);
+      const admin = await createRoleUser("TENANT_ADMIN", tag()); users.push(admin.id);
+      await login(page, u);
+      const created = await page.request.post("/api/v1/properties", { data: { name, city: "Lille", kind: "T2", bedrooms: 1 } });
+      expect(created.ok(), await created.text()).toBe(true);
+      const { id } = await created.json();
+      propertyId = id;
+      const links = page.locator(`a[href="/logements/${id}/supprimer"]`);
+
+      // brouillon : la bannière propose de reprendre, pas de supprimer
+      await page.goto(`/logements/${id}`);
+      await expect(page.getByRole("link", { name: "Reprendre la création" })).toBeVisible();
+      await expect(links).toHaveCount(0);
+
+      await markLaunched(id);
+      await page.goto(`/logements/${id}`);
+      await expect(page.getByRole("list", { name: "Autres écrans du logement" }).getByRole("link", { name: "Modifier le dossier" })).toBeVisible();
+      await expect(links).toHaveCount(0);
+      await expectNoHorizontalOverflow(page, "fiche sans suppression");
+      await page.goto(`/logements/${id}/modifier`);
+      await expect(page.getByRole("heading", { name: `Dossier de ${name}` })).toBeVisible();
+      await expect(links).toHaveCount(0);
+      await page.goto(`/logements/${id}/supprimer`);
+      await expect(page.getByTestId("suppression-reservee")).toContainText("ne permet pas de supprimer un logement");
+      await expect(page.getByRole("button", { name: "Supprimer définitivement" })).toHaveCount(0);
+      await expectNoHorizontalOverflow(page, "suppression réservée");
+      await page.screenshot({ path: test.info().outputPath("suppression-reservee.png"), fullPage: true });
+      await test.info().attach("suppression-reservee", { path: test.info().outputPath("suppression-reservee.png"), contentType: "image/png" });
+
+      const res = await page.request.delete(`/api/v1/properties/${id}`, { data: { confirmName: name } });
+      expect(res.status()).toBe(403);
+      expect((await res.json()).error.code).toBe("FORBIDDEN");
+      expect((await page.request.get(`/api/v1/properties/${id}`)).status()).toBe(200);
+
+      const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
+      try {
+        const p2 = await ctx.newPage();
+        await login(p2, admin);
+        await p2.goto(`/logements/${id}`);
+        await expect(p2.getByRole("list", { name: "Autres écrans du logement" }).getByRole("link", { name: "Supprimer le logement" })).toBeVisible();
+        await p2.goto(`/logements/${id}/supprimer`);
+        await p2.getByLabel(/Pour confirmer/).fill(name);
+        await p2.getByRole("button", { name: "Supprimer définitivement" }).click();
+        await p2.waitForURL(/\/logements\?supprime=1/);
+      } finally { await ctx.close(); }
+      expect((await page.request.get(`/api/v1/properties/${id}`)).status()).toBe(404);
+    } finally {
+      if (propertyId) await removeProperty(propertyId);
+      for (const id of users) await deleteUser(id);
+    }
+  });
+}

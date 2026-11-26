@@ -608,6 +608,10 @@ table.econ thead th {
 }
 table.econ tbody tr + tr th, table.econ tbody tr + tr td { border-top: 1px solid var(--line); }
 /* US-092 : tableau avant/après de la preuve d'écriture, trois colonnes courtes : jamais de défilement horizontal, même à 360 px */
+/* deux colonnes : les libellés vont à la ligne, la réponse reste visible sur mobile */
+table.econ.rights-table { min-width: 0; }
+table.econ.rights-table td { white-space: nowrap; }
+@media (max-width: 480px) { table.econ.rights-table { font-size: 13px; } table.econ.rights-table th, table.econ.rights-table td { padding: 10px; } table.econ.rights-table tbody th { white-space: normal; } }
 table.econ.write-proof-table { min-width: 0; table-layout: fixed; }
 table.econ.write-proof-table th, table.econ.write-proof-table td { padding: 10px 10px; overflow-wrap: anywhere; }
 @media (max-width: 480px) { table.econ.write-proof-table { font-size: 13px; } }

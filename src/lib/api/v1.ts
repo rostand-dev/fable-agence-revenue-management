@@ -35,7 +35,7 @@ export async function readObject(req: Request): Promise<Record<string, unknown> 
 /** Erreur d'un service → réponse HTTP. Une erreur inattendue est consignée sans détail côté client. */
 const pgCode = (e: unknown): string | undefined => { for (let x: any = e, i = 0; x && i < 4; x = x.cause, i++) if (typeof x.code === "string") return x.code; return undefined; };
 export function fromError(e: unknown): Response {
-  if (e instanceof PortfolioError) return apiError(e.code === "NOT_FOUND" ? 404 : e.code === "CONFLICT" ? 409 : 400, e.code, e.message);
+  if (e instanceof PortfolioError) return apiError({ FORBIDDEN: 403, NOT_FOUND: 404, CONFLICT: 409, INVALID: 400 }[e.code], e.code, e.message);
   if (pgCode(e) === "23503") return apiError(409, "CONFLICT", "Ce propriétaire vient d'être supprimé ou est encore utilisé : rechargez la page.");
   console.error("[api/v1]", e instanceof Error ? e.message : e);
   return apiError(500, "INTERNAL", "Erreur technique : rien n'a été modifié.");

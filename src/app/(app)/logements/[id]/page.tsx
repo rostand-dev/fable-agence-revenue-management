@@ -20,6 +20,7 @@ import type { EconomicModel, Strategy } from "@/lib/engine/types";
 import { badgeHref, pricelabsBadge, superhoteBadge } from "@/lib/integrations/connection-badge";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 import { PROPERTY_SECTIONS, sectionHref, sectionOfTab } from "@/lib/nav";
+import { can } from "@/lib/rbac";
 import { hubByTab, HUBS, hubScreens, isLaunched } from "@/lib/property-hubs";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { listListings } from "@/lib/services/portfolio";
@@ -74,6 +75,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
   const section = sectionOfTab(tab);
   const hub = hubByTab(tab);
+  const canDelete = can(user.role, "property.delete");
   // lien de retour d'un écran vers sa rubrique (les hubs et les écrans de premier niveau n'en ont pas)
   const parent = tab === "performance" ? { href: `/logements/${p.id}`, label: "Vue d'ensemble" }
     : !hub && HUBS.some((h) => h.key === section.key) ? { href: sectionHref(p.id, section.key), label: section.label } : null;
@@ -92,12 +94,12 @@ export default async function Logement({ params, searchParams }: { params: Promi
         <div className="idsync"><Badge family={fam} icon={ico}>{label}</Badge>{([["pricelabs", pricelabsBadge(p.pricelabs, p.isDemo)], ["superhote", superhoteBadge(p.superhote, p.isDemo)]] as const).map(([k, b]) => b && <Link key={k} href={badgeHref(k, p.id, p.status)} scroll={false} className="state-link"><State role={b.role}>{b.label}</State></Link>)}<span className="read-date"><Icon name="clock" />{hasCal ? `Calendrier lu jusqu'au ${fmtDate(input.days[input.days.length - 1].date)}` : "Aucun calendrier lu"}</span></div>
       </div>
       {p.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 16 }}>Réservations, prix, marché et coûts sont synthétiques. Les coûts et commissions affichés sont des hypothèses à remplacer par vos valeurs lors de l'onboarding de votre propre logement.</Banner>}
-      {onboarding && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link> <Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce brouillon</Link></span></Banner>}
+      {onboarding && <Banner role="tech" title="Création du logement en cours" style={{ marginBottom: 16 }}>Ce logement n'est pas encore lancé. Reprenez le parcours de création là où vous l'avez laissé. <span style={{ display: "block", marginTop: 10 }}><Link className="btn btn-primary btn-sm" href={`/logements/${p.id}/creation`}><Icon name="arrow" />Reprendre la création</Link>{canDelete && <> <Link className="btn btn-ghost btn-sm" href={`/logements/${p.id}/supprimer`}><Icon name="cross" />Supprimer ce brouillon</Link></>}</span></Banner>}
       {sp.lance && <Banner role="sain" title="Observation lancée" style={{ marginBottom: 16 }}>Le dossier est complet : l'équipe lit vos données et vous proposera ses premières situations, sans rien appliquer sans votre accord.</Banner>}
       <TodoCard items={todoItems(fiche, tab)} />
       <div className="fiche-bar">
         <Suspense fallback={null}><SectionSwitcher property={p.name} sections={sections} active={section.key} tab={tab} /></Suspense>
-        {isLaunched(p) && <Suspense fallback={null}><ManageMenu propertyId={p.id} /></Suspense>}
+        {isLaunched(p) && <Suspense fallback={null}><ManageMenu propertyId={p.id} canDelete={canDelete} /></Suspense>}
       </div>
       {parent && <p style={{ margin: "0 0 16px" }}><Link className="btn btn-ghost btn-sm" href={parent.href}><Icon name="back" />{parent.label}</Link></p>}
 
