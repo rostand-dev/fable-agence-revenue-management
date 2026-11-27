@@ -313,7 +313,7 @@ a.fn-st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 640px) { .quality-head { flex-direction: column; align-items: flex-start; gap: 8px; } }
 
 /* Playbooks (page Méthode) et mesures de signal (dossier) : listes repliables et tableaux défilants, lisibles dès 360 px */
-.playbooks { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.playbooks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .playbook .fold-body > p { margin: 0 0 10px; }
 .playbook-facts { display: grid; gap: 10px; margin: 12px 0 0; }
 .playbook-facts > div { min-width: 0; }
@@ -330,6 +330,12 @@ a.fn-st:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 h3.sub, .section h2.sub { font-size: 14px; margin: 18px 0 8px; }
 .score-table { margin-top: 10px; }
 .playbooks summary { flex-wrap: wrap; overflow-wrap: anywhere; }
+/* petits tableaux (deux ou trois colonnes) : ils s'adaptent à leur colonne au lieu de garder la largeur minimale des grands tableaux économiques */
+.signal-measures table.econ, .score-table table.econ, .playbook table.econ { min-width: 0; }
+@media (max-width: 480px) {
+  .signal-measures table.econ, .score-table table.econ, .playbook table.econ { font-size: 13px; }
+  .signal-measures table.econ :is(th, td), .score-table table.econ :is(th, td), .playbook table.econ :is(th, td) { padding: 10px 8px; }
+}
 
 /* US-065 : historique des transitions d'une action */
 .transition-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }

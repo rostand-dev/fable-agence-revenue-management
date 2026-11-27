@@ -1046,7 +1046,7 @@ td .vq, th .vq { font-size: 12.5px; }
 .block-interpretations { border-left: 3px solid var(--amber); background: rgb(251 191 36 / 5%); }
 .block dl { margin: 0; display: grid; gap: 8px; }
 .block dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
-.block dt { font-size: 13px; color: var(--quiet); }
+.block dt { font-size: 13px; color: var(--quiet); min-width: 0; overflow-wrap: anywhere; }
 .block dd { margin: 0; font-family: var(--mono); font-size: 13.5px; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 /* valeur longue (formule, phrase) : sous son libellé, lisible, jamais superposée au libellé */
 .block dl > div.is-long { grid-template-columns: minmax(0, 1fr); gap: 4px; }
@@ -1096,7 +1096,8 @@ td .vq, th .vq { font-size: 12.5px; }
 
 .dcols { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 20px; align-items: start; }
 
-.registry { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
+/* colonne bornée à la largeur disponible : sans elle, le contenu le plus large (un tableau) élargit la colonne, et `overflow: hidden` coupe le texte */
+.registry { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-md); overflow: hidden; }
 .registry > article { background: rgb(10 12 22 / 62%); padding: 14px 16px; }
 .registry .reg-key {
   display: flex;
@@ -1110,6 +1111,8 @@ td .vq, th .vq { font-size: 12.5px; }
 .registry .reg-key .od-icon { --od-icon-size: 13px; }
 .registry p { margin: 6px 0 0; font-size: 14px; }
 .registry .reg-foot { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* un mot sans espace (adresse, identifiant) passe à la ligne au lieu d'être coupé ; les tableaux et les pastilles gardent leurs mots entiers */
+.registry :is(p, .findings li, .rules li > span:last-child, .metric-source) { overflow-wrap: anywhere; }
 .proof-link {
   display: inline-flex;
   align-items: center;
