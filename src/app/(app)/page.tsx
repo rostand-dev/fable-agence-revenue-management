@@ -5,19 +5,21 @@ import { Avatar } from "@/components/Avatar";
 import { ActionForm, Submit } from "@/components/forms";
 import { Page } from "@/components/Page";
 import { SitCard } from "@/components/SitCard";
+import { InboxFilterForm, StatusChips } from "@/components/InboxFilters";
+import { PocketInbox } from "@/components/PocketInbox";
 import { Banner, Metric, State, Vq } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { AGENTS } from "@/lib/agents/registry";
 import { getLlmStatus } from "@/lib/agents/llm-config";
 import { requireUser } from "@/lib/auth";
 import { can, denyMessage } from "@/lib/rbac";
+import { demoReadonly } from "@/lib/demo-mode";
+import { getViewContext } from "@/lib/view-mode";
 import { diffDays, fmtDate, fmtDateTime, todayISO } from "@/lib/dates";
 import type { Candidate } from "@/lib/engine/types";
 import { signedEuro } from "@/lib/format";
 import { lastReview, listOpportunities, listProperties } from "@/lib/queries";
-import {
-  activeFilters, applyInbox, guarded, inboxHref, parseInboxQuery, priorityRanks, SORTS, STATUS_FILTERS, URGENCY_FILTERS,
-} from "@/lib/inbox";
+import { activeFilters, applyInbox, guarded, parseInboxQuery, priorityRanks } from "@/lib/inbox";
 
 
 export default async function Inbox({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -65,8 +67,25 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<Re
     );
   }
 
+  const sub = review ? `Revue du ${fmtDateTime(review.startedAt)} · ${props.length} logement${props.length > 1 ? "s" : ""}` : "Aucune revue encore lancée";
+  const empty = {
+    title: nbFilters > 0 ? "Aucun résultat avec ces filtres" : q.f === "a-traiter" ? "Rien à arbitrer" : "Aucune entrée",
+    text: nbFilters > 0 ? "Aucune situation ne correspond à cette combinaison. Élargissez ou réinitialisez les filtres : ce n'est pas une confirmation qu'il n'y a rien à traiter." : q.f === "a-traiter" ? "L'équipe n'a relevé aucune exception qui mérite une décision. Ne rien faire est ici la bonne décision." : "Un registre vide ne vaut pas confirmation : il signifie qu'aucune situation de ce type n'a été relevée.",
+  };
+
+  if ((await getViewContext()).mode === "poche") {
+    return (
+      <Page title="Opportunités" sub={sub} crumbs={[{ label: "Opportunités" }]}>
+        <PocketInbox q={q} all={all} shown={shown} ranks={ranks} properties={props.map((p) => ({ id: p.id, name: p.name }))} playbooks={playbooks} provisional={prov}
+          nbFilters={nbFilters} today={today} blocked={blocked} role={user.role} canDecide={canDecide} empty={empty}
+          // la démo en lecture seule porte déjà son bandeau (voir Page) : un seul bandeau à l'écran
+          demo={hasDemo && !demoReadonly() ? { canReset: stale >= 3 && can(user.role, "workspace.manage") } : null} />
+      </Page>
+    );
+  }
+
   return (
-    <Page title="Opportunités" sub={review ? `Revue du ${fmtDateTime(review.startedAt)} · ${props.length} logement${props.length > 1 ? "s" : ""}` : "Aucune revue encore lancée"} crumbs={[{ label: "Opportunités" }]}>
+    <Page title="Opportunités" sub={sub} crumbs={[{ label: "Opportunités" }]}>
       {hasDemo && (
         <div className="mode-strip" style={{ marginBottom: 20 }}>
           <State role="tech">Mode démonstration</State>
@@ -104,35 +123,15 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<Re
       <section className="section" aria-labelledby="file-h">
         <h2 id="file-h">Opportunités classées par priorité</h2>
         <p className="section-note">La synthèse ci-dessus porte sur tout le portefeuille, hors filtres. Un veto passe toujours en tête. Le rang suit ensuite la valeur simulée, pondérée par la confiance, l'urgence et le risque.</p>
-        <div className="filters" role="group" aria-label="Filtrer par statut">
-          {STATUS_FILTERS.map(([k, label]) => <Link key={k} className="chip" href={inboxHref(q, { f: k })} aria-current={q.f === k ? "true" : undefined} scroll={false}>{label}</Link>)}
-        </div>
-        <form method="get" action="/" className="inbox-filters" data-testid="inbox-filtres" aria-label="Affiner la liste">
-          {q.f !== "a-traiter" && <input type="hidden" name="f" value={q.f} />}
-          <label>Logement
-            <select name="p" defaultValue={q.p}><option value="">Tous les logements</option>{props.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-          </label>
-          <label>Playbook
-            <select name="pb" defaultValue={q.pb}><option value="">Tous les playbooks</option>{playbooks.map((pb) => <option key={pb} value={pb}>{pb}</option>)}</select>
-          </label>
-          <label>Urgence
-            <select name="u" defaultValue={q.u}>{URGENCY_FILTERS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select>
-          </label>
-          <label>Tri
-            <select name="s" defaultValue={q.s}>{SORTS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select>
-          </label>
-          <div className="inbox-filters-actions">
-            <button type="submit" className="btn btn-primary btn-sm">Appliquer</button>
-            {nbFilters > 0 && <Link className="btn btn-ghost btn-sm" href="/" data-testid="reinitialiser">Réinitialiser</Link>}
-          </div>
-        </form>
+        <StatusChips q={q} />
+        <InboxFilterForm q={q} properties={props} playbooks={playbooks} reset={nbFilters > 0} />
         <p role="status" data-testid="inbox-compteur" className="inbox-count">{shown.length} résultat{shown.length > 1 ? "s" : ""}{nbFilters > 0 ? ` · ${nbFilters} filtre${nbFilters > 1 ? "s" : ""} actif${nbFilters > 1 ? "s" : ""}` : ""}{q.s !== "priorite" ? " · rang de priorité conservé" : ""}</p>
         {shown.length > 0 ? (
           <div className="inbox">{shown.map((o) => <SitCard key={o.id} o={o} rank={ranks.get(o.id) ?? null} propertyName={pname.get(o.propertyId) ?? ""} names={names} provisional={prov.has(o.propertyId)} canDecide={canDecide} />)}</div>
         ) : (
           <div className="empty">
-            <h3>{nbFilters > 0 ? "Aucun résultat avec ces filtres" : q.f === "a-traiter" ? "Rien à arbitrer" : "Aucune entrée"}</h3>
-            <p>{nbFilters > 0 ? "Aucune situation ne correspond à cette combinaison. Élargissez ou réinitialisez les filtres : ce n'est pas une confirmation qu'il n'y a rien à traiter." : q.f === "a-traiter" ? "L'équipe n'a relevé aucune exception qui mérite une décision. Ne rien faire est ici la bonne décision." : "Un registre vide ne vaut pas confirmation : il signifie qu'aucune situation de ce type n'a été relevée."}</p>
+            <h3>{empty.title}</h3>
+            <p>{empty.text}</p>
           </div>
         )}
       </section>

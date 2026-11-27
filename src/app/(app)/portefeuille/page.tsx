@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { and, eq, inArray } from "drizzle-orm";
 import { Page } from "@/components/Page";
+import { PocketHome } from "@/components/PocketHome";
 import { Banner, Metric, State, Vq } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
@@ -10,10 +11,13 @@ import { STATE_LABEL, type ActionState } from "@/lib/engine/stateMachine";
 import { PROVIDER_INFO, providerStatus, type ProviderStatus } from "@/lib/integrations/capabilities";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 import { pct } from "@/lib/format";
-import { listOpportunities, listProperties } from "@/lib/queries";
+import { lastReview, listOpportunities, listProperties } from "@/lib/queries";
 import { portfolioOccupation, summarizePortfolio } from "@/lib/portfolio-summary";
 import { loadProviderFacts } from "@/lib/services/capabilities";
+import { openAlertCount } from "@/lib/services/execution-alerts";
 import { ingestionErrorCount } from "@/lib/services/ingestion-errors";
+import { monthTrends } from "@/lib/services/trend";
+import { getViewContext } from "@/lib/view-mode";
 import type { InboxItem } from "@/lib/inbox";
 import { can, denyMessage } from "@/lib/rbac";
 
@@ -24,14 +28,16 @@ const WAITING = ["APPROVED", "EXECUTED", "FAILED"] as const;
 export default async function Portefeuille() {
   const user = await requireUser();
   const today = todayISO();
+  // mode poche : un écran de synthèse ; les lectures propres à la version complète sont épargnées, et inversement
+  const poche = (await getViewContext()).mode === "poche";
   const [props, opps, acts, facts, ingestErrors, resas] = await Promise.all([
     listProperties(user.tenantId),
     listOpportunities(user.tenantId, ["OPEN"]),
     db.select({ status: schema.revenueActions.status, opportunityId: schema.revenueActions.opportunityId, label: schema.revenueActions.label, propertyId: schema.revenueActions.propertyId, updatedAt: schema.revenueActions.updatedAt })
       .from(schema.revenueActions).where(and(eq(schema.revenueActions.tenantId, user.tenantId), inArray(schema.revenueActions.status, [...WAITING]))),
     loadProviderFacts(user.tenantId),
-    ingestionErrorCount(user.tenantId),
-    db.select().from(schema.reservations).where(eq(schema.reservations.tenantId, user.tenantId)),
+    poche ? 0 : ingestionErrorCount(user.tenantId),
+    poche ? [] : db.select().from(schema.reservations).where(eq(schema.reservations.tenantId, user.tenantId)),
   ]);
   const s = summarizePortfolio(props, opps as InboxItem[], acts, today);
   const pname = new Map(props.map((p) => [p.id, p.name]));
@@ -50,6 +56,14 @@ export default async function Portefeuille() {
       <Page title="Tableau de bord" sub="Portefeuille" crumbs={[{ label: "Tableau de bord" }]}>
         <div className="page-head"><h1>Votre portefeuille est vide</h1><p>Le tableau de bord se remplit dès le premier logement.</p></div>
         <div className="empty"><h3>Aucun logement</h3>{can(user.role, "property.manage") ? <><p style={{ marginBottom: 16 }}>Ajoutez votre premier logement pour commencer.</p><Link className="btn btn-primary" href="/logements/nouveau">Ajouter un logement</Link></> : <p>{denyMessage(user.role, "property.manage")}</p>}</div>
+      </Page>
+    );
+  }
+  if (poche) {
+    const [review, alerts, trends] = await Promise.all([lastReview(user.tenantId), openAlertCount(user.tenantId), monthTrends(user.tenantId, props.map((p) => p.id))]);
+    return (
+      <Page title="Tableau de bord" sub={review ? `Revue du ${fmtDateTime(review.startedAt)}` : "Aucune revue encore lancée"} crumbs={[{ label: "Tableau de bord" }]}>
+        <PocketHome summary={s} priority={opps.find((o) => pname.has(o.propertyId)) ?? null} trends={trends} alerts={alerts} today={today} kill={kill} capped={capped} />
       </Page>
     );
   }

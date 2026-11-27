@@ -7,6 +7,7 @@ import { demoReadonly, demoSignupUrl } from "@/lib/demo-mode";
 import { DemoGuard } from "./DemoGuard";
 import { State } from "./ui";
 import { DeskOnly } from "./DeskOnly";
+import { PocketSwitch } from "./PocketSwitch";
 import { viewHref } from "@/lib/nav";
 import { getViewContext } from "@/lib/view-mode";
 
@@ -21,10 +22,12 @@ export async function Page({ title, sub, crumbs, right, children, after, essenti
   const [user, view] = await Promise.all([getUser(), getViewContext()]);
   const all: Crumb[] = [{ label: "Cockpit", href: "/" }, ...crumbs];
   const demo = demoReadonly(), signup = demoSignupUrl();
+  const poche = view.mode === "poche";
   const demoStrip = demo && (
-    <div className="mode-strip" style={{ marginBottom: 20 }}>
-      <State role="tech">Démo en lecture seule</State>
-      <span>Vous explorez des <strong>données synthétiques</strong> : rien ne peut être modifié.</span>
+    <div className={`mode-strip${poche ? " pk-demo" : ""}`} style={poche ? undefined : { marginBottom: 20 }} data-testid="bandeau-demo-lecture">
+      {/* mode poche : une seule ligne, y compris à 360 px */}
+      <State role="tech">{poche ? "Démo · lecture seule" : "Démo en lecture seule"}</State>
+      {!poche && <span>Vous explorez des <strong>données synthétiques</strong> : rien ne peut être modifié.</span>}
       {signup && <a className="btn btn-primary btn-sm" href={signup}>Créer mon compte</a>}
     </div>
   );
@@ -83,7 +86,7 @@ export async function Page({ title, sub, crumbs, right, children, after, essenti
         {demoStrip}
         {children}
         {/* bascule : sur un téléphone en version complète ; en mode poche, seulement sur un écran large, où la feuille « Plus » n'existe pas */}
-        {view.mode === "complet" && view.phone && <p className="pk-foot"><a href={viewHref("poche", view.current)}>Version allégée</a></p>}
+        <PocketSwitch view={view} />
         {view.mode === "poche" && <p className="pk-foot pk-foot-large"><a href={viewHref("complet", view.current)}>Version complète</a></p>}
       </div>
       {demo && <DemoGuard signupUrl={signup} />}

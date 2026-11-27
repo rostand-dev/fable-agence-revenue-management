@@ -3,6 +3,10 @@ import { expect, test, type TestInfo } from "@playwright/test";
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -13,7 +17,7 @@ const ECON = { origin: "DECLARED", cleaningFeeChargedCents: 5000, cleaningCostCe
 
 async function property(page: import("@playwright/test").Page, info: TestInfo): Promise<string> {
   const res = await page.request.post("/api/v1/properties", { data: { name: `Saisons ${uid(info)}`, city: "Lille", kind: "T2" } });
-  const id = (await res.json()).id as string;
+  const id = toRemove.property((await res.json()).id as string);
   const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   try { await c.query("update properties set status = 'ACTIVE', economics = $2::jsonb where id = $1", [id, JSON.stringify(ECON)]); } finally { await c.end(); }
   return id;

@@ -2,6 +2,10 @@ import { Client } from "pg";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -13,7 +17,7 @@ const numeric = (info: TestInfo) => String(Math.floor(10_000_000 + Math.random()
 async function createViaApi(page: Page, name: string) {
   const res = await page.request.post("/api/v1/properties", { data: { name, city: "Lille", kind: "T2", bedrooms: 2, capacity: 4 } });
   expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).id as string;
+  return toRemove.property((await res.json()).id as string);
 }
 /** Rattache une annonce PriceLabs sans appeler PriceLabs : écrit directement la connexion (comme après « Choisir cette annonce »). */
 async function linkPriceLabs(propertyId: string, city: string) {

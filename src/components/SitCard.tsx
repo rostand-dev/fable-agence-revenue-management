@@ -2,22 +2,19 @@ import Link from "next/link";
 import { Term } from "@/components/Term";
 import { approveAction, deferAction } from "@/app/actions/decisions";
 import { fmtPeriod } from "@/lib/dates";
-import { approvalRequirement } from "@/lib/engine/approval";
 import type { Candidate } from "@/lib/engine/types";
 import { signedEuro } from "@/lib/format";
 import type { OppWithAction } from "@/lib/queries";
+import { approveLabel, needsComment, situationRole } from "@/lib/situation";
 import { ActionForm, Submit } from "./forms";
 import { Icon } from "./Icon";
 import { Byline, confidenceScale, OppStatus, riskScale, State, Steps, Vq } from "./ui";
-
-export function needsComment(c: Candidate, playbook?: string | null) { return approvalRequirement(c, playbook).commentRequired; }
 
 export function SitCard({ o, rank, propertyName, names, provisional, canDecide }: { o: OppWithAction; rank: number | null; propertyName: string; names?: Record<string, string> | null; provisional?: boolean; /** US-084 : sans droit de décision, seuls la lecture et l'ouverture du dossier sont proposées. */ canDecide: boolean }) {
   const c = (o.candidates as Candidate[])[o.selected];
   const conf = confidenceScale(o.confidence), risk = riskScale(o.risk);
   const open = o.status === "OPEN";
-  const role = o.veto ? "veto" : o.playbook === "PB-10" ? "tech" : o.playbook === "PB-13" ? "attention" : c.type === "NO_ACTION" ? "neutre" : c.audit.verdict === "NEEDS_HUMAN" ? "attention" : "sain";
-  const roleLabel = o.veto ? "Veto économique" : o.playbook === "PB-10" ? "Donnée à vérifier" : o.playbook === "PB-13" ? "Réglage PriceLabs à corriger" : c.type === "NO_ACTION" ? "Inaction recommandée" : c.audit.verdict === "NEEDS_HUMAN" ? "Validation renforcée" : "Option conforme";
+  const { role, label: roleLabel } = situationRole(o, c);
   return (
     <article className={`sit${open ? "" : " is-settled"}`} aria-labelledby={`t-${o.id}`}>
       <div className="sit-rank">
@@ -61,7 +58,7 @@ export function SitCard({ o, rank, propertyName, names, provisional, canDecide }
         <div className="sit-actions">
           {open && canDecide && !needsComment(c, o.playbook) && (
             <ActionForm action={approveAction} hidden={{ opportunityId: o.id, candidate: o.selected, comment: "" }} className="inline">
-              <Submit icon={c.type === "NO_ACTION" ? "pause" : "check"}>{c.type === "NO_ACTION" ? "Retenir l'inaction" : "Approuver"}</Submit>
+              <Submit icon={c.type === "NO_ACTION" ? "pause" : "check"}>{approveLabel(c)}</Submit>
             </ActionForm>
           )}
           {open && canDecide && needsComment(c, o.playbook) && <Link className="btn btn-primary" href={`/dossier/${o.code}#decision`}><Icon name="folder" />Arbitrer dans le dossier</Link>}

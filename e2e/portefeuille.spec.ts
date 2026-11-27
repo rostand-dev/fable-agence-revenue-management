@@ -2,6 +2,10 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -15,7 +19,7 @@ const numeric = (info: TestInfo) => String(Math.floor(10_000_000 + Math.random()
 async function createViaApi(page: Page, name: string, extra: Record<string, unknown> = {}) {
   const res = await page.request.post("/api/v1/properties", { data: { name, city: "Lille", kind: "T2", ...extra } });
   expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).id as string;
+  return toRemove.property((await res.json()).id as string);
 }
 
 test("Propriétaires : ajouter, modifier, supprimer, sans débordement", async ({ page }, info) => {
@@ -56,7 +60,7 @@ test("Logement : création par l'API, propriétaire choisi dans le parcours, ann
   // un second propriétaire rend le choix visible dans le parcours
   const o = await page.request.post("/api/v1/owners", { data: { name: owner } });
   expect(o.status()).toBe(201);
-  const ownerId = (await o.json()).id as string;
+  const ownerId = toRemove.owner((await o.json()).id as string);
   const id = await createViaApi(page, prop);
 
   // le propriétaire se choisit à l'étape « Le logement » du parcours

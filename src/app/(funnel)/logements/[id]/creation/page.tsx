@@ -21,6 +21,7 @@ import { Reserved } from "@/components/Reserved";
 import { can } from "@/lib/rbac";
 import { DeskOnlyFunnel } from "@/components/DeskOnlyFunnel";
 import { getViewContext } from "@/lib/view-mode";
+import { PocketSwitch } from "@/components/PocketSwitch";
 
 export const metadata = { title: "Création d'un logement" };
 
@@ -35,7 +36,7 @@ export default async function Creation({ params, searchParams }: { params: Promi
   if (p.status !== "ONBOARDING") redirect(`/logements/${p.id}`);
   const view = await getViewContext();
   if (view.blocked) return <DeskOnlyFunnel title={`Nouveau logement · ${p.name}`} view={{ ...view, blocked: view.blocked }} />;
-  if (!can(user.role, "property.manage")) return <><FunnelHeader title={`Nouveau logement · ${p.name}`} saved={savedLabel(p.onboarding?.savedAt)} quit="link" /><main className="fn-wrap" id="contenu"><Reserved role={user.role} need="property.manage" back={{ href: `/logements/${p.id}`, label: "Retour à la fiche" }} /></main></>;
+  if (!can(user.role, "property.manage")) return <><FunnelHeader title={`Nouveau logement · ${p.name}`} saved={savedLabel(p.onboarding?.savedAt)} quit="link" /><main className="fn-wrap" id="contenu"><Reserved role={user.role} need="property.manage" back={{ href: `/logements/${p.id}`, label: "Retour à la fiche" }} /><PocketSwitch view={view} /></main></>;
   const model = p.economics as EconomicModel, strat = (p.strategy ?? {}) as Strategy;
   const miss = missingEconomics(model);
   const facts: FunnelFacts = { identityOk: identityComplete(p), superhoteLinked: !!p.superhote?.rentalId, pricelabsLinked: !!p.pricelabs?.listingId, economicsMissing: miss.length, onboarding: p.onboarding };
@@ -105,6 +106,7 @@ export default async function Creation({ params, searchParams }: { params: Promi
         <StepTop stepKey={step} />
         {/* une étape = un arbre neuf : rien (message d'erreur, saisie) ne passe d'une étape à l'autre */}
         <div key={step}>{body}</div>
+        <PocketSwitch view={view} />
       </main>
     </>
   );

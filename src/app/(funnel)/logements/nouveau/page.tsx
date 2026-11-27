@@ -7,6 +7,7 @@ import { Reserved } from "@/components/Reserved";
 import { can } from "@/lib/rbac";
 import { DeskOnlyFunnel } from "@/components/DeskOnlyFunnel";
 import { getViewContext } from "@/lib/view-mode";
+import { PocketSwitch } from "@/components/PocketSwitch";
 
 export const metadata = { title: "Ajouter un logement" };
 /** Étape 1 avant que le dossier n'existe : il est créé dès que l'on continue (ou que l'on enregistre pour plus tard). */
@@ -14,7 +15,7 @@ export default async function Nouveau() {
   const user = await requireUser();
   const view = await getViewContext();
   if (view.blocked) return <DeskOnlyFunnel title="Nouveau logement" view={{ ...view, blocked: view.blocked }} />;
-  if (!can(user.role, "property.manage")) return <><FunnelHeader title="Nouveau logement" saved={null} quit="link" /><main className="fn-wrap" id="contenu"><Reserved role={user.role} need="property.manage" back={{ href: "/logements", label: "Retour aux logements" }} /></main></>;
+  if (!can(user.role, "property.manage")) return <><FunnelHeader title="Nouveau logement" saved={null} quit="link" /><main className="fn-wrap" id="contenu"><Reserved role={user.role} need="property.manage" back={{ href: "/logements", label: "Retour aux logements" }} /><PocketSwitch view={view} /></main></>;
   const owners = await listOwners(user.tenantId);
   const steps = funnelView({ identityOk: false, superhoteLinked: false, pricelabsLinked: false, economicsMissing: 1, onboarding: null }, "logement");
   return (
@@ -23,6 +24,7 @@ export default async function Nouveau() {
       <main className="fn-wrap" id="contenu">
         <FunnelStepper steps={steps} href={() => "#"} />
         <LogementStep owners={owners} />
+        <PocketSwitch view={view} />
       </main>
     </>
   );

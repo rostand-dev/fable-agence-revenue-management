@@ -10,7 +10,7 @@ import { approveAction, deferAction, executeAction, rejectAction, reopenAction, 
 import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
-import { needsComment } from "@/components/SitCard";
+import { needsComment } from "@/lib/situation";
 import { approvalRequirement } from "@/lib/engine/approval";
 import { deterministicAnalysis, type MarketAnalysis } from "@/lib/agents/market-analysis";
 import type { IndependentReview } from "@/lib/agents/independent-review";

@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// à toutes les largeurs : le tableau de bord complet ; l'accueil du mode poche a son fichier (poche-accueil-opportunites)
+test.use(VERSION_COMPLETE);
 
 // US-080 : tableau de bord du portefeuille. Bureau, 390 et 360 px.
 test("Tableau de bord : sections, chiffres cohérents avec la boîte d'opportunités, sans débordement", async ({ page }) => {

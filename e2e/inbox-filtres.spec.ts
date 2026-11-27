@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// à toutes les largeurs : la boîte complète (synthèse, filtres visibles) ; le mode poche a son fichier (poche-accueil-opportunites)
+test.use(VERSION_COMPLETE);
 
 // US-082 : la boîte d'opportunités se filtre (logement, playbook, urgence), se trie, et le rang de priorité ne change pas quand on filtre.
 const rankOf = (t: string | null) => Number(/#(\d+)/.exec(t ?? "")?.[1] ?? NaN);
