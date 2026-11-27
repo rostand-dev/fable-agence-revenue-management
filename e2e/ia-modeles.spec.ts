@@ -61,7 +61,7 @@ test("Anciennes ancres : chaque lien enregistré mène à la bonne sous-page", a
   }
 });
 
-test("Intégrations : plus de clés IA, un avis indique où elles sont, les erreurs d'ingestion sont dans la carte SuperHote", async ({ page }) => {
+test("Intégrations : plus de clés IA ni d'avis de déménagement, les erreurs d'ingestion sont dans la carte SuperHote", async ({ page }) => {
   await page.goto("/integrations");
   await expect(page.locator("#llm-keys")).toHaveCount(0);
   await expect(page.locator('input[name="apiKey"]')).toHaveCount(0);
@@ -70,8 +70,7 @@ test("Intégrations : plus de clés IA, un avis indique où elles sont, les erre
   await expect(superhote.getByTestId("ingestion-link")).toContainText(/à traiter|Aucune en attente/);
   await expectNoHorizontalOverflow(page, "intégrations sans les clés");
   await capture(page, "integrations");
-  await page.getByTestId("cles-demenagees").getByRole("link").click();
-  await expect(page).toHaveURL(/\/modeles\/cles$/);
+  await expect(page.getByText("Les clés IA ont déménagé")).toHaveCount(0);
 });
 
 test("Menu : le troisième niveau n'apparaît que dans la branche ouverte", async ({ page }) => {

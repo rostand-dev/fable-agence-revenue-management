@@ -53,7 +53,7 @@ export default async function Historique({ searchParams }: { searchParams: Promi
         <h2>Actions et expériences</h2>
         <p className="section-note">Mémoire des playbooks : ce qui a été tenté, sur quel logement, avec quel résultat.</p>
         {acts.length === 0 ? <div className="empty"><h3>Aucune action</h3><p>Les actions approuvées apparaîtront ici avec leur mesure.</p></div> : (
-          <div className="table-wrap"><table className="econ">
+          <div className="table-wrap"><table className="econ hist-actions">
             <thead><tr><th scope="col">Action</th><th scope="col">Logement</th><th scope="col">Playbook</th><th scope="col" className="num">Simulé</th><th scope="col">État</th><th scope="col">Résultat mesuré</th></tr></thead>
             <tbody>{acts.map((o) => { const a = o.action!, m = a.measurement; return (
               <tr key={a.id}><th scope="row"><Link href={`/dossier/${o.code}`}>{a.label}</Link><span className="src">{o.code} · {fmtDay(o.stayFrom)} → {fmtDay(o.stayTo)}</span></th>
