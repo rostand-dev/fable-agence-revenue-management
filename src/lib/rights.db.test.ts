@@ -1,10 +1,11 @@
+import path from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { db, newId, schema } from "@/db";
 import { TENANT_TABLES } from "@/db/tenant";
 import { listAuditEvents } from "@/lib/audit/query";
 import { can, denyMessage, ROLES, type Permission, type Role } from "@/lib/rbac";
-import { ACTION_RIGHTS, ROUTE_RIGHTS } from "@/lib/rights-catalog";
+import { ACTION_RIGHTS, GET_ROUTES, ROUTE_RIGHTS } from "@/lib/rights-catalog";
 import { makeProperty, makeTenant } from "@/test/db";
 
 /**
@@ -91,6 +92,8 @@ let network: MockInstance;
 beforeEach(() => { network = vi.spyOn(globalThis, "fetch").mockImplementation(async () => { throw new Error("appel réseau inattendu"); }); });
 afterEach(() => network.mockRestore());
 const denials = async () => (await listAuditEvents(w.tenantId, { limit: 200 })).events.filter((e) => e.type === "access.denied");
+/** Nombre d'événements du journal de l'espace témoin (la liste paginée plafonne, ce compte non). */
+const journalSize = async () => Number((await db.execute(sql`select count(*)::int as n from audit_events where tenant_id = ${w.tenantId}`)).rows[0].n);
 
 describe("actions serveur gardées", () => {
   it("chaque action déclarée avec un droit existe", () => {
@@ -117,7 +120,7 @@ const handler = (key: string) => { const [method, route] = key.split(" "); retur
 const send = (key: string, body: string, headers: Record<string, string> = {}) => {
   const { method, fn, route } = handler(key);
   const id = route.startsWith("api/v1/owners") ? w.ownerId : w.propertyId;
-  const req = new Request(`http://localhost/${route}`, { method, headers: { "content-type": "application/json", host: "localhost", ...headers }, ...(method === "DELETE" ? {} : { body }) });
+  const req = new Request(`http://localhost/${route}`, { method, headers: { "content-type": "application/json", host: "localhost", ...headers }, body });
   return fn!(req, { params: Promise.resolve({ id, listingId: w.listingId }) });
 };
 const BODY = JSON.stringify({ name: "Pirate", city: "Lyon", kind: "T3", channel: "AIRBNB", title: "Pirate", status: "ARCHIVED", seasons: [], note: "x", version: 1 });
@@ -131,10 +134,13 @@ describe("routes d'API gardées", () => {
     const before = await snapshot();
     for (const role of lacking(permission)) {
       current = { ...w.actor, role };
-      for (const body of [BODY, "ceci n'est pas du JSON"]) {
+      // la confirmation exacte accompagne la demande : sans la garde, la suppression du logement aboutirait
+      for (const body of [JSON.stringify({ ...JSON.parse(BODY), confirmName: "Témoin" }), "ceci n'est pas du JSON"]) {
+        const size = await journalSize();
         const res = await send(key, body);
         expect(res.status, `${key} en ${role}`).toBe(403);
         expect(await res.json()).toEqual({ error: { code: "FORBIDDEN", message: denyMessage(role, permission) } });
+        expect(await journalSize(), `${key} en ${role} : un refus consigné, un seul`).toBe(size + 1);
       }
       expect((await denials())[0]).toMatchObject({ payload: { permission, role } });
     }
@@ -143,9 +149,23 @@ describe("routes d'API gardées", () => {
   });
   it("une autre origine est refusée avant les droits, sans rien consigner", async () => {
     current = { ...w.actor, role: "ANALYST" };
-    const count = (await denials()).length;
+    const size = await journalSize();
     for (const [key] of ROUTE_LIST) expect(((await (await send(key, BODY, { origin: "https://ailleurs.example" })).json()) as { error: { code: string } }).error.code, key).toBe("FORBIDDEN_ORIGIN");
-    expect((await denials()).length).toBe(count);
+    expect(await journalSize()).toBe(size);
+  });
+});
+
+describe("routes déclarées en lecture", () => {
+  const reads = Object.entries(GET_ROUTES).filter(([, v]) => v === "lecture").map(([r]) => r);
+  it.each(reads)("GET %s : ne modifie rien et ne consigne rien", async (route) => {
+    current = { ...w.actor, role: "OWNER" };
+    const { GET } = (await import(path.join(process.cwd(), "src/app", route, "route.ts"))) as { GET: (req: Request, ctx: unknown) => Promise<Response> };
+    const before = await snapshot(), size = await journalSize();
+    const res = await GET(new Request(`http://localhost/${route}`, { headers: { host: "localhost" } }), { params: Promise.resolve({ id: w.propertyId, snapshotId: "inconnu", listingId: w.listingId }) });
+    expect(res.status, route).toBeLessThan(500);
+    expect(await snapshot()).toBe(before);
+    expect(await journalSize()).toBe(size);
+    expect(network).not.toHaveBeenCalled();
   });
 });
 

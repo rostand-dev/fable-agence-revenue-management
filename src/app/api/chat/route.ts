@@ -1,5 +1,6 @@
 import { getUser } from "@/lib/auth";
 import { streamLlm } from "@/lib/agents/llm";
+import { sameOrigin } from "@/lib/api/v1";
 import { CHAT_MAX_TOKENS, finishChat, prepareChat } from "@/lib/services/chat";
 
 export const dynamic = "force-dynamic";
@@ -15,8 +16,7 @@ export const runtime = "nodejs";
 export async function POST(req: Request) {
   const user = await getUser();
   if (!user) return Response.json({ error: "Session expirée : reconnectez-vous." }, { status: 401 });
-  const origin = req.headers.get("origin"), host = req.headers.get("host");
-  if (origin && host && new URL(origin).host !== host) return Response.json({ error: "Requête refusée." }, { status: 403 });
+  if (!sameOrigin(req)) return Response.json({ error: "Requête refusée." }, { status: 403 });
   let body: any;
   try { body = await req.json(); } catch { return Response.json({ error: "Requête illisible." }, { status: 400 }); }
   const question = String(body?.question ?? "").trim().slice(0, 600);
