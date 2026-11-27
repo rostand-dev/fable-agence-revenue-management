@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
 
 /**
@@ -35,5 +35,20 @@ export async function withApprovedManualDossier(fn: (code: string) => Promise<vo
     await c.query(`delete from promotions where id = $1`, [`promo_e2e_${aid}`]).catch(() => {});
     await c.query(`delete from opportunities where id = $1`, [oid]).catch(() => {});
     await c.end();
+  }
+}
+
+/**
+ * En mode poche (largeurs de téléphone), les sections d'un dossier sont repliées : les ouvrir, d'un toucher, avant de les vérifier.
+ * Sans effet sur la version complète. À rappeler après un rechargement.
+ */
+export async function deplierDossier(page: Page): Promise<void> {
+  // le dossier est affiché : écran de décision, ou frise de la version complète
+  await expect(page.locator('[data-testid="dossier-decision"], ol.frieze').first()).toBeAttached();
+  const plis = page.locator(".pk-folds > details.pk-fold");
+  for (let i = 0; i < (await plis.count()); i++) {
+    const pli = plis.nth(i);
+    if (!(await pli.evaluate((d: HTMLDetailsElement) => d.open))) await pli.locator(":scope > summary").click();
+    await expect(pli).toHaveAttribute("open", "");
   }
 }

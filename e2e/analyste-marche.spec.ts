@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-071 : l'analyse de marché d'un dossier (constats qui renvoient à des preuves numérotées). Bureau, mobile 390 et 360 px.
 async function firstDossier(page: Page): Promise<string> {
@@ -11,6 +12,7 @@ async function firstDossier(page: Page): Promise<string> {
 
 test("Dossier : l'analyse du marché cite des preuves numérotées qui existent dans le volet de preuves", async ({ page }) => {
   await page.goto(await firstDossier(page));
+  await deplierDossier(page);
   const analyse = page.getByTestId("analyse-marche");
   await expect(analyse).toBeVisible();
   await expect(analyse).toContainText("Analyse du marché");
@@ -32,6 +34,7 @@ test("Dossier : l'analyse du marché cite des preuves numérotées qui existent 
 
 test("Dossier : un renvoi de preuve mène à la pièce citée", async ({ page }) => {
   await page.goto(await firstDossier(page));
+  await deplierDossier(page);
   const lien = page.getByTestId("analyse-marche").getByTestId("renvoi-preuve").first();
   const id = (await lien.textContent())!.trim();
   await lien.click();
@@ -47,6 +50,7 @@ test("Revue avec modèle : les constats sont rédigés par l'analyste (faux serv
   await page.getByRole("button", { name: "Relancer la revue" }).click();
   await expect(page.getByText("Revue terminée.")).toBeVisible({ timeout: 30_000 });
   await page.goto(await firstDossier(page));
+  await deplierDossier(page);
   const analyse = page.getByTestId("analyse-marche");
   await expect(analyse).toContainText("a rédigé ces constats à partir des pièces numérotées");
   await expect(analyse.getByTestId("constat").first()).toContainText("Les pièces citées décrivent");

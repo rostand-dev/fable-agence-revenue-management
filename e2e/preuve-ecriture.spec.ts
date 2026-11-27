@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { Client } from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-092 : la fiche dossier montre la preuve d'une écriture PriceLabs (reçu, empreintes, état avant / après) sans défilement horizontal, sur les trois formats.
 // Le jeu de test insère une ligne de journal d'écriture sur une action de démonstration existante, puis la retire.
@@ -35,6 +36,7 @@ test("Dossier : preuve d'écriture PriceLabs lisible (avant / après, reçu, emp
           JSON.stringify({ method: "POST", endpoint, status: 200, sentAt: "2026-11-23T10:00:01.000Z", requestHash: hash }), snap(""), snap("110"), "b".repeat(64), "c".repeat(64)]);
     }
     await page.goto(target!.href);
+    await deplierDossier(page);
     const proof = page.getByTestId("write-proof");
     await expect(proof.getByRole("heading", { name: /Preuve d'écriture/ })).toBeVisible();
     const mine = proof.getByTestId("write-proof-item").filter({ hasText: endpoint });

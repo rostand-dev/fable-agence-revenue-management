@@ -502,3 +502,89 @@ h3.sub, .section h2.sub { font-size: 14px; margin: 18px 0 8px; }
   .nav-sheet-pocket::backdrop { background: linear-gradient(to top, transparent var(--bottombar-h, 57px), rgb(2 3 8 / 74%) var(--bottombar-h, 57px)); }
   .nav-sheet-pocket .pk-sheet { padding-bottom: 16px; }
 }
+
+/* dossier en mode décision (mode poche) : la décision d'abord, les sections ensuite, la barre fixée en bas */
+/* à 360 px, la pastille la plus longue laisse le code sur une ligne ; le nom du logement passe à la ligne plutôt que d'être coupé */
+.pk-dossier-head { flex-wrap: nowrap; gap: 8px; }
+.pk-dossier-head > div:nth-of-type(1) { flex: 1 1 0; min-width: 0; }
+.pk-dossier-head .pk-code { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.pk-dossier-head .topbar-title { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.pk-head-pill { flex: 0 1 auto; max-width: 44%; margin-left: auto; text-align: right; }
+.pk-head-pill .state, .pk-head-pill .badge { white-space: normal; text-align: left; }
+.pk-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.pk-dossier h1 { margin: 0; font-size: 20px; line-height: 1.3; overflow-wrap: anywhere; }
+.pk-key { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+.pk-veto { padding: 10px 14px; border: 1px solid rgb(251 113 133 / 40%); border-radius: var(--r-md); background: rgb(251 113 133 / 8%); }
+.pk-veto .pk-key { color: var(--attention-ink); }
+.pk-veto > p { margin: 2px 0 0; font-size: 14px; }
+.pk-chain { margin: 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.pk-chain > div { padding: 9px 14px; }
+.pk-chain > div + div { border-top: 1px solid var(--line); }
+.pk-chain dt { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+.pk-chain dd { margin: 2px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.pk-chain-option { background: rgb(37 99 235 / 12%); }
+.pk-chain .pk-chain-option dt { color: var(--blue); }
+.pk-chain .pk-chain-option dd { font-weight: 600; }
+.pk-return { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: -9px; font-weight: 400; font-size: 13.5px; }
+.pk-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pk-tile { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.pk-tile > p { margin: 0; }
+/* la définition d'un terme, ouverte depuis un intertitre, garde sa typographie */
+.pk-key .term-pop { text-transform: none; letter-spacing: normal; font-weight: 400; }
+.pk-opened { margin: 0 0 16px; color: var(--quiet); font-size: 13px; }
+.pk-tile strong { font-size: 17px; line-height: 1.3; }
+.pk-tile > span { font-size: 11.5px; color: var(--faint); }
+.pk-before { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); font-size: 13.5px; }
+.pk-before > p, .pk-before > ul { margin: 0 !important; overflow-wrap: anywhere; }
+.pk-before > ul { padding-left: 18px; }
+.pk-before-note { color: var(--faint); font-size: 12.5px; }
+
+.pk-folds { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.pk-fold { min-width: 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+.pk-fold > summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 48px; padding: 8px 14px; font-size: 14px; font-weight: 600; list-style: none; cursor: pointer; }
+.pk-fold > summary::-webkit-details-marker { display: none; }
+.pk-fold-chevron { display: inline-flex; flex: none; color: var(--faint); transform: rotate(90deg); }
+.pk-fold[open] > summary { border-bottom: 1px solid var(--line); }
+.pk-fold[open] > summary .pk-fold-chevron { transform: rotate(-90deg); }
+.pk-fold-body { min-width: 0; padding: 12px 10px 14px; }
+.pk-fold-body .section { margin-top: 0; }
+.pk-fold-body .section + .section { margin-top: 24px; }
+.pk-synthesis { margin-bottom: 16px; }
+.pk-synthesis > p:first-child { margin-top: 0; color: var(--quiet); font-size: 14px; }
+/* le titre de la section redit celui du pli : il reste lu par les lecteurs d'écran. La traçabilité réunit trois sections : leurs titres restent affichés. */
+.pk-fold:not(#pli-tracabilite) .pk-fold-body > .section > h2,
+#pli-conversation .agent-talk > header h3 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.pk-fold-body .section { position: relative; }
+/* colonne étroite, même sur un écran large resté en mode poche */
+.pk-fold-body .dcols, .pk-fold-body .registry, .pk-fold-body .result3, .pk-fold-body .form-grid { grid-template-columns: minmax(0, 1fr); }
+/* les tableaux tiennent dans la colonne : les chiffres se lisent sans défiler ; un tableau plus large défile dans son cadre */
+.pk-fold-body table.econ, .pk-fold-body table.cascade { min-width: 0; font-size: 13px; }
+.pk-fold-body table.econ th, .pk-fold-body table.econ td, .pk-fold-body table.cascade th, .pk-fold-body table.cascade td { padding: 9px 6px; }
+.pk-fold-body .evidence { position: static; }
+.pk-fold-body .evidence-body { max-height: none; }
+.pk-fold-body .frieze { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* barre de décision */
+.pk-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 60dvh; overflow-y: auto; padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line-strong); background: var(--space-700); }
+/* alignée sur la colonne du dossier, centrée dans un contenu plafonné à 1180 px (14 px : marge de la barre ; 294 = 280 + 14) */
+.pk-bar-inner { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; max-width: 560px; margin: 0 auto 0 max(0px, calc(min(100% + 28px, 1180px) / 2 - 294px)); }
+.pk-bar-comment { display: grid; gap: 4px; }
+.pk-bar-comment label { font-size: 13px; font-weight: 600; }
+.pk-bar-comment label span { font-weight: 400; color: var(--quiet); }
+/* 16 px : pas de zoom automatique d'iOS à la saisie */
+.pk-bar-comment textarea { width: 100%; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); color: var(--ink); font: inherit; font-size: 16px; line-height: 1.35; resize: none; }
+.pk-bar-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.pk-bar-actions form { display: contents; }
+.pk-bar-actions .btn { flex: 1 1 0; min-width: 0; min-height: 44px; justify-content: center; padding-inline: 10px; }
+.pk-bar-actions .btn.pk-bar-defer { flex: 0 0 48px; padding: 0; }
+.pk-bar-actions .btn.pk-bar-approve { flex-grow: 2; }
+/* un refus du serveur s'affiche au-dessus des boutons, sur toute la largeur */
+.pk-bar-actions .banner { order: -1; flex: 1 0 100%; margin: 0 !important; }
+.pk-bar-actions:has(form[data-pending]) .btn { pointer-events: none; opacity: .6; }
+@media (max-height: 500px) { .pk-bar-comment textarea { height: 40px; } }
+/* sous 768 px, la barre de navigation du bas reste visible : la barre de décision se pose au-dessus */
+@media (max-width: 767px) { .pk-bar { bottom: var(--bottombar-h, calc(57px + env(safe-area-inset-bottom, 0px))); padding-bottom: 10px; } }
+@media (min-width: 1024px) { .pk-bar { left: 248px; } }
+.content:has(.pk-bar) { padding-bottom: calc(var(--pk-bar-h, 150px) + var(--bottombar-h, 0px) + 24px); }
+html:has(.pk-bar) { scroll-padding-bottom: calc(var(--pk-bar-h, 150px) + var(--bottombar-h, 0px) + 8px); }
+.demo-toast { bottom: calc(var(--bottombar-h, 0px) + var(--pk-bar-h, 0px) + 16px); }

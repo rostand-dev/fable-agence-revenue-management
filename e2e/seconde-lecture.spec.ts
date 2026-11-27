@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { versionComplete } from "./helpers/view";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-073 : seconde lecture indépendante de l'auditeur sur l'option retenue. Bureau, mobile 390 et 360 px (projets Playwright).
 async function dossierRelu(page: Page): Promise<boolean> {
@@ -8,6 +9,7 @@ async function dossierRelu(page: Page): Promise<boolean> {
   const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
   for (const h of hrefs) {
     await page.goto(h);
+    await deplierDossier(page);
     if (await page.getByTestId("seconde-lecture").count()) return true;
   }
   return false;

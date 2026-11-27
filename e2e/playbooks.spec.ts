@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { versionComplete } from "./helpers/view";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-060 : le catalogue des playbooks (page Méthode) et les mesures du signal (dossier d'opportunité). Bureau, mobile 390 et 360 px.
 test("Méthode : le catalogue des 13 playbooks se déplie, avec seuils, données, repos et approbation", async ({ page }) => {
@@ -52,6 +53,7 @@ test("Dossier : le signal affiche ses mesures face à leur seuil, sans débordem
   const lien = page.locator('a[href^="/dossier/"]').first();
   await expect(lien, "aucun dossier trouvé sur l'accueil du compte de démo").toBeVisible();
   await lien.click();
+  await deplierDossier(page);
   const card = page.getByTestId("signal-card");
   await expect(card).toBeVisible();
   await expect(card.getByRole("table")).toBeVisible();

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow, friezeViolations } from "./helpers/layout";
 import { versionComplete } from "./helpers/view";
+import { deplierDossier } from "./helpers/dossier";
 
 // Régression : sur mobile (390 px), les libellés de la frise du cycle (Observer, Diagnostiquer…) étaient très serrés et se chevauchaient.
 test("frise du cycle d'un dossier : libellés lisibles, sans chevauchement", async ({ page }) => {
@@ -8,6 +9,7 @@ test("frise du cycle d'un dossier : libellés lisibles, sans chevauchement", asy
   const lien = page.locator('a[href^="/dossier/"]').first();
   await expect(lien, "aucun dossier trouvé sur l'accueil du compte de démo").toBeVisible();
   await lien.click();
+  await deplierDossier(page);
   await expect(page.locator("ol.frieze")).toBeVisible();
   await expect(page.locator("ol.frieze > li")).toHaveCount(8);
   expect(await friezeViolations(page)).toEqual([]);

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-072 : avis d'Elias (tarif) et de Hugo (distribution) sous les options d'un dossier. Bureau, mobile 390 et 360 px.
 async function dossierAvecAvis(page: Page): Promise<string> {
@@ -7,6 +8,7 @@ async function dossierAvecAvis(page: Page): Promise<string> {
   const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
   for (const h of hrefs) {
     await page.goto(h);
+    await deplierDossier(page);
     if (await page.getByTestId("avis-strateg").count()) return h;
   }
   throw new Error("aucun dossier du compte de démo ne porte d'avis de stratège");

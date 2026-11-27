@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-065 : l'historique des transitions d'une action s'affiche dans le dossier, sans débordement, sur les trois formats.
 test("Dossier tranché : l'historique des transitions est lisible et ordonné", async ({ page }) => {
@@ -9,6 +10,7 @@ test("Dossier tranché : l'historique des transitions est lisible et ordonné", 
   let found = false;
   for (const href of hrefs.slice(0, 15)) {
     await page.goto(href);
+    await deplierDossier(page);
     const tr = page.getByTestId("transitions");
     if (!(await tr.count())) continue;
     await expect(tr.getByRole("heading", { name: "Historique des transitions" })).toBeVisible();

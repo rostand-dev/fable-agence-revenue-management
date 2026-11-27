@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
-import { withApprovedManualDossier } from "./helpers/dossier";
+import { deplierDossier, withApprovedManualDossier } from "./helpers/dossier";
 import { hasDatabase } from "./helpers/roles";
 import { versionComplete } from "./helpers/view";
 
@@ -31,6 +31,7 @@ for (const [outcome, label, reasons] of [
     await withApprovedManualDossier(async (code) => {
       await closeWith(code, { ...base, outcome, reasons, observed: `Observation de test (${outcome}).`, interpretation: "Sans période témoin, ce résultat décrit ce qui s'est passé après l'action ; il ne prouve pas qu'elle en soit la cause." });
       await page.goto(`/dossier/${code}`);
+      await deplierDossier(page); // action refermée : le suivi d'application est replié
       const r = page.getByTestId("resultat-mesure");
       await expect(r).toBeVisible();
       await expect(r).toHaveAttribute("data-outcome", outcome);

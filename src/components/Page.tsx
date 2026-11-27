@@ -17,8 +17,9 @@ export type Crumb = { label: string; href?: string };
  * Ossature d'un écran : barre de titre, navigation tablette, fil d'Ariane, contenu limité à 1180 px.
  * En mode poche, un écran réservé à l'ordinateur (lib/nav) est remplacé par l'encart : ni `children` ni `after` ne sont rendus.
  * `essential` : contenu qui reste alors affiché au-dessus de l'encart (coupe-circuit).
+ * `pocketHeader` : en mode poche, en-tête propre à l'écran, à la place de la barre de titre et du fil d'Ariane.
  */
-export async function Page({ title, sub, crumbs, right, children, after, essential }: { title: string; sub?: string; crumbs: Crumb[]; right?: React.ReactNode; children: React.ReactNode; after?: React.ReactNode; essential?: React.ReactNode }) {
+export async function Page({ title, sub, crumbs, right, children, after, essential, pocketHeader }: { title: string; sub?: string; crumbs: Crumb[]; right?: React.ReactNode; children: React.ReactNode; after?: React.ReactNode; essential?: React.ReactNode; pocketHeader?: React.ReactNode }) {
   const [user, view] = await Promise.all([getUser(), getViewContext()]);
   const all: Crumb[] = [{ label: "Cockpit", href: "/" }, ...crumbs];
   const demo = demoReadonly(), signup = demoSignupUrl();
@@ -51,9 +52,10 @@ export async function Page({ title, sub, crumbs, right, children, after, essenti
       {demo && <DemoGuard signupUrl={signup} />}
     </>
   );
+  const own = poche ? pocketHeader : undefined;
   return (
     <>
-      <header className="topbar">
+      {own ?? <header className="topbar">
         <Link className="brand brand-compact" href="/" aria-label="NuitSignal — accueil"><Logo width={150} /></Link>
         <div>
           <p className="topbar-title">{title}</p>
@@ -71,9 +73,9 @@ export async function Page({ title, sub, crumbs, right, children, after, essenti
             </form>
           )}
         </div>
-      </header>
+      </header>}
       <TabletNav />
-      <nav className="crumbs" aria-label="Fil d'Ariane">
+      {!own && <nav className="crumbs" aria-label="Fil d'Ariane">
         <ol>
           {all.map((c, i) => {
             const last = i === all.length - 1, root = i === 0;
@@ -81,7 +83,7 @@ export async function Page({ title, sub, crumbs, right, children, after, essenti
             return <li key={i}>{last ? <span className={root ? "crumb-root" : ""} aria-current="page">{inner}</span> : c.href ? <Link className={root ? "crumb-root" : ""} href={c.href}>{inner}</Link> : <span className="crumb-static">{inner}</span>}</li>;
           })}
         </ol>
-      </nav>
+      </nav>}
       <div className="content">
         {demoStrip}
         {children}
