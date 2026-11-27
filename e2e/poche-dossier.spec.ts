@@ -301,8 +301,9 @@ test.describe("Sur téléphone, décider depuis le dossier", () => {
   });
 
   test("Option rejetée par l'auditeur : jamais approuvable, le motif est rattaché au bouton", async ({ page }) => {
-    const liste = await ouverts();
-    const avecRejet = liste.find((o) => o.candidates.some((c) => c.audit.verdict === "REJECT"))!;
+    // hors veto : sur un dossier sous veto, la pastille annonce le veto, qui l'emporte sur l'option affichée ; l'ordre des codes change d'une installation à l'autre
+    const avecRejet = (await ouverts()).find((o) => !o.veto && o.candidates.some((c) => c.audit.verdict === "REJECT"))!;
+    expect(avecRejet, "la démonstration doit comporter un dossier sans veto avec une option rejetée").toBeTruthy();
     const rejetee = avecRejet.candidates.findIndex((c) => c.audit.verdict === "REJECT");
     await page.goto(`/dossier/${avecRejet.code}?option=${rejetee}`);
     await expect(page.getByTestId("pk-pastille")).toContainText("Option rejetée");
@@ -311,6 +312,17 @@ test.describe("Sur téléphone, décider depuis le dossier", () => {
     await expect(commentaire(page)).toHaveCount(0);
     await expect(rejeter(page)).toBeEnabled();
     await capture(page, "poche-dossier-rejetee");
+
+    // sous veto, la pastille annonce le veto ; l'option rejetée reste tout autant non approuvable
+    const sousVeto = await veto();
+    const i = sousVeto.candidates.findIndex((c) => c.audit.verdict === "REJECT");
+    expect(i, "la démonstration doit comporter une option rejetée sur le dossier sous veto").toBeGreaterThanOrEqual(0);
+    await page.goto(`/dossier/${sousVeto.code}?option=${i}`);
+    await expect(page.getByTestId("pk-pastille")).toContainText("Veto économique");
+    await expect(approuver(page)).toBeDisabled();
+    await expect(approuver(page)).toHaveAccessibleDescription(/rejetée par l'auditeur/i);
+    await expect(commentaire(page)).toHaveCount(0);
+    await expect(rejeter(page)).toBeEnabled();
   });
 
   test("« Examiner cette option » ramène en haut, vide le commentaire, et la barre agit sur l'option affichée", async ({ page }) => {
