@@ -34,7 +34,7 @@ async function shot(page: Page, name: string) {
   await page.screenshot({ path, fullPage: true });
   await test.info().attach(name, { path, contentType: "image/png" });
 }
-const dossierHrefs = (page: Page) => page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+const dossierHrefs = (page: Page) => page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
 
 test("Analyste : lecture seule dans la boîte d'opportunités, le dossier et l'historique", async ({ page }) => {
   await versionComplete(page.context()); // passe par des écrans réservés à l'ordinateur

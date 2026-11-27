@@ -89,7 +89,7 @@ async function prepareRapport(page: Page, mois: string) {
 async function removeRapport(mois: string) {
   const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   // brouillons des logements de démonstration seulement : rien de réel n'est touché
-  try { await c.query("delete from monthly_reports where month = $1 and status = 'DRAFT' and property_id in (select id from properties where is_demo)", [mois]); } finally { await c.end(); }
+  try { await c.query("delete from monthly_reports where month = $1 and status = 'DRAFT' and property_id in (select p.id from properties p join users u on u.tenant_id = p.tenant_id where p.is_demo and u.email = $2)", [mois, process.env.E2E_EMAIL]); } finally { await c.end(); }
 }
 /** Restes d'un essai interrompu : logements de ce test vieux de plus d'une heure (le logement réel est daté un jour plus tard). */
 async function purge() {

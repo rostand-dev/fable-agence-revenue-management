@@ -8,7 +8,7 @@ import { hasDatabase } from "./helpers/roles";
 test("Alertes d'exécution : liste, pastille, prise en compte, rappel sur le dossier", async ({ page }, info) => {
   test.skip(!hasDatabase(), "Alertes insérées en base : DATABASE_URL requis.");
   await page.goto("/historique");
-  const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  const hrefs = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
   expect(hrefs.length).toBeGreaterThan(0);
   const c = new Client({ connectionString: process.env.DATABASE_URL });
   const tag = info.project.name.replace(/\W/g, ""), stamp = Date.now().toString(36);
@@ -18,7 +18,7 @@ test("Alertes d'exécution : liste, pastille, prise en compte, rappel sur le dos
     await c.query("delete from execution_alerts where id like 'alr_e2e_%' and created_at < now() - interval '1 hour'"); // restes d'un arrêt brutal
     let target: { href: string; act: { id: string; tenant_id: string; property_id: string } } | null = null;
     for (const href of hrefs.slice(0, 15)) {
-      const { rows } = await c.query(`select a.id, a.tenant_id, a.property_id from revenue_actions a join opportunities o on o.id = a.opportunity_id where o.code = $1 and a.status <> 'CANCELLED' limit 1`, [decodeURIComponent(href.split("/").pop()!)]);
+      const { rows } = await c.query(`select a.id, a.tenant_id, a.property_id from revenue_actions a join opportunities o on o.id = a.opportunity_id where o.code = $1 and o.tenant_id = (select tenant_id from users where email = $2) and a.status <> 'CANCELLED' limit 1`, [decodeURIComponent(href.split("/").pop()!), process.env.E2E_EMAIL]);
       if (rows.length) { target = { href, act: rows[0] }; break; }
     }
     expect(target, "aucun dossier avec action dans l'historique").not.toBeNull();

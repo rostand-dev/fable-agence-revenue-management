@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
-import { withApprovedManualDossier } from "./helpers/dossier";
+import { deplierDossier, withApprovedManualDossier } from "./helpers/dossier";
 import { hasDatabase } from "./helpers/roles";
 import { versionComplete } from "./helpers/view";
 
@@ -14,6 +14,7 @@ async function closeWith(code: string, measurement: Record<string, unknown>) {
   await c.connect();
   try {
     const { rows } = await c.query(`select a.id from revenue_actions a join opportunities o on o.id = a.opportunity_id where o.code = $1`, [code]);
+    expect(rows, `action du dossier de test ${code}`).toHaveLength(1);
     const id = rows[0].id as string;
     for (const st of ["EXECUTING", "EXECUTED", "VERIFIED", "MEASURING", "CLOSED"]) await c.query(`update revenue_actions set status = $1 where id = $2`, [st, id]);
     await c.query(`update revenue_actions set measurement = $1::jsonb, executed_at = now(), verified_at = now(), measure_due_at = current_date where id = $2`, [JSON.stringify(measurement), id]);
@@ -31,6 +32,7 @@ for (const [outcome, label, reasons] of [
     await withApprovedManualDossier(async (code) => {
       await closeWith(code, { ...base, outcome, reasons, observed: `Observation de test (${outcome}).`, interpretation: "Sans période témoin, ce résultat décrit ce qui s'est passé après l'action ; il ne prouve pas qu'elle en soit la cause." });
       await page.goto(`/dossier/${code}`);
+      await deplierDossier(page); // action refermée : le suivi d'application est replié
       const r = page.getByTestId("resultat-mesure");
       await expect(r).toBeVisible();
       await expect(r).toHaveAttribute("data-outcome", outcome);

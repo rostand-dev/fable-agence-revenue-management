@@ -29,7 +29,7 @@ async function clean() {
   try {
     // un rapport certifié ne se supprime pas par l'application : le nettoyage de test passe outre le déclencheur de suppression
     await c.query("set session_replication_role = replica");
-    await c.query("delete from monthly_reports where month = $1", [monthValue(slot())]);
+    await c.query("delete from monthly_reports where month = $1 and tenant_id = (select tenant_id from users where email = $2)", [monthValue(slot()), process.env.E2E_EMAIL]);
   } finally { await c.end(); }
 }
 test.beforeEach(clean);
