@@ -42,3 +42,33 @@ export async function friezeViolations(page: Page, minGap = 8): Promise<string[]
     return out;
   }, minGap);
 }
+
+/**
+ * Contenu invisible parce que coupé : sous `racine`, les éléments (ou leur texte, quand un mot long sort de sa boîte) qui dépassent à droite
+ * d'un ancêtre qui ne laisse pas déborder, ou de l'écran. `expectNoHorizontalOverflow` ne voit pas ce cas : la page ne défile pas, le texte disparaît simplement.
+ * Seul un tableau large (`.table-wrap`) a le droit de défiler horizontalement ; les textes réservés aux lecteurs d'écran, les bulles et les troncatures voulues (…) sont ignorés.
+ */
+export async function contenuCoupe(page: Page, racine: string): Promise<string[]> {
+  return page.evaluate((sel) => {
+    const roots = Array.from(document.querySelectorAll<HTMLElement>(sel));
+    if (roots.length === 0) return [`aucun élément « ${sel} » sur la page`];
+    const nom = (el: Element) => el.tagName.toLowerCase() + Array.from(el.classList, (c) => `.${c}`).join("") + (el.getAttribute("data-testid") ? `[${el.getAttribute("data-testid")}]` : "");
+    const largeur = document.documentElement.clientWidth;
+    const out = new Set<string>();
+    for (const el of roots.flatMap((r) => [r, ...Array.from(r.querySelectorAll<HTMLElement>("*"))])) {
+      const box = el.getBoundingClientRect();
+      if (box.width <= 2 || box.height === 0 || el.closest(".sr-only, .term-pop") || getComputedStyle(el).textOverflow === "ellipsis") continue;
+      // un mot insécable dépasse de sa boîte sans l'élargir : on mesure aussi le texte propre de l'élément
+      const texte = Math.max(0, ...Array.from(el.childNodes).filter((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim()).map((n) => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().right; }));
+      const right = Math.max(box.right, texte);
+      let cause: string | null = right > largeur + 1 ? "l'écran" : null;
+      for (let a: HTMLElement | null = texte > box.right + 1 ? el : el.parentElement; a && a !== document.body; a = a.parentElement) {
+        const o = getComputedStyle(a).overflowX;
+        if ((o === "auto" || o === "scroll") && a.matches(".table-wrap")) { cause = null; break; }
+        if (o !== "visible" && right > a.getBoundingClientRect().right + 1) { cause = nom(a); break; }
+      }
+      if (cause) out.add(`${nom(el)} dépasse de ${cause}`);
+    }
+    return Array.from(out).slice(0, 10);
+  }, racine);
+}
