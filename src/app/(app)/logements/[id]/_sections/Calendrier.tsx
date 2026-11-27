@@ -8,6 +8,9 @@ import { euro, pct, signedEuro } from "@/lib/format";
 import { estimateAllChannels, estimatePublishedPrice, pickDefaultChannel, sentMinusRecommended, type ChannelMarkup } from "@/lib/pricing/published";
 import type { Fiche } from "./context";
 
+/** Case étroite : un nombre ne se coupe ni entre ses milliers ni avant « % » ; le symbole « € », lui, peut passer à la ligne. */
+const insecable = (v: string) => v.replace(/(\d) (?=[\d%])/g, "$1\u00a0");
+
 /** Calendrier à 90 jours : synthèse de l'horizon, prix par nuit et détail d'une date. */
 export function Calendrier({ p, sp, input, opps, hasCal }: Fiche) {
   if (!hasCal) return <div className="empty"><h3>Aucun calendrier</h3><p>Le calendrier apparaît dès que les intégrations sont connectées.</p></div>;
@@ -53,8 +56,8 @@ export function Calendrier({ p, sp, input, opps, hasCal }: Fiche) {
                 className={`cal-day${d.state === "BOOKED" ? " is-booked" : d.state === "BLOCKED" ? " is-blocked" : ""}${fl === true ? " is-veto" : fl === false ? " is-flag" : ""}${d.date.endsWith("-01") ? " is-month" : ""}`}
                 title={`${fmtDate(d.date)} · ${stateLabel(d.state)}${cents !== null ? (channel ? " · prix estimé " + channel.label + " " : " · envoyé à SuperHote ") + euro(cents) : ""}${d.minStay ? " · séjour min. " + d.minStay : ""}${d.rule ? " · " + d.rule : ""}${d.event ? " · " + d.event : ""}`}>
                 <span className="d">{fmtDay(d.date)}</span>
-                <span className={`p${channel && cents !== null ? " is-est" : ""}`}>{d.state === "BOOKED" ? "rés." : d.state === "BLOCKED" ? "bloqué" : cents === null ? "?" : (channel ? "~" : "") + euro(cents)}</span>
-                <span className="m">{d.marketOccupancy === null ? "m. ?" : "m. " + pct(d.marketOccupancy)}{d.event ? " ★" : ""}</span>
+                <span className={`p${channel && cents !== null ? " is-est" : ""}`}>{d.state === "BOOKED" ? "rés." : d.state === "BLOCKED" ? "bloqué" : cents === null ? "?" : (channel ? "~" : "") + insecable(euro(cents))}</span>
+                <span className="m">{d.marketOccupancy === null ? "m. ?" : "m. " + insecable(pct(d.marketOccupancy))}{d.event ? " ★" : ""}</span>
               </Link>
             );
           })}</div>

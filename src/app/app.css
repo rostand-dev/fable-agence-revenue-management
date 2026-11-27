@@ -26,6 +26,8 @@ form.inline { display: contents; }
 .option-head { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
 .option-head h4 { margin: 0; font-size: 15px; font-weight: 640; }
 .option-head p { margin: 3px 0 0; font-size: 13.5px; color: var(--quiet); }
+/* sans place pour un titre lisible, le badge ou la signature passe à la ligne */
+.option-head > .od-fill, .sit-head > .od-fill { flex-basis: 220px; }
 .option-meta { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: flex-end; }
 .option label.pick { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; min-height: 44px; cursor: pointer; }
 .option input[type="radio"] { width: 18px; height: 18px; accent-color: var(--blue-core); }
@@ -35,8 +37,9 @@ form.inline { display: contents; }
 .rules .rule-detail { color: var(--quiet); }
 
 /* calendrier 90 jours */
-.cal { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
-@media (max-width: 767px) { .cal { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+/* deux semaines par ligne seulement quand les cases sont assez larges ; sinon une semaine */
+.cal { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+@media (min-width: 1280px) { .cal { grid-template-columns: repeat(14, minmax(0, 1fr)); } }
 .cal-day { border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; min-height: 54px; display: grid; gap: 1px; align-content: start; font-size: 11px; background: rgb(255 255 255 / 2%); }
 .cal-day .d { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
 .cal-day .p { font-family: var(--mono); font-size: 12px; font-weight: 600; }
@@ -94,8 +97,14 @@ a.btn { text-decoration: none; }
 .subnav > a.subnav-link[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--blue); }
 @media (hover: hover) { .subnav > a.subnav-link:hover { color: var(--ink); } }
 @media (min-width: 900px) { .org-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.cal-day { overflow: hidden; white-space: nowrap; }
+/* case étroite : la date et l'occupation passent à la ligne, rien n'est coupé */
+.cal-day { min-width: 0; overflow-wrap: anywhere; }
 @media (max-width: 479px) { .cal-day { padding: 4px 3px; } .cal-day .d { font-size: 9px; } .cal-day .p { font-size: 11px; } .cal-day .m { font-size: 9px; } }
+/* petits téléphones : « bloqué » et un prix à trois chiffres tiennent sur une ligne */
+@media (max-width: 399px) { .cal-day { padding-inline: 2px; } .cal-day .p { font-size: 10px; } }
+
+/* Historique, tableau des actions (large, il défile) : le nom de l'action garde une colonne lisible */
+.hist-actions th[scope="row"] > :is(a, .src) { display: block; min-width: 12rem; }
 
 /* parcours pas à pas */
 .wiz-steps { margin-bottom: 22px; display: grid; gap: 10px; }

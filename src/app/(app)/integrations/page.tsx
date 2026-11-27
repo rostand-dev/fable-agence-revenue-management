@@ -52,8 +52,6 @@ export default async function Integrations() {
         <p>Chaque capacité est affichée telle que le code la gère aujourd'hui : une capacité absente est une dépendance visible, pas un prérequis caché. Une écriture non développée est impossible, côté serveur comme dans l'interface. L'écriture chez PriceLabs n'existe que pour les logements réels, une fois ouverte par l'hébergeur de l'application (verrou d'environnement) et tant que le coupe-circuit est levé ; sinon, toute modification passe par une procédure manuelle guidée, avec preuve.</p>
       </div>
       <RightsNotice need="property.manage" />
-      {/* avis temporaire, à retirer à la version suivante */}
-      <Banner role="tech" title="Les clés IA ont déménagé" style={{ marginBottom: 18 }}><span data-testid="cles-demenagees">Les clés Anthropic, OpenAI et Mistral sont désormais dans <Link href="/modeles/cles">IA &amp; modèles › Clés fournisseurs</Link>.</span></Banner>
       <Banner role="tech" title="Démonstration simulée, logements réels en lecture (écriture PriceLabs verrouillée par défaut)" style={{ marginBottom: 18 }}>Les logements de démonstration lisent des données synthétiques et simulent l'écriture PriceLabs. Vos propres logements lisent SuperHote (réservations, calendrier) et PriceLabs (prix, marché) dès que leur jeton ou leur clé API est renseigné dans leur fiche.</Banner>
       <div className="stack">
         {PROVIDERS.map((k) => {

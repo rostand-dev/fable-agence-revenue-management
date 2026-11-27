@@ -72,3 +72,15 @@ export async function contenuCoupe(page: Page, racine: string): Promise<string[]
     return Array.from(out).slice(0, 10);
   }, racine);
 }
+
+/**
+ * Colonnes écrasées : les éléments visibles désignés par `selector` plus étroits que `minimum` pixels. Un voisin qui ne passe pas à la ligne
+ * (badge, valeur, signature) réduit alors le texte à quelques lettres par ligne : rien n'est coupé ni ne défile, mais ce n'est plus lisible.
+ */
+export async function colonnesEcrasees(page: Page, selector: string, minimum: number): Promise<string[]> {
+  const els = page.locator(`${selector} >> visible=true`);
+  // rien à mesurer (sélecteur périmé, section restée repliée) : le contrôle échoue au lieu de passer à vide
+  if ((await els.count()) === 0) return [`aucun élément « ${selector} » visible sur la page`];
+  return els.evaluateAll((list, min) => list.filter((e) => e.getBoundingClientRect().width < min)
+    .map((e) => `${Math.round(e.getBoundingClientRect().width)} px au lieu de ${min} : « ${(e.textContent ?? "").trim().slice(0, 50)} »`).slice(0, 10), minimum);
+}
