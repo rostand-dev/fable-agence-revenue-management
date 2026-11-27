@@ -1,8 +1,7 @@
-import { randomBytes, scryptSync } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
-import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
+import { loginNewTenant, sql } from "./helpers/tenant";
 
 /**
  * Mode poche (version allégée sur téléphone) : détection, bascule, feuille « Plus », écrans réservés à l'ordinateur, coupe-circuit.
@@ -198,10 +197,6 @@ test.describe("Sur téléphone", () => {
   });
 });
 
-async function sql(text: string, params: unknown[]) {
-  const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
-  try { return await c.query(text, params); } finally { await c.end(); }
-}
 
 test.describe("Sur téléphone, dans un espace propre au test", () => {
   test.skip(({ isMobile }) => !isMobile, "mode poche : largeurs de téléphone");
@@ -209,25 +204,9 @@ test.describe("Sur téléphone, dans un espace propre au test", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   test.describe.configure({ mode: "default" });
 
-  const password = "e2e-poche-passw0rd";
-  let tenant = "", email = "";
-  test.beforeEach(async ({ page }, info) => {
-    const tag = `${info.project.name}-${Date.now().toString(36)}-${randomBytes(3).toString("hex")}`;
-    tenant = `tn_e2e_poche_${tag}`; email = `e2e-poche-${tag}@example.test`;
-    const salt = randomBytes(16);
-    await sql("insert into tenants (id, name) values ($1, $2)", [tenant, "Test mode poche"]);
-    await sql("insert into users (id, tenant_id, email, name, password_hash, role) values ($1, $2, $3, $4, $5, 'OWNER')", [`usr_e2e_poche_${tag}`, tenant, email, "Test poche", `scrypt$${salt.toString("hex")}$${scryptSync(password, salt, 64).toString("hex")}`]);
-    await page.goto("/connexion");
-    await page.getByLabel("Adresse e-mail").fill(email);
-    await page.getByLabel("Mot de passe").fill(password);
-    await page.getByRole("button", { name: "Se connecter" }).click();
-    await page.waitForURL((u) => !u.pathname.startsWith("/connexion"), { timeout: 15_000 });
-  });
-  test.afterEach(async () => {
-    await sql("delete from properties where tenant_id = $1", [tenant]);
-    await sql("delete from integrations where tenant_id = $1", [tenant]);
-    await sql("delete from tenants where id = $1", [tenant]);
-  });
+  let tenant = "", drop = async () => {};
+  test.beforeEach(async ({ page }, info) => { ({ tenant, drop } = await loginNewTenant(page, info, "Test mode poche")); });
+  test.afterEach(() => drop());
 
   test("Coupe-circuit : activé puis levé depuis le téléphone", async ({ page }) => {
     await page.goto("/integrations");

@@ -121,12 +121,26 @@ export async function loadStayNights(tenantId: string, propertyId: string, stay:
  */
 export async function reservationsFreshFor(tenantId: string, propertyId: string, now = new Date()): Promise<boolean> {
   const [p] = await db.select({ isDemo: schema.properties.isDemo, superhote: schema.properties.superhote, pricelabs: schema.properties.pricelabs }).from(schema.properties).where(and(eq(schema.properties.id, propertyId), eq(schema.properties.tenantId, tenantId)));
-  if (!p || p.isDemo) return true;
+  return !p || reservationsFresh(p, now);
+}
+
+type ReservationLink = { isDemo: boolean; superhote: unknown; pricelabs: unknown };
+type LinkedSources = { sh: { rentalId?: string; lastSync?: { ok?: boolean; at?: string } } | null; pl: { listingId?: string; lastSync?: { ok?: boolean; at?: string } } | null };
+const linkedSources = (p: ReservationLink): LinkedSources => ({ sh: p.superhote as LinkedSources["sh"], pl: p.pricelabs as LinkedSources["pl"] });
+
+/** Le logement lit-il ses réservations chez une source (SuperHote ou PriceLabs) ? Non : saisie manuelle, aucune date de synchronisation n'existe. */
+export function reservationsLinked(p: ReservationLink): boolean {
+  const { sh, pl } = linkedSources(p);
+  return !!(sh?.rentalId || pl?.listingId);
+}
+
+/** Même règle que `reservationsFreshFor`, sur un logement déjà lu. */
+export function reservationsFresh(p: ReservationLink, now = new Date()): boolean {
+  if (p.isDemo) return true;
   // SuperHote fait foi pour les réservations ; sans SuperHote, PriceLabs les porte (même règle que le rythme de synchronisation, cadence.ts)
-  const sh = p.superhote as { rentalId?: string; lastSync?: { ok?: boolean; at?: string } } | null;
-  const pl = p.pricelabs as { listingId?: string; lastSync?: { ok?: boolean; at?: string } } | null;
+  const { sh, pl } = linkedSources(p);
   const src = sh?.rentalId ? sh.lastSync : pl?.listingId ? pl.lastSync : undefined;
-  if (src === undefined && !sh?.rentalId && !pl?.listingId) return true; // aucune source reliée : saisie manuelle, rien n'est opposé (limite dite dans « Méthode »)
+  if (src === undefined && !reservationsLinked(p)) return true; // aucune source reliée : saisie manuelle, rien n'est opposé (limite dite dans « Méthode »)
   if (src?.ok === false) return false;
   return freshnessOf("RESERVATIONS", src?.at, now).state === "FRESH";
 }

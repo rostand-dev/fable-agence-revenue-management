@@ -29,6 +29,7 @@ export default async function Alertes() {
   const card = (a: (typeof all)[number]) => <AlertCard key={a.id} alert={a} property={a.propertyId ? pname.get(a.propertyId) : undefined} code={a.actionId ? codeOf.get(a.actionId) : null} canAct={canAct} emailOn={emailOn} />;
   return (
     <Page title="Alertes d'exécution" sub="Échecs d'écriture, écarts chez PriceLabs et actions bloquées" crumbs={[{ label: "Alertes d'exécution" }]}>
+      <div className="page-head"><h1>Alertes d'exécution</h1></div>
       {open.length === 0 && <Banner role="sain" icon="check" title="Aucune alerte à traiter">Rien ne demande votre attention : les écritures PriceLabs sont conformes à ce qui a été approuvé.</Banner>}
       {open.length > 0 && (
         <section className="section" aria-labelledby="open-h" style={{ marginTop: 0 }}>

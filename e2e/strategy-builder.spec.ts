@@ -2,6 +2,10 @@ import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -13,7 +17,7 @@ test("Strategy Builder : brouillon sans effet, comparaison, publication, restaur
   test.skip(!process.env.DATABASE_URL, "Logement lancé en base : DATABASE_URL requis.");
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const res = await page.request.post("/api/v1/properties", { data: { name: `Builder ${uid(info)}`, city: "Lille", kind: "T2" } });
-  const id = (await res.json()).id as string;
+  const id = toRemove.property((await res.json()).id as string);
   const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   try {
     const strategy = { basePriceCents: 11600, minPriceCents: 8300, maxPriceCents: 21000, minStay: 2, objective: "Objectif de départ", positioning: "Pro", maxDiscountStackPct: 20, maxPriceChangePct: 5 };

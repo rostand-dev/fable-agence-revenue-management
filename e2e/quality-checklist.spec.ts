@@ -3,6 +3,10 @@ import { expect, test, type TestInfo } from "@playwright/test";
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -15,7 +19,7 @@ test("Checklist de qualité : activation bloquée tant que le mapping n'est pas 
   test.skip(!process.env.DATABASE_URL, "Logement mis en observation en base : DATABASE_URL requis.");
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const res = await page.request.post("/api/v1/properties", { data: { name: `Qualité ${uid(info)}`, city: "Lille", kind: "T2", bedrooms: 2 } });
-  const id = (await res.json()).id as string;
+  const id = toRemove.property((await res.json()).id as string);
   const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   try {
     const pl = { apiKeyEnc: "x", listingId: "pl1", pms: "superhote", listingName: "Annonce", candidates: [{ id: "pl1", pms: "superhote", name: "Annonce", city: "Lille", bedrooms: 2 }], lastSync: { ok: true, at: new Date().toISOString(), days: 90 } };

@@ -3,6 +3,10 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { fingerprintToken, sign } from "../src/lib/integrations/superhote-webhook";
 import { encryptSecret } from "../src/lib/secret";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // US-030 : webhooks SuperHote. Le faux SuperHote est le test lui-même : il signe ses livraisons avec le secret qu'il a inscrit en base.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -11,7 +15,7 @@ const resa = (id: number, o: Record<string, unknown> = {}) => ({ id, rental_id: 
 async function createViaApi(page: Page, name: string) {
   const res = await page.request.post("/api/v1/properties", { data: { name, city: "Lille", kind: "T2", bedrooms: 2, capacity: 4 } });
   expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).id as string;
+  return toRemove.property((await res.json()).id as string);
 }
 async function sql<T = any>(q: string, args: unknown[] = []): Promise<T[]> {
   const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();

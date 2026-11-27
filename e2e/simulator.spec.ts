@@ -1,6 +1,10 @@
 import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { httpCredentials } from "./helpers/env";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // US-053 : simulateur explicable (API en lecture seule). Aucun écran nouveau : le contrôle visuel de la cascade reste couvert par les tests de la fiche logement.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
@@ -10,7 +14,7 @@ const STRATEGY = { basePriceCents: 12000, minPriceCents: 6000, maxPriceCents: 20
 test("Simulateur : cascade expliquée qui se referme, plancher de saison, cumul inconnu, erreurs lisibles, sans session", async ({ page, browser, baseURL }, info) => {
   test.skip(!process.env.DATABASE_URL, "Modèle économique écrit en base : DATABASE_URL requis.");
   const res = await page.request.post("/api/v1/properties", { data: { name: `Simulateur ${uid(info)}`, city: "Lille", kind: "T2" } });
-  const id = (await res.json()).id as string;
+  const id = toRemove.property((await res.json()).id as string);
   const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   try { await c.query("update properties set status = 'ACTIVE', economics = $2::jsonb, strategy = $3::jsonb where id = $1", [id, JSON.stringify(ECON), JSON.stringify(STRATEGY)]); } finally { await c.end(); }
   const url = (q: string) => `/api/v1/properties/${id}/simulate?${q}`;

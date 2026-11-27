@@ -4,6 +4,10 @@ import { fingerprintToken } from "../src/lib/integrations/superhote-webhook";
 import { encryptSecret } from "../src/lib/secret";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -18,7 +22,7 @@ async function sql<T = any>(q: string, args: unknown[] = []): Promise<T[]> {
 async function createViaApi(page: Page, name: string) {
   const res = await page.request.post("/api/v1/properties", { data: { name, city: "Lille", kind: "T2", bedrooms: 2, capacity: 4 } });
   expect(res.status(), await res.text()).toBe(201);
-  return (await res.json()).id as string;
+  return toRemove.property((await res.json()).id as string);
 }
 
 test("Erreurs d'ingestion : rejeu, mise à l'écart et lectures en échec, lisibles sur tous les écrans", async ({ page }, info) => {

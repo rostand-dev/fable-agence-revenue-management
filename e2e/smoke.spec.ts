@@ -4,7 +4,7 @@ import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
 
 // Pages principales d'un propriétaire connecté : elles s'ouvrent, affichent un titre et tiennent dans l'écran (bureau, 390 px et 360 px).
-const PAGES = ["/", "/portefeuille", "/logements", "/equipe", "/rapports", "/historique", "/glossaire"];
+const PAGES = ["/", "/portefeuille", "/alertes", "/logements", "/equipe", "/rapports", "/historique", "/glossaire"];
 /** Réservées à l'ordinateur en mode poche (voir mode-poche.spec.ts et navigation-inventaire.spec.ts). */
 const PAGES_ORDINATEUR = ["/bilan", "/integrations", "/methode", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo", "/modeles", "/modeles/cles", "/modeles/agents", "/modeles/budget", "/modeles/catalogue"];
 

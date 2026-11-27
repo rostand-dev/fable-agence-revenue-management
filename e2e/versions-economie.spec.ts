@@ -2,6 +2,10 @@ import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { VERSION_COMPLETE } from "./helpers/view";
+import { useCreated } from "./helpers/properties";
+
+/** supprimés après chaque test */
+const toRemove = useCreated();
 
 // écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
 test.use(VERSION_COMPLETE);
@@ -13,7 +17,7 @@ test("Versions du modèle économique : liste, détail des changements, lien dep
   test.skip(!process.env.DATABASE_URL, "Versions écrites en base : DATABASE_URL requis.");
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const res = await page.request.post("/api/v1/properties", { data: { name: `Versions ${uid(info)}`, city: "Lille", kind: "T2" } });
-  const id = (await res.json()).id as string;
+  const id = toRemove.property((await res.json()).id as string);
   const c = new Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
   try {
     const { rows: [pr] } = await c.query("select tenant_id from properties where id = $1", [id]);
