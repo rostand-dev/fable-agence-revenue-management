@@ -18,6 +18,8 @@ const approuver = (page: Page) => barre(page).getByRole("button", { name: /^(App
 const rejeter = (page: Page) => barre(page).getByRole("button", { name: "Rejeter la proposition" });
 const differer = (page: Page) => barre(page).getByRole("button", { name: "Différer de 3 jours" });
 const commentaire = (page: Page) => barre(page).getByLabel(/Commentaire obligatoire/);
+/** Titre du résultat après « Approuver » (ou « Retenir l'inaction »). */
+const RESULTAT_APPROUVE = /Option approuvée|Inaction retenue/;
 
 /** L'élément tient entre le haut de l'écran et la barre de navigation, sans rien par-dessus. */
 async function visibleSansDefiler(page: Page, el: Locator, quoi: string) {
@@ -231,8 +233,8 @@ test.describe("Sur téléphone, décider depuis le dossier", () => {
   test("Approbation d'une option conforme : résultat sous le titre, suivi d'application ouvert", async ({ page }) => {
     const o = await conforme(page);
     await approuver(page).click();
+    await expect(page.locator("#pk-outcome")).toContainText("Option approuvée");
     await expect(approuver(page)).toHaveCount(0);
-    await expect(page.getByTestId("dossier-decision")).toContainText("Option approuvée");
     expect(await etat(o.code)).toMatchObject({ status: "DECIDED", decision: "APPROVED" });
     await expect(page.getByTestId("pli-suivi")).toHaveAttribute("open", "");
     await expect(barre(page)).toHaveCount(0);
@@ -255,6 +257,8 @@ test.describe("Sur téléphone, décider depuis le dossier", () => {
     await capture(page, "poche-dossier-refus");
     await commentaire(page).fill("Plancher confirmé avec le propriétaire");
     await approuver(page).click();
+    // le résultat affiché signe la fin de l'action serveur ; le bouton, lui, change de libellé dès l'envoi (« En cours… »)
+    await expect(page.locator("#pk-outcome")).toContainText(RESULTAT_APPROUVE);
     await expect(approuver(page)).toHaveCount(0);
     expect((await etat(o.code)).status).toBe("DECIDED");
     const trace = await sql("select payload->>'comment' as comment from audit_events where tenant_id = $1 and type in ('action.approved', 'opportunity.no_action') and payload->>'code' = $2", [tenant, o.code]);
@@ -330,6 +334,7 @@ test.describe("Sur téléphone, décider depuis le dossier", () => {
     await expect(approuver(page)).toBeDisabled();
     await commentaire(page).fill("Option alternative retenue après examen");
     await approuver(page).click();
+    await expect(page.locator("#pk-outcome")).toContainText(RESULTAT_APPROUVE);
     await expect(approuver(page)).toHaveCount(0);
     expect(await etat(o.code)).toMatchObject({ status: "DECIDED", selected: alt });
     const action = await sql("select a.approval_comment from revenue_actions a join opportunities op on op.id = a.opportunity_id where op.tenant_id = $1 and op.code = $2", [tenant, o.code]);
