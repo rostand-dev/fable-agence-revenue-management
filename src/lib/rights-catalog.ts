@@ -66,7 +66,7 @@ export const ROUTE_RIGHTS: Record<string, Right> = {
   "DELETE api/v1/owners/[id]": property,
   "POST api/v1/properties": property,
   "PATCH api/v1/properties/[id]": property,
-  "DELETE api/v1/properties/[id]": { service: "Suppression d'un logement : le droit `property.delete` est contrôlé par lib/services/portfolio.ts." },
+  "DELETE api/v1/properties/[id]": { permission: "property.delete" },
   "POST api/v1/properties/[id]/listings": property,
   "PATCH api/v1/properties/[id]/listings/[listingId]": property,
   "DELETE api/v1/properties/[id]/listings/[listingId]": property,
@@ -79,4 +79,34 @@ export const ROUTE_RIGHTS: Record<string, Right> = {
   "DELETE api/v1/properties/[id]/strategy": property,
   "POST api/v1/properties/[id]/strategy/publish": property,
   "POST api/v1/properties/[id]/strategy/rollback": property,
+};
+
+/**
+ * Routes GET, par chemin : « lecture », ou ce que l'appel écrit tout de même. Aucune n'exige de droit d'écriture ;
+ * en déclarer une oblige à dire si elle écrit (rights-catalog.test.ts ; rights.db.test.ts le vérifie sur la base).
+ * Hors sujet ici : l'entretien de la session à chaque requête authentifiée et les migrations rejouées au démarrage.
+ */
+export const GET_ROUTES: Record<string, "lecture" | { ecrit: string }> = {
+  "api/audit-events": "lecture",
+  "api/health": "lecture",
+  "api/rapports/[id]/export": { ecrit: "Consigne l'export au journal d'audit." },
+  "api/rapports/historique": { ecrit: "Consigne l'export au journal d'audit." },
+  "api/session/restore": { ecrit: "Rouvre la session d'un appareil « Rester connecté » (jeton rotatif) et le consigne au journal." },
+  "api/v1/owners": { ecrit: "Crée le propriétaire par défaut de l'espace s'il n'existe pas encore (rejouable, jamais deux)." },
+  "api/v1/properties": "lecture",
+  "api/v1/properties/[id]": "lecture",
+  "api/v1/properties/[id]/economics/floors": "lecture",
+  "api/v1/properties/[id]/economics/versions": "lecture",
+  "api/v1/properties/[id]/listings": "lecture",
+  "api/v1/properties/[id]/mapping": "lecture",
+  "api/v1/properties/[id]/pace": "lecture",
+  "api/v1/properties/[id]/performance": "lecture",
+  "api/v1/properties/[id]/quality": "lecture",
+  "api/v1/properties/[id]/simulate": "lecture",
+  "api/v1/properties/[id]/snapshots": "lecture",
+  "api/v1/properties/[id]/strategy": "lecture",
+  "api/v1/properties/[id]/validations": "lecture",
+  "api/v1/snapshots/[snapshotId]": "lecture",
+  "demo": { ecrit: "Ouvre la session du compte de démonstration (instance de démonstration seulement), avec une limite de visites." },
+  "vue": { ecrit: "Pose les cookies de préférence d'affichage (sans session) ; aucune donnée modifiée." },
 };

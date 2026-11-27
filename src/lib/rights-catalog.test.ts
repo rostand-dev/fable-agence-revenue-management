@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { can, ROLES } from "@/lib/rbac";
-import { ACTION_RIGHTS, ROUTE_RIGHTS } from "./rights-catalog";
+import { ACTION_RIGHTS, GET_ROUTES, ROUTE_RIGHTS } from "./rights-catalog";
 
 const SRC = path.join(process.cwd(), "src");
 const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
@@ -24,6 +24,21 @@ describe("catalogue des droits d'écriture", () => {
     expect(Object.keys(ROUTE_RIGHTS).filter((d) => !actual.includes(d)), "déclaration sans route (périmée)").toEqual([]);
   });
 
+  it("toute route GET dit si elle écrit, et celles déclarées en lecture n'écrivent pas elles-mêmes", () => {
+    const actual = walk(path.join(SRC, "app")).filter((f) => f.endsWith(`${path.sep}route.ts`)).flatMap((f) => {
+      // tout le texte de la fonction GET : jusqu'à l'export suivant, quelle que soit sa mise en forme
+      const src = read(f), start = src.search(/^export (?:(?:async )?function|const) GET\b/m);
+      const body = start < 0 ? null : src.slice(start).split(/^export /m)[1];
+      return body ? [[path.relative(path.join(SRC, "app"), path.dirname(f)).split(path.sep).join("/"), body] as const] : [];
+    });
+    expect(actual.map(([r]) => r).filter((r) => !(r in GET_ROUTES)), "route GET non déclarée dans src/lib/rights-catalog.ts").toEqual([]);
+    expect(Object.keys(GET_ROUTES).filter((d) => !actual.some(([r]) => r === d)), "déclaration sans route (périmée)").toEqual([]);
+    // appels d'écriture visibles dans la route ; une écriture cachée dans un service reste à déclarer à la relecture
+    const writes = /\.(?:insert|update|delete)\(|\b(?:recordAudit|recordExport|createSession|restoreFromRemember|allowAttempt|ensureDefaultOwner|listOwners)\(/;
+    expect(actual.filter(([r, body]) => GET_ROUTES[r] === "lecture" && writes.test(body)).map(([r]) => r), "route déclarée en lecture qui écrit").toEqual([]);
+    for (const [r, v] of Object.entries(GET_ROUTES)) if (v !== "lecture") expect(v.ecrit.length, r).toBeGreaterThan(30);
+  });
+
   it("aucune écriture n'échappe au catalogue : actions regroupées, exports reconnus", () => {
     const sources = walk(SRC).filter((f) => /\.[jt]sx?$/.test(f) && !/\.test\.ts$/.test(f));
     const rel = (f: string) => path.relative(SRC, f).split(path.sep).join("/");
@@ -43,7 +58,7 @@ describe("catalogue des droits d'écriture", () => {
       "requestPasswordResetAction", "resetPasswordAction", "reviewAction", "rollbackAction", "saveReportAction", "signupAction", "toggleRunbookStepAction", "updatePromotionAction", "verifyAction", "verifyPromotionAction",
     ]);
     expect(unguarded(ROUTE_RIGHTS)).toEqual([
-      "DELETE api/v1/properties/[id]", "POST api/chat", "POST api/session/end", "POST api/session/touch", "POST api/v1/opportunities/[id]/approve", "POST api/v1/opportunities/[id]/reject", "POST api/webhooks/superhote/[endpointId]",
+      "POST api/chat", "POST api/session/end", "POST api/session/touch", "POST api/v1/opportunities/[id]/approve", "POST api/v1/opportunities/[id]/reject", "POST api/webhooks/superhote/[endpointId]",
     ]);
   });
 
