@@ -8,7 +8,7 @@ const nextConfig = {
   async redirects() {
     return [{ source: "/reglages", destination: "/parametres", permanent: true }];
   },
-  // pages de récupération de compte : le jeton est dans l'URL, donc ni cache, ni Referer, ni indexation
+  // en-têtes ; pages de récupération de compte : le jeton est dans l'URL, donc ni cache, ni Referer, ni indexation
   async headers() {
     const secure = [
       { key: "Cache-Control", value: "no-store, max-age=0" },
@@ -18,6 +18,8 @@ const nextConfig = {
       { key: "X-Content-Type-Options", value: "nosniff" },
     ];
     return [
+      // portraits de l'équipe : dossier versionné, donc gardés un an par le navigateur
+      { source: "/avatars/v2/:file*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
       { source: "/reinitialisation/:path*", headers: secure },
       { source: "/confirmation/:path*", headers: secure },
       { source: "/mot-de-passe-oublie", headers: secure },

@@ -5,14 +5,12 @@
  */
 export type AgentId = "direction" | "onboarding" | "marche" | "pricing" | "distribution" | "annonce" | "audit" | "reporting";
 
-export type AvatarSpec = { skin: string; hair: string; hairStyle: "bob" | "short" | "bun" | "curly" | "long" | "crop" | "wave" | "buzz"; top: string; bg: [string, string]; glasses?: boolean; beard?: boolean };
-
 export type AgentDef = {
   id: AgentId; name: string; title: string; short: string; pole: "Direction" | "Données" | "Analyse" | "Stratégie" | "Contrôle" | "Relation propriétaire";
   mission: string; responsibilities: string[]; inputs: string[]; deliverables: string[]; rights: string; cadence: string;
   /** Ce que l'agent ne fait jamais — frontière du poste */
   limits: string[]; reasoning: "Règles déterministes" | "Règles + raisonnement LLM" | "Raisonnement LLM sur faits certifiés";
-  reportsTo: AgentId | null; avatar: AvatarSpec;
+  reportsTo: AgentId | null;
 };
 
 export const AGENTS: AgentDef[] = [
@@ -31,7 +29,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Aucune écriture externe. Propose ; vous décidez.", cadence: "Quotidienne · avant 08:00",
     limits: ["Ne calcule aucun montant : elle reprend ceux du moteur", "Ne contourne jamais un veto de l'auditeur"],
     reasoning: "Règles + raisonnement LLM",
-    avatar: { skin: "#e8b796", hair: "#3b2a22", hairStyle: "bob", top: "#7c3aed", bg: ["#1e3a8a", "#5b21b6"] },
   },
   {
     id: "onboarding", name: "Inès", title: "Chargée d'onboarding et des données", short: "Onboarding & données", pole: "Données", reportsTo: "direction",
@@ -48,7 +45,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Lecture seule sur les outils externes.", cadence: "À l'onboarding, puis quotidienne",
     limits: ["N'invente aucune valeur : une donnée absente vous est demandée", "Ne propose aucune action commerciale"],
     reasoning: "Règles déterministes",
-    avatar: { skin: "#c98d66", hair: "#1c1917", hairStyle: "bun", top: "#2563eb", bg: ["#0f3460", "#1d4ed8"], glasses: true },
   },
   {
     id: "marche", name: "Noor", title: "Analyste marché", short: "Analyse marché", pole: "Analyse", reportsTo: "direction",
@@ -65,7 +61,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Lecture seule.", cadence: "Quotidienne · 06:15",
     limits: ["Ne propose pas d'action", "Ne présente jamais une corrélation comme une cause", "Ne cite que des preuves numérotées du dossier : un constat sans preuve ou avec un chiffre inventé est refusé"],
     reasoning: "Règles + raisonnement LLM",
-    avatar: { skin: "#a8734f", hair: "#0c0a09", hairStyle: "long", top: "#0891b2", bg: ["#164e63", "#1e40af"] },
   },
   {
     id: "pricing", name: "Elias", title: "Stratège tarifaire", short: "Stratégie tarifaire", pole: "Stratégie", reportsTo: "direction",
@@ -81,7 +76,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Écriture PriceLabs uniquement après votre approbation.", cadence: "À chaque opportunité · revue hebdomadaire",
     limits: ["Ne descend jamais sous le plancher économique", "Ne modifie pas plusieurs paramètres corrélés en même temps"],
     reasoning: "Règles + raisonnement LLM",
-    avatar: { skin: "#e3b08c", hair: "#44403c", hairStyle: "short", top: "#4f46e5", bg: ["#312e81", "#1d4ed8"], beard: true },
   },
   {
     id: "distribution", name: "Hugo", title: "Responsable distribution et promotions", short: "Distribution & promotions", pole: "Stratégie", reportsTo: "direction",
@@ -97,7 +91,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Aucune écriture automatique : procédure manuelle guidée, avec preuve.", cadence: "À chaque opportunité · contrôle hebdomadaire",
     limits: ["Aucune automatisation de navigateur sur Airbnb ou Booking.com", "Deux remises visant le même signal ne sont jamais activées ensemble"],
     reasoning: "Règles + raisonnement LLM",
-    avatar: { skin: "#f0c8a8", hair: "#78350f", hairStyle: "wave", top: "#0d9488", bg: ["#134e4a", "#1e3a8a"] },
   },
   {
     id: "annonce", name: "Maya", title: "Responsable qualité d'annonce", short: "Qualité d'annonce", pole: "Analyse", reportsTo: "direction",
@@ -113,7 +106,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Aucune écriture : audit seul.", cadence: "Sur sollicitation · revue mensuelle",
     limits: ["Ne chiffre pas un gain sans taux de conversion mesuré"],
     reasoning: "Raisonnement LLM sur faits certifiés",
-    avatar: { skin: "#8d5a3b", hair: "#1c1917", hairStyle: "curly", top: "#9333ea", bg: ["#581c87", "#1e40af"] },
   },
   {
     id: "audit", name: "Victor", title: "Auditeur des décisions", short: "Audit · droit de veto", pole: "Contrôle", reportsTo: null,
@@ -131,7 +123,6 @@ export const AGENTS: AgentDef[] = [
     rights: "Veto. Aucune écriture.", cadence: "À chaque option",
     limits: ["Aucun jugement vague : chaque refus cite sa règle", "Son contrôle par règles est sans modèle ; la seconde lecture par modèle peut seulement ajouter une alerte, jamais lever un veto"],
     reasoning: "Règles + raisonnement LLM",
-    avatar: { skin: "#d9a57e", hair: "#a8a29e", hairStyle: "crop", top: "#334155", bg: ["#1e293b", "#3730a3"], glasses: true },
   },
   {
     id: "reporting", name: "Théo", title: "Chargé du reporting propriétaire", short: "Mesure & reporting", pole: "Relation propriétaire", reportsTo: "direction",
@@ -147,11 +138,15 @@ export const AGENTS: AgentDef[] = [
     rights: "Aucune écriture externe.", cadence: "À l'échéance de chaque mesure · mensuelle",
     limits: ["Une réservation après une action n'est pas présentée comme causée par elle", "Aucun chiffre absent des métriques certifiées"],
     reasoning: "Raisonnement LLM sur faits certifiés",
-    avatar: { skin: "#f1cbb0", hair: "#292524", hairStyle: "buzz", top: "#1d4ed8", bg: ["#1e3a8a", "#6d28d9"] },
   },
 ];
 
 export const AGENT_BY_ID = Object.fromEntries(AGENTS.map((a) => [a.id, a])) as Record<AgentId, AgentDef>;
+/** Dossier des portraits (sous public/). Versionné car les images sont gardées un an en cache : pour remplacer une image,
+ * créer v3, puis mettre à jour cette constante et la règle de cache de next.config.mjs. */
+export const AVATAR_DIR = "/avatars/v2";
+export const avatarSrc = (id: AgentId) => `${AVATAR_DIR}/${id}.webp`;
+
 export function agentName(id: string, custom?: Record<string, string> | null): string {
   return (custom?.[id] || AGENT_BY_ID[id as AgentId]?.name) ?? id;
 }
