@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="fr" data-theme="auto">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NuitSignal — Une agence de revenue management, sans la prestation</title>
+  <meta name="description" content="Huit agents IA surveillent chaque jour le calendrier de vos locations de courte durée, expliquent ce qui se passe et instruisent les décisions. PriceLabs reste votre moteur de prix ; vous gardez la validation.">
+  <link rel="canonical" href="https://nuitsignal.rosyops.io/">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#04050a" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f5f7fc" media="(prefers-color-scheme: light)">
+  <link rel="icon" href="assets/brand/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:site_name" content="NuitSignal">
+  <meta property="og:title" content="NuitSignal — Une agence de revenue management, sans la prestation">
+  <meta property="og:description" content="Huit agents IA surveillent, expliquent et instruisent les décisions de revenu de vos locations de courte durée. Vous gardez la validation.">
+  <meta property="og:url" content="https://nuitsignal.rosyops.io/">
+  <meta property="og:image" content="https://nuitsignal.rosyops.io/assets/og.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="assets/fonts/jetbrains-mono-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/space-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/landing.css">
+  <script src="assets/theme.js"></script>
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"SoftwareApplication","name":"NuitSignal","applicationCategory":"BusinessApplication","operatingSystem":"Web","inLanguage":"fr","url":"https://nuitsignal.rosyops.io/","description":"Agence de revenue management assistée par IA pour les propriétaires de locations de courte durée (Airbnb, Booking.com)."}
+  </script>
+</head>
+<body>
+<a class="skip" href="#contenu">Aller au contenu</a>
+
+<header class="nav" id="haut">
+  <div class="nav-in">
+    <a class="brand" href="#haut" aria-label="NuitSignal, retour en haut">
+      <svg class="brand-mark" viewBox="0 0 72 64" aria-hidden="true"><defs><linearGradient id="lgA" x1="7" y1="4" x2="28" y2="59" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#60A5FA"/><stop offset="1" stop-color="#2563EB"/></linearGradient><linearGradient id="lgB" x1="64" y1="2" x2="27" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#C4B5FD"/><stop offset=".55" stop-color="#A78BFA"/><stop offset="1" stop-color="#7C3AED"/></linearGradient></defs><path fill="url(#lgA)" d="M7 9C7 5 11 4 15 7L28 17C20 27 19 39 27 49V59C15 58 7 52 7 43Z"/><path fill="url(#lgB)" d="M49 2C60 5 64 14 64 23V56C64 59 62 60 59 58L39 43C30 36 27 27 30 19L49 36Z"/></svg>
+      <span>NuitSignal</span>
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#valeur">Pourquoi</a>
+      <a href="#agence">L'agence</a>
+      <a href="#workflow">Fonctionnement</a>
+      <a href="#apercu">Aperçu</a>
+      <a href="#garde-fous">Garde-fous</a>
+    </nav>
+    <div class="nav-actions">
+      <button class="theme-btn" type="button" id="themeBtn" aria-label="Thème : automatique (suit le réglage de l'appareil)">
+        <svg class="i-auto" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" class="fill"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+      </button>
+      <button class="theme-btn" type="button" id="motionBtn" aria-pressed="false" aria-label="Mettre en pause les animations">
+        <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6v12M15 6v12"/></svg>
+        <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z"/></svg>
+      </button>
+      <a class="btn btn-ghost btn-sm hide-sm" data-href="login" href="https://connect.nuitsignal.rosyops.io/connexion">Se connecter</a>
+      <a class="btn btn-primary btn-sm" data-href="signup" href="https://connect.nuitsignal.rosyops.io/inscription">Commencer</a>
+    </div>
+  </div>
+</header>
+
+<main id="contenu">
+
+<!-- ============ HERO ============ -->
+<section class="hero" aria-labelledby="slogan">
+  <canvas class="sky" id="sky" aria-hidden="true"></canvas>
+  <div class="aurora" aria-hidden="true"></div>
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow reveal"><span class="live-dot" aria-hidden="true"></span> Revenue management IA · Location courte durée</p>
+      <h1 id="slogan" class="slogan" aria-label="Une agence de revenue management, sans la prestation.">
+        <span class="sl-line" data-scramble>Une agence de</span>
+        <span class="sl-line" data-scramble>revenue management,</span>
+        <span class="sl-line"><span class="sl-accent" data-scramble>sans la prestation.</span><span class="caret" aria-hidden="true"></span></span>
+      </h1>
+      <svg class="pulse-line" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 30 H170 L190 30 L205 8 L222 52 L238 18 L250 30 H600"/></svg>
+      <p class="lead reveal">Huit agents IA surveillent chaque jour le calendrier de vos locations Airbnb et Booking.com, expliquent ce qui se passe et instruisent chaque décision. <strong>PriceLabs reste votre moteur de prix ; vous gardez la validation.</strong></p>
+      <div class="cta-row reveal">
+        <a class="btn btn-primary btn-lg" data-href="signup" href="https://connect.nuitsignal.rosyops.io/inscription">Créer mon agence <span aria-hidden="true">→</span></a>
+        <a class="btn btn-ghost btn-lg" data-href="demo" href="https://demo.nuit-signal.rosyops.io/demo">Voir la démo, sans compte</a>
+      </div>
+      <div class="crew-strip reveal">
+        <div class="crew" aria-hidden="true">
+          <img src="assets/avatars/direction.webp" alt="" width="40" height="40"><img src="assets/avatars/onboarding.webp" alt="" width="40" height="40"><img src="assets/avatars/marche.webp" alt="" width="40" height="40"><img src="assets/avatars/pricing.webp" alt="" width="40" height="40"><img src="assets/avatars/distribution.webp" alt="" width="40" height="40"><img src="assets/avatars/annonce.webp" alt="" width="40" height="40"><img src="assets/avatars/audit.webp" alt="" width="40" height="40"><img src="assets/avatars/reporting.webp" alt="" width="40" height="40">
+        </div>
+        <p><strong>8 agents</strong> en veille sur vos 90 prochains jours</p>
+      </div>
+    </div>
+
+    <figure class="console reveal" aria-label="Exemple de revue d'un logement par l'agence, sur données de démonstration">
+      <div class="console-bar"><span></span><span></span><span></span><b>revue · T3 Châtillon</b><em>démo</em></div>
+      <ol class="console-body" id="console" aria-live="off">
+        <li data-who="Inès" data-c="blue"><time>06:00</time><b>Inès</b><span>Sources fraîches · 0 doublon · calendrier lu jusqu'à J+90 <i class="ok">✓</i></span></li>
+        <li data-who="Noor" data-c="violet"><time>06:15</time><b>Noor</b><span>J+7 → J+14 : occupation 38 % · marché 61 % <i class="warn">◆ signal</i></span></li>
+        <li data-who="Lina" data-c="violet"><time>06:16</time><b>Lina</b><span>Prix aligné sur le marché. Hypothèse : trou de 2 nuits</span></li>
+        <li data-who="Elias" data-c="blue"><time>06:17</time><b>Elias</b><span>Option A · séjour minimum 3 → 2 nuits sur ces dates</span></li>
+        <li data-who="Hugo" data-c="blue"><time>06:17</time><b>Hugo</b><span>Option B · promotion −15 % · cumul des remises 27 %</span></li>
+        <li data-who="Victor" data-c="rose"><time>06:18</time><b>Victor</b><span>A : APPROUVE · B : REJETTE, sous le plancher <i class="veto">✕ veto</i></span></li>
+        <li data-who="Lina" data-c="violet"><time>06:18</time><b>Lina</b><span>1 situation à arbitrer · impact simulé +186 € net</span></li>
+        <li class="you"><time>08:02</time><b>Vous</b><span><span class="kbd">Approuver</span> <span class="kbd ghost">Différer</span> <span class="kbd ghost">Rejeter</span></span></li>
+      </ol>
+      <figcaption>Revue illustrative, données de démonstration. Les montants sont des simulations.</figcaption>
+    </figure>
+  </div>
+  <a class="scroll-hint" href="#valeur" aria-label="Découvrir"><span></span></a>
+</section>
+
+<!-- ============ CHIFFRES ============ -->
+<section class="band" aria-label="NuitSignal en chiffres">
+  <div class="wrap band-grid">
+    <div class="stat reveal"><b data-count="8">8</b><span>agents, un vrai organigramme d'agence</span></div>
+    <div class="stat reveal"><b data-count="90" data-prefix="J+">J+90</b><span>surveillés à chaque revue</span></div>
+    <div class="stat reveal"><b data-count="13" data-prefix="">13</b><span>playbooks métier, du trou de calendrier au plancher</span></div>
+    <div class="stat reveal"><b data-count="0">0</b><span>écriture externe sans votre approbation</span></div>
+  </div>
+</section>
+
+<!-- ============ VALEUR ============ -->
+<section class="section" id="valeur" aria-labelledby="valeur-t">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="kicker">La plus-value</p>
+      <h2 id="valeur-t">Pas une courbe de prix de plus.<br><span class="grad">Un processus d'agence, tous les jours.</span></h2>
+      <p class="sub">Les outils de pricing fixent un prix. Une agence de revenue management se demande <em>pourquoi</em> un logement sous-performe, choisit le bon levier, protège votre rentabilité et mesure le résultat. NuitSignal fait ce travail, et vous montre toutes ses preuves.</p>
+    </header>
+
+    <ol class="questions reveal" aria-label="Les cinq questions auxquelles l'agence répond chaque jour">
+      <li><span>01</span>Que se passe-t-il ?</li>
+      <li><span>02</span>Pourquoi ?</li>
+      <li><span>03</span>Quelle action vaut le plus ?</li>
+      <li><span>04</span>Respecte-t-elle ma rentabilité ?</li>
+      <li><span>05</span>A-t-elle vraiment payé ?</li>
+    </ol>
+
+    <div class="cards">
+      <article class="card glow reveal">
+        <div class="ic ic-violet" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4M11 8v3l2 2"/></svg></div>
+        <h3>Le diagnostic avant la remise</h3>
+        <p>Une occupation faible ne déclenche <strong>jamais</strong> une baisse de prix automatique. L'agence pose d'abord un diagnostic causal : prix, trou de calendrier, canal en retrait, annonce, événement… et départage les hypothèses.</p>
+      </article>
+      <article class="card glow reveal">
+        <div class="ic ic-green" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></div>
+        <h3>Le revenu net, pas l'occupation</h3>
+        <p>Chaque option est simulée en revenu net : commissions par canal, ménage, majorations, remises cumulées. L'objectif est la marge par nuit disponible, pas un calendrier plein à perte.</p>
+      </article>
+      <article class="card glow reveal">
+        <div class="ic ic-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="m9 12 2 2 4-4"/></svg></div>
+        <h3>Vous gardez la décision</h3>
+        <p>L'agence propose, vous tranchez : approuver, rejeter, différer, ou retenir l'inaction. Rien n'est écrit dans PriceLabs sans votre accord, et un coupe-circuit coupe tout en un geste.</p>
+      </article>
+      <article class="card glow reveal">
+        <div class="ic ic-amber" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <h3>Tout est tracé, tout est mesuré</h3>
+        <p>Du signal observé au résultat mesuré, chaque action suit huit étapes contrôlées, avec retour arrière prévu et journal d'audit en ajout seul. Théo vous dit ce qui a vraiment marché.</p>
+      </article>
+      <article class="card glow reveal">
+        <div class="ic ic-blue" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="2"/><rect x="14" y="4" width="7" height="7" rx="2"/><rect x="8.5" y="14" width="7" height="7" rx="2"/><path d="M6.5 11v1.5h11V11M12 12.5V14"/></svg></div>
+        <h3>Vos outils restent en place</h3>
+        <p>PriceLabs reste le moteur de prix, SuperHote fait foi pour les réservations. NuitSignal ajoute la couche qui manquait : stratégie, arbitrage prix ou promotion, garde-fous et mesure.</p>
+      </article>
+      <article class="card glow reveal">
+        <div class="ic ic-violet" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><rect x="7" y="7" width="10" height="10" rx="3"/><path d="M10 12h4"/></svg></div>
+        <h3>Une IA qui ne calcule pas vos montants</h3>
+        <p>Calculs, planchers et garde-fous sont déterministes. Les modèles de langage, facultatifs et avec <strong>vos</strong> clés (Anthropic, OpenAI, Mistral), expliquent ; un routeur choisit le moins cher, sous votre plafond.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ AGENCE / SLIDER ============ -->
+<section class="section section-alt" id="agence" aria-labelledby="agence-t">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="kicker">L'équipe</p>
+      <h2 id="agence-t">Huit postes. <span class="grad">Une vraie agence.</span></h2>
+      <p class="sub">Chaque agent occupe un poste qu'on trouve dans une agence de revenue management : une mission, des droits, et des limites qu'il ne franchit jamais.</p>
+    </header>
+
+    <div class="slider reveal" id="slider" role="region" aria-roledescription="carrousel" aria-label="Les huit agents de l'agence">
+      <div class="slides-live" id="slidesLive" aria-live="off">
+      <div class="slides" id="slides">
+        <article class="slide is-active" data-i="0" role="group" aria-roledescription="diapositive" aria-label="1 sur 8 : Lina">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/direction.webp" alt="Portrait de Lina" width="288" height="288"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Direction</p>
+            <h3>Lina <small>Directrice du revenue management</small></h3>
+            <blockquote class="speech"><p data-say>« Je pilote la revue de chacun de vos logements. Je ne vous présente que les situations qui méritent une décision, classées par valeur, urgence et risque. Et quand rien ne vaut la peine d'agir, je vous le dis aussi. »</p></blockquote>
+            <ul class="chips"><li>File priorisée</li><li>Dossier de décision</li><li>Quotidienne · avant 08:00</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="1" role="group" aria-roledescription="diapositive" aria-label="2 sur 8 : Inès">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/onboarding.webp" alt="Portrait d'Inès" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Onboarding &amp; données</p>
+            <h3>Inès <small>Chargée d'onboarding et des données</small></h3>
+            <blockquote class="speech"><p data-say>« Je construis le dossier de votre logement : coûts, commissions, objectifs. Chaque jour, je vérifie que les données sont fraîches et cohérentes. Une donnée absente reste inconnue, jamais un zéro. »</p></blockquote>
+            <ul class="chips"><li>Planchers par canal</li><li>Qualité des données</li><li>Lecture seule</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="2" role="group" aria-roledescription="diapositive" aria-label="3 sur 8 : Noor">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/marche.webp" alt="Portrait de Noor" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Analyse marché</p>
+            <h3>Noor <small>Analyste marché</small></h3>
+            <blockquote class="speech"><p data-say>« Je compare votre calendrier à votre marché sur cinq fenêtres, de J+0 à J+90. Je transforme les chiffres en signaux sourcés, sans jamais confondre corrélation et cause. »</p></blockquote>
+            <ul class="chips"><li>Écarts au marché</li><li>Hypothèses concurrentes</li><li>Quotidienne · 06:15</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="3" role="group" aria-roledescription="diapositive" aria-label="4 sur 8 : Elias">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/pricing.webp" alt="Portrait d'Elias" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Stratégie tarifaire</p>
+            <h3>Elias <small>Stratège tarifaire</small></h3>
+            <blockquote class="speech"><p data-say>« PriceLabs calcule vos prix ; moi, je règle sa stratégie : prix de base, bornes, séjours minimum. Une seule hypothèse à la fois, et toujours un plan de retour arrière. »</p></blockquote>
+            <ul class="chips"><li>Options simulées</li><li>Instruction PriceLabs</li><li>Rien sans votre accord</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="4" role="group" aria-roledescription="diapositive" aria-label="5 sur 8 : Hugo">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/distribution.webp" alt="Portrait de Hugo" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Distribution &amp; promotions</p>
+            <h3>Hugo <small>Responsable distribution et promotions</small></h3>
+            <blockquote class="speech"><p data-say>« Prix, restriction, promotion… ou rien ? Je choisis le bon levier et je tiens le registre de vos promotions Airbnb et Booking.com, en surveillant le cumul des remises. »</p></blockquote>
+            <ul class="chips"><li>Registre des promotions</li><li>Alerte de cumul</li><li>Procédure guidée</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="5" role="group" aria-roledescription="diapositive" aria-label="6 sur 8 : Maya">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/annonce.webp" alt="Portrait de Maya" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Qualité d'annonce</p>
+            <h3>Maya <small>Responsable qualité d'annonce</small></h3>
+            <blockquote class="speech"><p data-say>« Quand ni le prix ni les restrictions n'expliquent un creux, je regarde votre annonce : photos, description, équipements, avis. Et je vous liste des corrections concrètes, classées par effort. »</p></blockquote>
+            <ul class="chips"><li>Audit d'annonce</li><li>Lecture des avis</li><li>Revue mensuelle</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="6" role="group" aria-roledescription="diapositive" aria-label="7 sur 8 : Victor">
+          <div class="portrait veto"><div class="halo"></div><img src="assets/avatars/audit.webp" alt="Portrait de Victor" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole pole-rose">Audit · droit de veto</p>
+            <h3>Victor <small>Auditeur des décisions</small></h3>
+            <blockquote class="speech"><p data-say>« Je contrôle chaque option avant qu'elle n'arrive jusqu'à vous. Sous votre plancher économique, c'est non. Mon veto ne se contourne pas, et chaque refus cite sa règle. »</p></blockquote>
+            <ul class="chips"><li>Verdict règle par règle</li><li>Indépendant de la direction</li><li>Veto</li></ul>
+          </div>
+        </article>
+        <article class="slide" data-i="7" role="group" aria-roledescription="diapositive" aria-label="8 sur 8 : Théo">
+          <div class="portrait"><div class="halo"></div><img src="assets/avatars/reporting.webp" alt="Portrait de Théo" width="288" height="288" loading="lazy"><span class="wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></div>
+          <div class="who">
+            <p class="pole">Mesure &amp; reporting</p>
+            <h3>Théo <small>Chargé du reporting propriétaire</small></h3>
+            <blockquote class="speech"><p data-say>« Après chaque action, je mesure ce qu'elle a vraiment produit. Chaque mois, je vous rends compte en revenu net, sans jargon et sans chiffre non certifié. »</p></blockquote>
+            <ul class="chips"><li>Mesure d'impact</li><li>Bilan mensuel</li><li>Mémoire des playbooks</li></ul>
+          </div>
+        </article>
+      </div>
+      </div>
+
+      <div class="slider-nav">
+        <button class="arrow" type="button" id="prev" aria-label="Agent précédent"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg></button>
+        <div class="thumbs" id="thumbs" role="group" aria-label="Choisir un agent">
+          <button type="button" aria-current="true" aria-label="Lina, direction"><img src="assets/avatars/direction.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Inès, onboarding et données"><img src="assets/avatars/onboarding.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Noor, analyse marché"><img src="assets/avatars/marche.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Elias, stratégie tarifaire"><img src="assets/avatars/pricing.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Hugo, distribution et promotions"><img src="assets/avatars/distribution.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Maya, qualité d'annonce"><img src="assets/avatars/annonce.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Victor, audit et veto"><img src="assets/avatars/audit.webp" alt="" width="52" height="52"></button>
+          <button type="button" aria-current="false" aria-label="Théo, mesure et reporting"><img src="assets/avatars/reporting.webp" alt="" width="52" height="52"></button>
+        </div>
+        <button class="arrow" type="button" id="next" aria-label="Agent suivant"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      </div>
+      <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WORKFLOW ============ -->
+<section class="section" id="workflow" aria-labelledby="wf-t">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="kicker">Le fonctionnement</p>
+      <h2 id="wf-t">Une revue complète.<br><span class="grad">Quelques minutes pour vous.</span></h2>
+      <p class="sub">Au rythme de chaque logement, de toutes les 6 heures à tous les 2 jours, l'équipe déroule la même chaîne, dans un ordre fixe, sans boucle entre agents. Vous n'intervenez qu'à la fin, sur les seules exceptions.</p>
+    </header>
+
+    <div class="flow reveal" id="flow">
+      <svg class="flow-line" aria-hidden="true" preserveAspectRatio="none"><path id="flowPath"/><path id="flowGlow" class="glow-path"/></svg>
+      <ol class="flow-steps" id="flowSteps">
+        <li data-step="0"><button type="button"><img src="assets/avatars/onboarding.webp" alt="" width="56" height="56"><span class="n">1</span><b>Rapprocher</b><small>Inès</small></button><p>Rapprocher réservations et calendrier, contrôler la fraîcheur de chaque source.</p></li>
+        <li data-step="1"><button type="button"><img src="assets/avatars/marche.webp" alt="" width="56" height="56"><span class="n">2</span><b>Observer</b><small>Noor</small></button><p>Mesurer les écarts au marché sur les fenêtres J+0 à J+90.</p></li>
+        <li data-step="2"><button type="button"><img src="assets/avatars/direction.webp" alt="" width="56" height="56"><span class="n">3</span><b>Diagnostiquer</b><small>Lina</small></button><p>Détecter, dédupliquer et regrouper les signaux ; poser le diagnostic causal.</p></li>
+        <li data-step="3"><button type="button"><img src="assets/avatars/pricing.webp" alt="" width="56" height="56"><span class="n">4</span><b>Proposer</b><small>Elias</small></button><p>Instruire les options tarifaires et les simuler en revenu net.</p></li>
+        <li data-step="4"><button type="button"><img src="assets/avatars/distribution.webp" alt="" width="56" height="56"><span class="n">5</span><b>Comparer</b><small>Hugo</small></button><p>Instruire les options de promotion et contrôler le cumul des remises.</p></li>
+        <li data-step="5"><button type="button"><img src="assets/avatars/audit.webp" alt="" width="56" height="56"><span class="n">6</span><b>Auditer</b><small>Victor</small></button><p>Auditer chaque option ; opposer son veto si un garde-fou est violé.</p></li>
+        <li data-step="6"><button type="button"><img src="assets/avatars/direction.webp" alt="" width="56" height="56"><span class="n">7</span><b>Prioriser</b><small>Lina</small></button><p>Classer la file et rédiger chaque dossier, preuves numérotées à l'appui.</p></li>
+        <li data-step="7" class="you"><button type="button"><span class="you-dot" aria-hidden="true">✓</span><span class="n">8</span><b>Décider</b><small>Vous</small></button><p>Approuver, rejeter, différer ou retenir l'inaction, en quelques minutes.</p></li>
+      </ol>
+      <div class="flow-detail" id="flowDetail" aria-live="off"></div>
+    </div>
+
+    <div class="cycle reveal" aria-label="Le cycle d'une action approuvée">
+      <p class="cycle-t">Puis chaque action approuvée suit son cycle, sans étape sautée</p>
+      <ol class="cycle-steps">
+        <li>Observer</li><li>Diagnostiquer</li><li>Proposer</li><li>Simuler</li><li>Valider</li><li>Exécuter</li><li>Vérifier</li><li>Mesurer</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============ APERÇU ============ -->
+<section class="section section-alt" id="apercu" aria-labelledby="ap-t">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="kicker">Aperçu</p>
+      <h2 id="ap-t">Un cockpit sur ordinateur.<br><span class="grad">Une décision dans la poche.</span></h2>
+      <p class="sub">Sur ordinateur, analysez et configurez. Sur téléphone, le mode poche montre la décision d'abord et le raisonnement à la demande. Captures réelles de l'application, sur le jeu de démonstration.</p>
+    </header>
+
+    <div class="tabs reveal" role="tablist" aria-label="Écrans de l'application" id="shotTabs">
+      <button role="tab" type="button" id="shotTab0" aria-selected="true" aria-controls="stage" data-shot="0">Opportunités</button>
+      <button role="tab" type="button" id="shotTab1" aria-selected="false" aria-controls="stage" data-shot="1" tabindex="-1">Dossier</button>
+      <button role="tab" type="button" id="shotTab2" aria-selected="false" aria-controls="stage" data-shot="2" tabindex="-1">Logement</button>
+    </div>
+
+    <div class="stage reveal" id="stage" role="tabpanel" aria-labelledby="shotTab0">
+      <div class="laptop">
+        <div class="laptop-screen">
+          <div class="browser-bar" aria-hidden="true"><span></span><span></span><span></span><em>connect.nuitsignal.rosyops.io</em></div>
+          <div class="screens">
+            <img class="is-on" src="assets/shots/desktop-opportunites.webp" alt="Écran Opportunités : 8 situations à arbitrer, impact net simulé, garde-fous et vetos" width="1600" height="1000" loading="lazy">
+            <img src="assets/shots/desktop-dossier.webp" alt="Dossier de décision : le prix vendu passe sous le plancher absolu, avancement du cycle en 8 étapes et preuves" width="1600" height="1000" loading="lazy">
+            <img src="assets/shots/desktop-logement.webp" alt="Fiche du logement T3 Châtillon : revenu net, occupation, prix moyen net sur 12 mois" width="1600" height="1000" loading="lazy">
+          </div>
+        </div>
+        <div class="laptop-base" aria-hidden="true"></div>
+      </div>
+      <div class="phone">
+        <div class="phone-notch" aria-hidden="true"></div>
+        <div class="screens">
+          <img class="is-on" src="assets/shots/mobile-opportunites.webp" alt="Mode poche : opportunités sur téléphone" width="600" height="1298" loading="lazy">
+          <img src="assets/shots/mobile-dossier.webp" alt="Mode poche : dossier de décision sur téléphone" width="600" height="1298" loading="lazy">
+          <img src="assets/shots/mobile-accueil.webp" alt="Mode poche : accueil, 8 situations à arbitrer sur 2 logements" width="600" height="1298" loading="lazy">
+        </div>
+      </div>
+      <div class="float-tag t1 reveal" aria-hidden="true"><span class="dot-rose"></span>Veto · sous le plancher</div>
+      <div class="float-tag t2 reveal" aria-hidden="true"><span class="dot-green"></span>+215 € net simulé</div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ GARDE-FOUS ============ -->
+<section class="section" id="garde-fous" aria-labelledby="gf-t">
+  <div class="wrap gf-grid">
+    <div class="reveal">
+      <p class="kicker">Les garde-fous</p>
+      <h2 id="gf-t">L'IA propose.<br><span class="grad">Les règles disposent.</span></h2>
+      <p class="sub">Une IA de revenue management qui baisse vos prix dès qu'une date reste vide, c'est la garantie de vendre à perte. NuitSignal est construit à l'inverse.</p>
+      <ul class="checks">
+        <li><span class="mk disc" aria-hidden="true"></span><div><b>Plancher économique protégé</b>Calculé à partir de vos charges, par canal et par durée de séjour. Aucune action en dessous.</div></li>
+        <li><span class="mk diamond" aria-hidden="true"></span><div><b>Cumul des remises calculé</b>Promotions, remise à la semaine, dernière minute et commission : le prix réellement vendu est simulé.</div></li>
+        <li><span class="mk square" aria-hidden="true"></span><div><b>Une hypothèse à la fois</b>Variation bornée, nombre de nuits plafonné, période d'observation et plan de retour arrière.</div></li>
+        <li><span class="mk cross" aria-hidden="true"></span><div><b>Veto indépendant</b>L'auditeur ne dépend pas de la direction. Son contrôle par règles n'utilise aucun modèle de langage.</div></li>
+      </ul>
+    </div>
+    <div class="veto-card reveal" id="vetoCard" aria-label="Exemple de veto">
+      <div class="vc-head"><img src="assets/avatars/audit.webp" alt="" width="44" height="44"><div><b>Victor</b><small>Audit de l'option B · T5 Évry</small></div></div>
+      <dl class="vc-rows">
+        <div><dt>Prix du calendrier</dt><dd>116 €</dd></div>
+        <div><dt>Dernière minute −30 %</dt><dd>−35 €</dd></div>
+        <div><dt>Promotion Booking.com −10 %</dt><dd>−8 €</dd></div>
+        <div class="hl"><dt>Prix vendu simulé</dt><dd>73 €</dd></div>
+        <div><dt>Plancher absolu</dt><dd>111 €</dd></div>
+      </dl>
+      <div class="stamp" aria-hidden="true">VETO</div>
+      <p class="vc-verdict"><b>REJETTE</b> · règle du plancher absolu · l'option ne vous sera pas proposée sans cette alerte</p>
+      <p class="vc-note">Exemple illustratif, données de démonstration.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ INTÉGRATIONS ============ -->
+<section class="section section-alt" aria-labelledby="int-t">
+  <div class="wrap">
+    <header class="sec-head reveal">
+      <p class="kicker">Intégrations</p>
+      <h2 id="int-t">Branché sur vos outils. <span class="grad">Pas à leur place.</span></h2>
+    </header>
+    <div class="orbit reveal" aria-hidden="true">
+      <div class="orbit-core"><img src="assets/brand/icon.svg" alt="" width="64" height="56"></div>
+      <div class="ring r1"><span>PriceLabs</span><span>SuperHote</span></div>
+      <div class="ring r2"><span>Airbnb</span><span>Booking.com</span></div>
+      <div class="ring r3"><span>Anthropic</span><span>OpenAI</span><span>Mistral</span></div>
+    </div>
+    <div class="int-grid">
+      <div class="int reveal"><b>PriceLabs</b><span>Moteur de prix · grille J+0 à J+90, marché, réglages. Aucune écriture sans votre approbation ; sinon, procédure guidée.</span></div>
+      <div class="int reveal"><b>SuperHote</b><span>Fait foi pour les réservations et les montants facturés. Jeton API en lecture seule.</span></div>
+      <div class="int reveal"><b>Airbnb &amp; Booking.com</b><span>Promotions par procédure guidée avec preuve. Aucun robot sur les extranets.</span></div>
+      <div class="int reveal"><b>Vos modèles d'IA</b><span>Anthropic, OpenAI, Mistral avec vos propres clés chiffrées. Sans clé, l'agence fonctionne par règles.</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="section" aria-labelledby="faq-t">
+  <div class="wrap wrap-narrow">
+    <header class="sec-head reveal">
+      <p class="kicker">Questions</p>
+      <h2 id="faq-t">Vos questions, nos réponses.</h2>
+    </header>
+    <div class="faq">
+      <details class="reveal"><summary>Est-ce que NuitSignal remplace PriceLabs ?</summary><p>Non. PriceLabs reste le moteur de prix journalier. NuitSignal règle sa stratégie (prix de base, bornes, séjours minimum, prix datés) et vérifie que ce qui est vendu respecte votre rentabilité.</p></details>
+      <details class="reveal"><summary>L'IA peut-elle modifier mes prix toute seule ?</summary><p>Non. L'agence propose et simule ; vous approuvez. Aucune écriture dans un outil externe n'a lieu sans votre accord, et un coupe-circuit par intégration bloque toute écriture en un geste.</p></details>
+      <details class="reveal"><summary>Ai-je besoin d'une clé d'IA ?</summary><p>Non. Sans clé, les synthèses sont composées par règles. Avec vos clés Anthropic, OpenAI ou Mistral, les agents rédigent leurs explications ; un routeur choisit le modèle le moins cher adapté à chaque tâche, sous le plafond mensuel que vous fixez. Vos données ne partent que chez les fournisseurs dont vous avez saisi la clé.</p></details>
+      <details class="reveal"><summary>Puis-je essayer avant de créer un compte ?</summary><p>Oui : la démo publique ouvre un environnement en lecture seule, avec deux logements de démonstration et leurs situations à arbitrer.</p></details>
+      <details class="reveal"><summary>Et sur mon téléphone ?</summary><p>Le mode poche affiche la décision d'abord et le raisonnement à la demande. Le veto et la validation renforcée se décident aussi depuis le téléphone, avec un commentaire.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CTA ============ -->
+<section class="final" aria-labelledby="final-t">
+  <div class="wrap final-in reveal">
+    <div class="final-crew" aria-hidden="true">
+      <img src="assets/avatars/direction.webp" alt="" width="64" height="64"><img src="assets/avatars/onboarding.webp" alt="" width="64" height="64"><img src="assets/avatars/marche.webp" alt="" width="64" height="64"><img src="assets/avatars/pricing.webp" alt="" width="64" height="64"><img src="assets/avatars/distribution.webp" alt="" width="64" height="64"><img src="assets/avatars/annonce.webp" alt="" width="64" height="64"><img src="assets/avatars/audit.webp" alt="" width="64" height="64"><img src="assets/avatars/reporting.webp" alt="" width="64" height="64">
+    </div>
+    <h2 id="final-t" class="mono-t">Votre agence est prête.<br><span class="grad">Il ne manque que vous.</span></h2>
+    <p class="sub">Créez votre compte, branchez SuperHote et PriceLabs, répondez aux questions d'Inès. L'équipe commence par observer, sans rien écrire.</p>
+    <div class="cta-row center">
+      <a class="btn btn-primary btn-lg" data-href="signup" href="https://connect.nuitsignal.rosyops.io/inscription">Créer mon agence <span aria-hidden="true">→</span></a>
+      <a class="btn btn-ghost btn-lg" data-href="demo" href="https://demo.nuit-signal.rosyops.io/demo">Explorer la démo</a>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <a class="brand" href="#haut"><img src="assets/brand/icon.svg" alt="" width="28" height="25"><span>NuitSignal</span></a>
+    <p>Une agence de revenue management, sans la prestation.</p>
+    <nav aria-label="Liens de bas de page"><a data-href="login" href="https://connect.nuitsignal.rosyops.io/connexion">Se connecter</a><a data-href="demo" href="https://demo.nuit-signal.rosyops.io/demo">Démo</a><a href="#garde-fous">Garde-fous</a></nav>
+    <p class="fine">© 2026 NuitSignal · RosyOps. Les montants présentés sont des simulations sur données de démonstration. Airbnb, Booking.com, PriceLabs et SuperHote sont des marques de leurs propriétaires respectifs.</p>
+  </div>
+</footer>
+
+<script src="assets/config.js" defer></script>
+<script src="assets/landing.js" defer></script>
+</body>
+</html>

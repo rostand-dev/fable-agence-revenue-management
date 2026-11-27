@@ -17,6 +17,7 @@
     "test:db": "vitest run -c vitest.db.config.mts",
     "test:all": "npm test && npm run test:db",
     "e2e": "playwright test",
+    "e2e:landing": "playwright test -c landing/playwright.config.ts",
     "fixtures:pricelabs": "tsx scripts/pricelabs-fixture.ts",
     "fake:pricelabs": "tsx scripts/fake-pricelabs-server.ts"
   },
