@@ -166,3 +166,41 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  # Landing statique (landing/) : rendu dans un vrai navigateur, bureau, tablette et mobile (390 et 360 px), thème clair et sombre,
+  # mouvement réduit, et aucune erreur JavaScript ni ressource manquante. Pas de base de données ni de compte : un serveur statique suffit.
+  landing:
+    name: Landing (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # L'image de production est construite et lancée telle que Coolify la lancera : nginx, en-têtes de sécurité (CSP stricte),
+      # page 404 et config.js généré depuis LANDING_APP_URL. Les tests tournent contre elle, pas contre un serveur de développement.
+      - run: docker build -t nuitsignal-landing landing
+      - run: docker run -d --name landing -p 8080:8080 -e LANDING_APP_URL=https://connect.nuitsignal.rosyops.io nuitsignal-landing
+      - run: for i in $(seq 1 20); do curl -fsS http://127.0.0.1:8080/healthz && exit 0; sleep 1; done; docker logs landing; exit 1
+      - run: npm run e2e:landing
+        env:
+          # Adresse de la landing lancée ci-dessus, et adresse d'application attendue dans config.js.
+          LANDING_BASE_URL: http://127.0.0.1:8080
+          LANDING_EXPECTED_APP_URL: https://connect.nuitsignal.rosyops.io
+      - if: ${{ failure() }}
+        run: docker logs landing
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-landing
+          path: |
+            playwright-report/landing/
+            test-results/landing/
+          retention-days: 7
+          if-no-files-found: ignore

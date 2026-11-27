@@ -220,6 +220,10 @@ Le workflow `.github/workflows/ci.yml` s'exécute sur chaque pull request et cha
 
 Un quatrième contrôle, **Tests E2E (Playwright)**, ouvre l'application dans un vrai navigateur, sur écran de bureau et sur mobile (390 px et 360 px), avec le compte de démo. Il vérifie que les pages principales s'ouvrent sans défiler horizontalement et que la frise du cycle reste lisible (`e2e/`, assistants de mesure dans `e2e/helpers/layout.ts`). Le rapport HTML et les captures sont joints à l'exécution GitHub. En local : construire l'application (`npm run build`), démarrer avec le compte de démo configuré (voir « Compte de démo »), puis `E2E_EMAIL=… E2E_PASSWORD=… npm run e2e` (variables décrites dans `.env.example`). Tout nouvel écran ou toute modification d'interface doit s'accompagner d'un test dans `e2e/`.
 
+## Landing (site vitrine)
+
+Le site vitrine `nuitsignal.rosyops.io` vit dans `landing/` : site statique avec sa propre image nginx, déployé comme une application Coolify distincte (*Base Directory* `/landing`, *Watch Paths* `landing/**`). Voir `landing/README.md`. Tests : `npm run e2e:landing` (job CI « Landing » : image Docker construite puis testée dans Chrome).
+
 ## Déploiement sur Coolify
 
 1. **Projet → New Resource → Public/Private Repository**, choisir ce dépôt, branche `main`.
