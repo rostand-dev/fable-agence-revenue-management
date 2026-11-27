@@ -50,7 +50,7 @@ test("Méthode : le catalogue des 13 playbooks se déplie, avec seuils, données
 
 test("Dossier : le signal affiche ses mesures face à leur seuil, sans débordement", async ({ page }) => {
   await page.goto("/");
-  const lien = page.locator('a[href^="/dossier/"]').first();
+  const lien = page.locator('a[href^="/dossier/S-"]').first();
   await expect(lien, "aucun dossier trouvé sur l'accueil du compte de démo").toBeVisible();
   await lien.click();
   await deplierDossier(page);

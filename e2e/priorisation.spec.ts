@@ -49,7 +49,7 @@ test("Priorisation : « Rétablir » remet les champs aux valeurs enregistrées,
 
 test("Dossier : « Pourquoi cette priorité » décompose le score", async ({ page }) => {
   await page.goto("/");
-  await page.locator('a[href^="/dossier/"]').first().click();
+  await page.locator('a[href^="/dossier/S-"]').first().click();
   await deplierDossier(page);
   const card = page.getByTestId("rang-card");
   await expect(card).toBeVisible();

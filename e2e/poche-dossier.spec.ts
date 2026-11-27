@@ -35,7 +35,7 @@ async function visibleSansDefiler(page: Page, el: Locator, quoi: string) {
 async function dossiers(page: Page, url: string): Promise<string[]> {
   await page.goto(url);
   await expect(page.getByTestId("situation").first()).toBeVisible();
-  const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => as.map((a) => a.getAttribute("href")!.split("#")[0]));
+  const hrefs = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => as.map((a) => a.getAttribute("href")!.split("#")[0]));
   return [...new Set(hrefs)];
 }
 
@@ -140,7 +140,7 @@ test.describe("Sur téléphone, compte de démonstration", () => {
       return [id, s ? (s.textContent ?? "").replace(/\s+/g, " ").trim() : null];
     })), ids);
     await page.goto("/historique");
-    const tranches = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => [...new Set(as.map((a) => a.getAttribute("href")!))]);
+    const tranches = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => [...new Set(as.map((a) => a.getAttribute("href")!))]);
     expect(tranches.length, "dossiers de l'historique de démonstration").toBeGreaterThan(0);
     const ouverts = await dossiers(page, "/");
     const comparees = new Set<string>();

@@ -6,7 +6,7 @@ import { deplierDossier } from "./helpers/dossier";
 // Régression : sur mobile (390 px), les libellés de la frise du cycle (Observer, Diagnostiquer…) étaient très serrés et se chevauchaient.
 test("frise du cycle d'un dossier : libellés lisibles, sans chevauchement", async ({ page }) => {
   await page.goto("/");
-  const lien = page.locator('a[href^="/dossier/"]').first();
+  const lien = page.locator('a[href^="/dossier/S-"]').first();
   await expect(lien, "aucun dossier trouvé sur l'accueil du compte de démo").toBeVisible();
   await lien.click();
   await deplierDossier(page);

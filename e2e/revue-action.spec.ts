@@ -5,7 +5,7 @@ import { deplierDossier } from "./helpers/dossier";
 // US-083 : la revue d'action montre la cascade du revenu net en barres, la jauge des planchers, les promotions empilées et la trace d'audit.
 async function dossierHrefs(page: import("@playwright/test").Page, from: string) {
   await page.goto(from);
-  return page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  return page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
 }
 
 test("Dossier ouvert : cascade en barres, planchers, promotions empilées, sans débordement", async ({ page }) => {

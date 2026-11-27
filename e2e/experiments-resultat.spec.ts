@@ -14,6 +14,7 @@ async function closeWith(code: string, measurement: Record<string, unknown>) {
   await c.connect();
   try {
     const { rows } = await c.query(`select a.id from revenue_actions a join opportunities o on o.id = a.opportunity_id where o.code = $1`, [code]);
+    expect(rows, `action du dossier de test ${code}`).toHaveLength(1);
     const id = rows[0].id as string;
     for (const st of ["EXECUTING", "EXECUTED", "VERIFIED", "MEASURING", "CLOSED"]) await c.query(`update revenue_actions set status = $1 where id = $2`, [st, id]);
     await c.query(`update revenue_actions set measurement = $1::jsonb, executed_at = now(), verified_at = now(), measure_due_at = current_date where id = $2`, [JSON.stringify(measurement), id]);

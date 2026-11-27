@@ -5,7 +5,7 @@ import { deplierDossier } from "./helpers/dossier";
 // US-071 : l'analyse de marché d'un dossier (constats qui renvoient à des preuves numérotées). Bureau, mobile 390 et 360 px.
 async function firstDossier(page: Page): Promise<string> {
   await page.goto("/");
-  const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  const hrefs = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
   expect(hrefs.length, "aucun dossier sur l'accueil du compte de démo").toBeGreaterThan(0);
   return hrefs[0];
 }

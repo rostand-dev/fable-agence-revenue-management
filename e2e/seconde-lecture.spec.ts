@@ -6,7 +6,7 @@ import { deplierDossier } from "./helpers/dossier";
 // US-073 : seconde lecture indépendante de l'auditeur sur l'option retenue. Bureau, mobile 390 et 360 px (projets Playwright).
 async function dossierRelu(page: Page): Promise<boolean> {
   await page.goto("/");
-  const hrefs = await page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  const hrefs = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
   for (const h of hrefs) {
     await page.goto(h);
     await deplierDossier(page);
