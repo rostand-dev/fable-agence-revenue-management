@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import pg from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
+import { versionComplete } from "./helpers/view";
 
 // Fiche logement en hubs : vue d'ensemble, trois hubs, carte « À faire », menu de gestion, feuille des sections. Trois formats d'écran.
 const largeur = (page: Page) => page.viewportSize()!.width;
@@ -90,6 +91,7 @@ test("Mobile et tablette : « Section » ouvre les six sections en accordéon ; 
 });
 
 test("Logement réel : « À faire » mène aux écrans, « Gérer le logement » regroupe les actions, les hubs montrent les états", async ({ page }, info) => {
+  await versionComplete(page.context()); // passe par les écrans de gestion, réservés à l'ordinateur
   test.skip(!hasDatabase(), "Logement lancé en base : DATABASE_URL requis.");
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const res = await page.request.post("/api/v1/properties", { data: { name: `Hubs ${info.project.name} ${Date.now().toString(36)}`, city: "Lille", kind: "T2" } });

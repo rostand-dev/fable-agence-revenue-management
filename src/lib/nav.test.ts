@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestorIds, buildNav, currentNodeId, menuProperties, PROPERTY_SECTIONS, propertyIdOf, sectionHref, type NavNode, hasPriceBadge } from "./nav";
+import { ancestorIds, buildNav, currentNodeId, deskScreen, KILL_SWITCH_HREF, menuProperties, pocketMenu, PROPERTY_SECTIONS, propertyIdOf, sectionHref, viewHref, type NavNode, hasPriceBadge } from "./nav";
 
 const props = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}`, name: `Logement ${i + 1}`, status: "ACTIVE" }));
 const flat = (nodes: NavNode[]): NavNode[] => nodes.flatMap((n) => [n, ...flat(n.children ?? [])]);
@@ -67,5 +67,43 @@ describe("droits", () => {
     const ids = (canAdd: boolean) => buildNav([], null, canAdd).flatMap((g) => g.items).flatMap((n) => n.children ?? []).map((n) => n.id);
     expect(ids(true)).toContain("ajouter-logement");
     expect(ids(false)).not.toContain("ajouter-logement");
+  });
+});
+
+describe("mode poche : écrans réservés à l'ordinateur", () => {
+  const reserves = ["/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo", "/proprietaires", "/integrations", "/integrations/erreurs",
+    "/modeles", "/modeles/cles", "/modeles/agents", "/modeles/budget", "/modeles/catalogue", "/logements/nouveau", "/bilan", "/methode",
+    ...["creation", "modifier", "supprimer", "couts", "saisons", "strategie", "compilateur", "versions-economie", "mapping", "qualite", "validations", "ecarts-reservations"].map((s) => `/logements/p1/${s}`)];
+  const disponibles = ["/", "/portefeuille", "/alertes", "/logements", "/logements/p1", "/historique", "/equipe", "/equipe/direction", "/glossaire", "/rapports", "/rapports/r1", "/dossier/OPP-1", "/vue", "/inconnu"];
+  it("la liste couvre la configuration et l'analyse, pas la consultation ni la décision", () => {
+    for (const p of reserves) expect(deskScreen(p), p).not.toBeNull();
+    for (const p of disponibles) expect(deskScreen(p), p).toBeNull();
+    expect(deskScreen("/bilan/")?.key).toBe("/bilan");
+  });
+  it("chaque page de réglage d'un logement connue du menu est réservée", () => {
+    for (const s of PROPERTY_SECTIONS) for (const page of s.pages) expect(deskScreen(`/logements/p1/${page}`), page).not.toBeNull();
+  });
+  it("le choix est propre à un écran, sauf le parcours de création qui n'en fait qu'un", () => {
+    expect(deskScreen("/logements/p1/couts")?.key).not.toBe(deskScreen("/logements/p2/couts")?.key);
+    expect(deskScreen("/logements/nouveau")?.key).toBe(deskScreen("/logements/p1/creation")?.key);
+  });
+  it("le retour mène à un écran disponible sur téléphone", () => {
+    for (const p of reserves) expect(deskScreen(deskScreen(p)!.back), p).toBeNull();
+    expect(deskScreen("/logements/p1/couts")?.back).toBe("/logements/p1");
+  });
+  it("le menu porte le champ desk sur ces écrans", () => {
+    const nodes = flat(buildNav(props(1)).flatMap((g) => g.items));
+    for (const id of ["parametres", "compte", "proprietaires", "integrations", "modeles", "ia-cles", "priorisation", "demonstration", "ajouter-logement", "bilan", "methode"]) expect(nodes.find((n) => n.id === id)?.desk, id).toBe(true);
+    for (const id of ["tableau-de-bord", "opportunites", "alertes", "logements", "historique", "rapports", "equipe", "glossaire", "section:p1:apercu", "section:p1:calendrier"]) expect(nodes.find((n) => n.id === id)?.desk, id).toBeUndefined();
+  });
+  it("feuille « Plus » : consultation d'un côté, ordinateur de l'autre", () => {
+    const m = pocketMenu(buildNav(props(1)));
+    expect(m.links.map((l) => l.label)).toEqual(["Historique des décisions", "Équipe de l'agence", "Rapports mensuels", "Glossaire"]);
+    expect(m.desk.map((l) => l.label)).toEqual(["Paramètres", "IA & modèles", "Intégrations", "Création d'un logement", "Analyse", "Méthode"]);
+    expect(pocketMenu(buildNav(props(1), null, false)).desk.map((l) => l.id)).not.toContain("ajouter-logement");
+    expect(deskScreen(KILL_SWITCH_HREF)).not.toBeNull();
+  });
+  it("l'adresse de bascule encode le retour", () => {
+    expect(viewHref("complet", "/logements/p1?tab=calendrier")).toBe("/vue?mode=complet&retour=%2Flogements%2Fp1%3Ftab%3Dcalendrier");
   });
 });

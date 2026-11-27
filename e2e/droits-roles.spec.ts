@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { createRoleUser, deleteUser, hasDatabase, markLaunched, removeProperty } from "./helpers/roles";
+import { versionComplete } from "./helpers/view";
 
 // US-084 : un rôle sans droit lit les dossiers mais ne peut ni approuver, ni rejeter, ni différer ; le serveur refuse aussi (403).
 // Les comptes de test vivent dans l'espace du compte de démo ; ils exigent DATABASE_URL (ignorés sur une Preview distante).
@@ -36,6 +37,7 @@ async function shot(page: Page, name: string) {
 const dossierHrefs = (page: Page) => page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
 
 test("Analyste : lecture seule dans la boîte d'opportunités, le dossier et l'historique", async ({ page }) => {
+  await versionComplete(page.context()); // passe par des écrans réservés à l'ordinateur
   const u = await createRoleUser("ANALYST", tag());
   try {
     await login(page, u);
@@ -121,6 +123,7 @@ test("Revenue manager : décide comme le propriétaire du compte (non-régressio
 // La suppression d'un logement est définitive : seuls le propriétaire du compte et l'administrateur la voient et l'obtiennent.
 for (const role of ["ANALYST", "REVENUE_MANAGER"] as const) {
   test(`Suppression d'un logement : ${role} n'a ni lien ni formulaire, le serveur refuse ; l'administrateur supprime`, async ({ page, browser }) => {
+    await versionComplete(page.context()); // passe par des écrans réservés à l'ordinateur
     test.setTimeout(90_000); // deux connexions, six écrans et une suppression
     const name = `Droits ${role} ${tag()}`, users: string[] = [];
     let propertyId: string | null = null;
@@ -164,6 +167,7 @@ for (const role of ["ANALYST", "REVENUE_MANAGER"] as const) {
 
       const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
       try {
+        await versionComplete(ctx);
         const p2 = await ctx.newPage();
         await login(p2, admin);
         await p2.goto(`/logements/${id}`);
@@ -184,6 +188,7 @@ for (const role of ["ANALYST", "REVENUE_MANAGER"] as const) {
 // Écritures hors circuit de décision : les logements (propriétaire, administrateur, revenue manager) et les réglages de l'espace
 // (propriétaire, administrateur). Les écrans restent lisibles ; les champs sont verrouillés et le serveur refuse.
 test("Analyste : écrans de saisie réservés, formulaires verrouillés avec explication, API refusée", async ({ page, browser }) => {
+  await versionComplete(page.context()); // passe par des écrans réservés à l'ordinateur
   test.setTimeout(150_000); // une vingtaine d'écrans
   const name = `Lecture ${tag()}`, users: string[] = [];
   let propertyId: string | null = null;
@@ -256,6 +261,7 @@ test("Analyste : écrans de saisie réservés, formulaires verrouillés avec exp
 });
 
 test("Revenue manager : gère les logements, mais les réglages de l'espace restent verrouillés", async ({ page }) => {
+  await versionComplete(page.context()); // passe par des écrans réservés à l'ordinateur
   test.setTimeout(90_000);
   const u = await createRoleUser("REVENUE_MANAGER", tag()), name = `Bailleur ${tag()}`;
   try {

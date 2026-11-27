@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // Routeur LLM : la carte « Modèles de langage » de « IA & modèles › Clés fournisseurs » propose une clé par fournisseur (Anthropic, OpenAI, Mistral), saisie par le propriétaire.
 // Le serveur ne détient aucune clé : sur le compte de démo de la CI, seule la clé Anthropic factice est enregistrée (DEMO_ACCOUNT_LLM_KEY, faux serveur de modèle).

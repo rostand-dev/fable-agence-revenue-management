@@ -2,6 +2,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import pg from "pg";
+import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
 
 /**
@@ -11,21 +12,25 @@ import { hasDatabase } from "./helpers/roles";
  * 3. chaque écran s'atteint depuis l'accueil en 3 clics au plus, sur ordinateur, tablette et mobile. Tout geste compte : suivre un lien (1),
  *    mais aussi déplier une rubrique de la colonne, ouvrir la feuille « Plus » ou un sous-menu de la rangée tablette, la feuille des sections
  *    d'une fiche ou un bloc replié (1 de plus chacun). Les gestes réels de ces feuilles sont vérifiés dans navigation-menu.spec.ts et fiche-hubs.spec.ts.
+ * 4. sur téléphone (mode poche), un écran réservé à l'ordinateur (`desk`) répond et affiche l'encart au lieu de la règle des 3 gestes ;
+ *    sur ordinateur et tablette, aucun écran n'affiche l'encart.
  */
 const MAX_CLICS = 3;
 
-/** `route` : motif du fichier page.tsx ; `tab` : onglet. `needs` : donnée sans laquelle l'écran n'existe pas. */
-type Screen = { route: string; tab?: string; needs?: "propriete" | "brouillon" | "dossier" | "rapport" };
+/** `route` : motif du fichier page.tsx ; `tab` : onglet. `needs` : donnée sans laquelle l'écran n'existe pas. `desk` : réservé à l'ordinateur en mode poche. */
+type Screen = { route: string; tab?: string; needs?: "propriete" | "brouillon" | "dossier" | "rapport"; desk?: true };
+/** Liste écrite ici, indépendamment de lib/nav : un écran qui change de camp doit le faire dans les deux. */
+const ordinateur = (route: string, needs?: Screen["needs"]): Screen => ({ route, needs, desk: true });
 const P = "/logements/[id]";
 const SCREENS: Screen[] = [
-  { route: "/" }, { route: "/portefeuille" }, { route: "/alertes" }, { route: "/logements" }, { route: "/logements/nouveau" },
-  { route: "/bilan" }, { route: "/rapports" }, { route: "/historique" }, { route: "/equipe" }, { route: "/equipe/[id]" },
-  { route: "/methode" }, { route: "/glossaire" }, { route: "/proprietaires" }, { route: "/integrations" }, { route: "/integrations/erreurs" },
-  { route: "/modeles" }, { route: "/modeles/cles" }, { route: "/modeles/agents" }, { route: "/modeles/budget" }, { route: "/modeles/catalogue" }, { route: "/parametres" }, { route: "/parametres/compte" }, { route: "/parametres/priorisation" }, { route: "/parametres/demo" },
+  { route: "/" }, { route: "/portefeuille" }, { route: "/alertes" }, { route: "/logements" }, ordinateur("/logements/nouveau"),
+  ordinateur("/bilan"), { route: "/rapports" }, { route: "/historique" }, { route: "/equipe" }, { route: "/equipe/[id]" },
+  ordinateur("/methode"), { route: "/glossaire" },
+  ...["/proprietaires", "/integrations", "/integrations/erreurs", "/modeles", "/modeles/cles", "/modeles/agents", "/modeles/budget", "/modeles/catalogue", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo"].map((r) => ordinateur(r)),
   { route: "/dossier/[code]", needs: "dossier" }, { route: "/rapports/[id]", needs: "rapport" },
   { route: P }, ...["performance", "calendrier", "hub-strategie", "strategie", "canaux", "hub-economie", "economie", "hub-donnees", "donnees", "annonces", "pricelabs", "superhote", "historique"].map((tab) => ({ route: P, tab })),
-  { route: `${P}/creation`, needs: "brouillon" },
-  ...["modifier", "supprimer", "mapping", "qualite", "validations", "couts", "strategie", "compilateur", "saisons", "versions-economie", "ecarts-reservations"].map((s) => ({ route: `${P}/${s}`, needs: "propriete" as const })),
+  ordinateur(`${P}/creation`, "brouillon"),
+  ...["modifier", "supprimer", "mapping", "qualite", "validations", "couts", "strategie", "compilateur", "saisons", "versions-economie", "ecarts-reservations"].map((x) => ordinateur(`${P}/${x}`, "propriete")),
 ];
 const keyOf = (s: Screen) => s.route + (s.tab ? `?tab=${s.tab}` : "");
 
@@ -143,20 +148,26 @@ async function liens(page: Page): Promise<Lien[]> {
   });
 }
 
-test("Inventaire : chaque écran répond et s'atteint depuis l'accueil en 3 clics au plus", async ({ page }, info) => parcours(page, info.project.name));
+test("Inventaire : chaque écran répond et s'atteint depuis l'accueil en 3 clics au plus", async ({ page, isMobile }, info) => parcours(page, info.project.name, isMobile));
 test("Inventaire (tablette) : chaque écran s'atteint depuis l'accueil en 3 clics au plus à 768 px", async ({ page }, info) => {
   test.skip(info.project.name !== "bureau", "une seule passe à 768 px");
   await page.setViewportSize({ width: 768, height: 1024 });
-  await parcours(page, "tablette");
+  await parcours(page, "tablette", false);
 });
-async function parcours(page: Page, largeur: string) {
+/** `poche` : largeur de téléphone, où l'application sert la version allégée. */
+async function parcours(page: Page, largeur: string, poche: boolean) {
   test.setTimeout(240_000);
   const db = hasDatabase();
   const ids: string[] = [];
   const mois = monthValue(({ bureau: 8, tablette: 9, "mobile-390": 10, "mobile-360": 11 } as Record<string, number>)[largeur] ?? 12);
   try {
     const own = db ? await seed(page, `${largeur}-${Date.now().toString(36)}`, ids) : null;
-    if (db) await prepareRapport(page, mois);
+    if (db) {
+      // un rapport se prépare sur ordinateur : bascule en version complète le temps de le faire
+      if (poche) await page.goto("/vue?mode=complet");
+      await prepareRapport(page, mois);
+      if (poche) await page.context().clearCookies({ name: "ns_vue" });
+    }
     // on ne suit que les logements de démonstration et les nôtres : ceux des autres tests peuvent disparaître en cours de parcours
     await page.goto("/logements");
     const demos = await page.locator('.content a[href^="/logements/"]:has(.demo-pill)').evaluateAll((as) => as.map((a) => a.getAttribute("href")!.split("/")[2]));
@@ -192,6 +203,8 @@ async function parcours(page: Page, largeur: string) {
         const res = await page.goto(href);
         expect(res?.status(), `${href} : statut HTTP`).toBeLessThan(400);
         await expect(page).not.toHaveURL(/\/connexion/);
+        const reserve = poche && !!SCREENS.find((s) => keyOf(s) === k0)?.desk;
+        await expect(page.getByTestId("ecran-ordinateur"), `${href} : encart « conçu pour l'ordinateur »`).toHaveCount(reserve ? 1 : 0);
         for (const l of await liens(page)) {
           const k = classify(l.href);
           const total = d + 1 + l.gestes;
@@ -203,12 +216,22 @@ async function parcours(page: Page, largeur: string) {
     }
     const manquants: string[] = [];
     for (const s of SCREENS) {
+      if (poche && s.desk) continue; // vérifiés un par un ci-dessous
       // données absentes (environnement distant) : logement réel non créable, ou aucun rapport préparé
       if (!db && (s.needs === "propriete" || s.needs === "brouillon")) continue;
       if (!db && s.needs === "rapport" && !depth.has(keyOf(s))) continue;
       if (!depth.has(keyOf(s))) manquants.push(keyOf(s));
     }
     expect(manquants, `écrans hors de portée en ${MAX_CLICS} clics`).toEqual([]);
+    if (!poche) return;
+    for (const s of SCREENS.filter((x) => x.desk)) {
+      if (s.needs && !own) continue; // environnement distant : logement non créable
+      const url = s.route.replace("[id]", (s.needs === "brouillon" ? own?.brouillon : own?.reel) ?? "");
+      const res = await page.goto(url);
+      expect(res?.status(), `${url} : statut HTTP`).toBeLessThan(400);
+      await expect(page.getByTestId("ecran-ordinateur"), `${s.route} : encart attendu`).toBeVisible();
+      await expectNoHorizontalOverflow(page, s.route);
+    }
   } finally {
     try { if (ids.length) await remove(ids); } finally { if (db) await removeRapport(mois); }
   }

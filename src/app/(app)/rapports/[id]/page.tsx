@@ -11,6 +11,8 @@ import { euro, pct } from "@/lib/format";
 import { can, denyMessage } from "@/lib/rbac";
 import { MAX_NARRATIVE, type Trend } from "@/lib/reports/monthly";
 import { getReport } from "@/lib/services/reports";
+import { DeskNote } from "@/components/DeskOnly";
+import { getViewContext } from "@/lib/view-mode";
 
 export const metadata = { title: "Rapport mensuel" };
 const tr = (t: Trend, ref: string | null) => (t === "inconnue" ? "Tendance inconnue" : `Tendance ${t}${ref ? ` · ${ref}` : ""}`);
@@ -21,6 +23,9 @@ export default async function Rapport({ params }: { params: Promise<{ id: string
   if (!r) notFound();
   const s = r.snapshot, k = s.kpis, certified = r.status === "CERTIFIED";
   const canWrite = can(user.role, "report.certify");
+  const view = await getViewContext();
+  // mode poche : le rapport se lit, il se rédige et se certifie sur ordinateur
+  const pocket = view.mode === "poche";
   const prev = s.previous?.kpis;
   const m = fmtMonth(r.month);
   return (
@@ -32,7 +37,7 @@ export default async function Rapport({ params }: { params: Promise<{ id: string
       </div>
       {s.property.isDemo && <Banner role="tech" title="Logement de démonstration" style={{ marginBottom: 12 }}>Ce rapport porte sur des données de démonstration : il ne décrit pas un vrai logement.</Banner>}
       {certified && <p className="btn-row" data-testid="rapport-exports"><a className="btn btn-secondary btn-sm" href={`/api/rapports/${r.id}/export?format=pdf`} download>Exporter en PDF</a> <a className="btn btn-secondary btn-sm" href={`/api/rapports/${r.id}/export?format=csv`} download>Exporter en CSV</a></p>}
-      {!certified && <Banner role="attention" title="Brouillon : rien n'est certifié">Relisez les chiffres et le texte, puis certifiez. Les chiffres ci-dessous ont été lus le {fmtDate(todayISO(new Date(s.generatedAt)))}.</Banner>}
+      {!certified && <Banner role="attention" title="Brouillon : rien n'est certifié">{pocket ? "La relecture et la certification se font sur ordinateur." : "Relisez les chiffres et le texte, puis certifiez."} Les chiffres ci-dessous ont été lus le {fmtDate(todayISO(new Date(s.generatedAt)))}.</Banner>}
       {k.nights > 0 && k.netIncomplete && <Banner role="attention" title="Revenu net partiel" style={{ marginTop: 12 }}>La commission est inconnue sur certaines nuits vendues : leur revenu net n'est pas compté et les chiffres nets sont sous-évalués. Ils ne sont pas complétés par un zéro.</Banner>}
       <div className="synth" style={{ marginTop: 16 }} data-testid="rapport-metriques">
         <Metric label="Revenu net" value={k.netCents === null ? <Vq>inconnu</Vq> : euro(k.netCents)} source={tr(s.trends.net, prev?.netCents != null ? `${euro(prev.netCents)} le mois précédent` : null)} />
@@ -42,9 +47,10 @@ export default async function Rapport({ params }: { params: Promise<{ id: string
       </div>
       <section className="section">
         <h2>Rapport</h2>
-        {certified || !canWrite
+        {certified || !canWrite || pocket
           ? <div className="report-text" data-testid="rapport-texte">{r.narrative.split(/\n{2,}/).filter((x) => x.trim()).map((para, i) => <p key={i} style={{ whiteSpace: "pre-line" }}>{para}</p>)}</div>
           : <ReportEditor key={s.generatedAt} readOn={fmtDate(todayISO(new Date(s.generatedAt)))} reportId={r.id} propertyId={r.propertyId} month={r.month} narrative={r.narrative} edited={r.edited} max={MAX_NARRATIVE} />}
+        {!certified && canWrite && pocket && <DeskNote current={view.current} />}
         {!certified && !canWrite && <Banner role="tech" icon="shield" title="Lecture seule">{denyMessage(user.role, "report.certify")}</Banner>}
       </section>
       <section className="section" data-testid="rapport-actions">
@@ -61,7 +67,7 @@ export default async function Rapport({ params }: { params: Promise<{ id: string
         <section className="section">
           <h2>Corriger</h2>
           <p className="muted">Ce rapport est figé. Pour le corriger, ouvrez une nouvelle version : celle-ci reste intacte.</p>
-          <ReportStart propertyId={r.propertyId} months={[{ value: r.month, label: m }]} label="Ouvrir une nouvelle version" />
+          {pocket ? <DeskNote current={view.current} /> : <ReportStart propertyId={r.propertyId} months={[{ value: r.month, label: m }]} label="Ouvrir une nouvelle version" />}
         </section>
       )}
     </Page>

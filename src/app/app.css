@@ -355,3 +355,57 @@ h3.sub, .section h2.sub { font-size: 14px; margin: 18px 0 8px; }
   .runbook-step { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .runbook-form .btn { width: auto; }
 }
+
+/* ===================== mode poche (version allégée sur téléphone) ===================== */
+/* bascule de version, en pied de page ; « large » : seulement là où la barre basse et sa feuille « Plus » n'existent pas */
+.pk-foot { margin: 28px 0 0; text-align: center; font-size: 13.5px; }
+.pk-foot a, .pk-desk-note a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; }
+.pk-foot-large { display: none; }
+@media (min-width: 768px) { .pk-foot-large { display: block; } }
+
+/* écran réservé à l'ordinateur */
+.pk-topbar { justify-content: flex-start; }
+.pk-topbar > div { min-width: 0; }
+.pk-topbar .topbar-title, .pk-topbar .topbar-sub { margin: 0; }
+.pk-back { flex: none; min-width: 44px; min-height: 44px; padding: 0; justify-content: center; }
+.pk-desk-only { display: grid; gap: 16px; max-width: 520px; margin: 8px auto 0; }
+.pk-card { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); min-width: 0; }
+.pk-card > p { margin: 0; color: var(--quiet); font-size: 15px; line-height: 1.5; }
+.pk-card > .btn { justify-content: center; min-height: 44px; }
+.pk-card-icon { color: var(--blue); }
+.pk-card-title { margin: 0; font-size: 19px; line-height: 1.3; }
+.pk-foot-note { margin: 0; text-align: center; font-size: 13px; color: var(--faint); }
+.pk-desk-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 8px 0; font-size: 14px; color: var(--quiet); }
+.pk-essential { display: grid; gap: 12px; max-width: 520px; margin: 0 auto 20px; }
+.pk-essential h1 { margin: 0; font-size: 19px; line-height: 1.3; }
+.pk-essential .rights-notice { margin: 0; }
+.pk-essential header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.pk-essential h2 { margin: 0; font-size: 16px; }
+.pk-essential form { display: grid; gap: 8px; }
+.pk-essential form .btn { width: 100%; min-height: 44px; justify-content: center; }
+.pk-essential form .metric-source { margin-left: 0 !important; }
+
+/* feuille « Plus » allégée */
+@media (max-width: 1023px) {
+  .nav-sheet-pocket .pk-sheet { display: flex; flex-direction: column; gap: 12px; padding-top: 14px; }
+  .pk-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface); }
+  .pk-list li + li { border-top: 1px solid var(--line); }
+  .pk-list a { display: flex; align-items: center; min-height: 46px; padding: 0 14px; color: var(--ink); text-decoration: none; font-size: 15px; }
+  .pk-list a[aria-current="page"] { color: var(--blue); }
+  .pk-hint { color: var(--faint); font-size: 13px; }
+  .pk-kill { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 14px; border: 1px solid rgb(251 191 36 / 40%); border-radius: var(--r-md); color: var(--amber-ink); font-size: 15px; font-weight: 600; text-decoration: none; }
+  .pk-label { margin: 0 0 2px; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); }
+  .pk-on-desk ul { display: flex; flex-wrap: wrap; margin: 0; padding: 0; list-style: none; }
+  .pk-on-desk li:not(:last-child)::after { content: "·"; margin: 0 6px; color: var(--faint); }
+  .pk-on-desk li { display: inline-flex; align-items: center; }
+  .pk-on-desk a { display: inline-flex; align-items: center; min-height: 36px; font-size: 13.5px; text-decoration: none; }
+  .pk-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .pk-actions > * { flex: 1 1 130px; margin: 0; }
+  .pk-actions .btn { justify-content: center; min-height: 44px; width: 100%; padding-inline: 8px; font-size: 14px; white-space: nowrap; }
+}
+/* la barre basse reste visible sous la feuille */
+@media (max-width: 767px) {
+  .nav-sheet-pocket { margin-bottom: var(--bottombar-h, 57px); max-height: calc(100dvh - var(--bottombar-h, 57px) - 24px); }
+  .nav-sheet-pocket::backdrop { background: linear-gradient(to top, transparent var(--bottombar-h, 57px), rgb(2 3 8 / 74%) var(--bottombar-h, 57px)); }
+  .nav-sheet-pocket .pk-sheet { padding-bottom: 16px; }
+}

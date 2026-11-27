@@ -1,5 +1,9 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // Paramètres regroupés (une page par sujet), redirection des anciens Réglages et sommaire de la Méthode. Trois formats d'écran ; aucune écriture.
 // [carte, adresse, titre de la page ouverte]

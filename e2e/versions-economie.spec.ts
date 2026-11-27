@@ -1,6 +1,10 @@
 import { Client } from "pg";
 import { expect, test, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-022 : historique du modèle économique. Les versions sont écrites en base (la saisie des coûts est couverte par les tests d'intégration) ; l'écran et l'API sont testés sur les trois formats.
 const uid = (info: TestInfo) => `${info.project.name}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;

@@ -1,8 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { versionComplete } from "./helpers/view";
 
 // US-060 : le catalogue des playbooks (page Méthode) et les mesures du signal (dossier d'opportunité). Bureau, mobile 390 et 360 px.
 test("Méthode : le catalogue des 13 playbooks se déplie, avec seuils, données, repos et approbation", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   await page.goto("/methode");
   const section = page.getByTestId("playbooks");
   await expect(section).toBeVisible();
@@ -64,6 +66,7 @@ test("Dossier : le signal affiche ses mesures face à leur seuil, sans débordem
 
 // US-064 : les règles de l'auditeur et leurs codes de veto sont lisibles sur la page Méthode.
 test("Méthode : les règles de l'auditeur distinguent veto et validation humaine, sans débordement", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   await page.goto("/methode");
   const section = page.getByTestId("regles-auditeur");
   await expect(section).toBeVisible();
@@ -91,6 +94,7 @@ test("Méthode : les règles de l'auditeur distinguent veto et validation humain
 
 // Calibrage : la page Méthode confronte chaque playbook à ses décisions réelles, sans débordement.
 test("Méthode : le calibrage liste les 13 playbooks avec verdict et tendance, sans débordement", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   await page.goto("/methode");
   const section = page.getByTestId("calibrage");
   await expect(section).toBeVisible();

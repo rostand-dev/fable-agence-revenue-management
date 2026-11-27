@@ -1,5 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// écrans réservés à l'ordinateur : testés en version complète à toutes les largeurs
+test.use(VERSION_COMPLETE);
 
 // US-101 : compilateur de promotions : une intention devient une promotion par canal, ou un refus expliqué. Lecture seule : aucune donnée écrite.
 // Lisible sans défilement horizontal sur bureau, 390 px et 360 px.

@@ -21,8 +21,31 @@ const MOVED: Record<string, string> = { "llm-keys": "/modeles/cles" };
 export default async function Integrations() {
   const user = await requireUser();
   const [facts, ingestErrors] = await Promise.all([loadProviderFacts(user.tenantId), ingestionErrorCount(user.tenantId)]);
+  // un seul formulaire pour la version complète et pour le mode poche : même action, mêmes droits
+  const killSwitch = (k: (typeof PROVIDERS)[number]) => {
+    const on = facts[k].killSwitch;
+    return (
+      <ActionForm need="property.manage" action={killSwitchAction} hidden={{ provider: k, on: on ? "0" : "1" }}>
+        <Submit className={on ? "btn btn-ghost btn-sm" : "btn btn-danger btn-sm"} icon={on ? "check" : "ban"}>{on ? "Lever le coupe-circuit" : "Activer le coupe-circuit"}</Submit>
+        <span className="metric-source" style={{ marginLeft: 10 }}>Bloque l'écriture automatique par API vers {PROVIDER_INFO[k].name}, immédiatement. Les procédures manuelles restent possibles.</span>
+      </ActionForm>
+    );
+  };
+  /* mode poche : le coupe-circuit, frein d'urgence, reste utilisable au-dessus de l'encart */
+  const essential = (
+    <section className="pk-essential" aria-labelledby="pk-kill-title" data-testid="coupe-circuit-poche">
+      <h1 id="pk-kill-title">Coupe-circuit des écritures</h1>
+      <RightsNotice need="property.manage" />
+      {KILL_SWITCH_PROVIDERS.map((k) => (
+        <article className="pk-card" key={k}>
+          <header><h2>{PROVIDER_INFO[k].name}</h2><State role={facts[k].killSwitch ? "attention" : "sain"}>{facts[k].killSwitch ? "Coupe-circuit actif" : "Coupe-circuit levé"}</State></header>
+          {killSwitch(k)}
+        </article>
+      ))}
+    </section>
+  );
   return (
-    <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Intégrations" }]}>
+    <Page title="Intégrations" sub="Capacités réelles de chaque connexion" crumbs={[{ label: "Paramètres", href: "/parametres" }, { label: "Intégrations" }]} essential={essential}>
       <LegacyAnchor targets={MOVED} />
       <div className="page-head">
         <h1>Ce que l'agence peut lire et écrire</h1>
@@ -64,12 +87,7 @@ export default async function Integrations() {
                     {ingestErrors > 0 ? <State role="attention">{ingestErrors} à traiter</State> : <State role="neutre">Aucune en attente</State>}
                   </div>
                 )}
-                {KILL_SWITCH_PROVIDERS.includes(k) && (
-                <ActionForm need="property.manage" action={killSwitchAction} hidden={{ provider: k, on: f.killSwitch ? "0" : "1" }}>
-                  <Submit className={f.killSwitch ? "btn btn-ghost btn-sm" : "btn btn-danger btn-sm"} icon={f.killSwitch ? "check" : "ban"}>{f.killSwitch ? "Lever le coupe-circuit" : "Activer le coupe-circuit"}</Submit>
-                  <span className="metric-source" style={{ marginLeft: 10 }}>Bloque l'écriture automatique par API vers {info.name}, immédiatement. Les procédures manuelles restent possibles.</span>
-                </ActionForm>
-                )}
+                {KILL_SWITCH_PROVIDERS.includes(k) && killSwitch(k)}
               </div>
             </article>
           );

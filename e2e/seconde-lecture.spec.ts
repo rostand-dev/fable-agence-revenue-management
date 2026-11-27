@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { versionComplete } from "./helpers/view";
 
 // US-073 : seconde lecture indépendante de l'auditeur sur l'option retenue. Bureau, mobile 390 et 360 px (projets Playwright).
 async function dossierRelu(page: Page): Promise<boolean> {
@@ -36,6 +37,7 @@ test("Équipe : la fiche de l'auditeur annonce la seconde lecture et le veto dé
 });
 
 test("Méthode : la répartition règles / modèle mentionne la seconde lecture", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   await page.goto("/methode");
   await expect(page.getByText("seconde lecture de l'auditeur")).toBeVisible();
   await expect(page.getByText("INDEPENDENT_REVIEW").first()).toBeVisible();

@@ -5,11 +5,11 @@ import { createContext, Fragment, Suspense, useContext, useEffect, useRef, useSt
 import { Icon, Logo } from "./Icon";
 import { useRefusal } from "./Rights";
 import { logoutAction } from "@/app/actions/auth";
-import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, hasPriceBadge, propertyIdOf, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
+import { ancestorIds, buildNav, currentNodeId, FOLDED_NODES, hasPriceBadge, KILL_SWITCH_HREF, pocketMenu, propertyIdOf, viewHref, type NavBadge, type NavGroup, type NavNode, type NavProperty } from "@/lib/nav";
 
 /** `pricesDecide` : ce compte valide les prix (exploitant) ; les autres voient la pastille en gris, « en attente de l'exploitant ». */
 type Counts = { open: number; alerts: number; prices: number; pricesDecide: boolean };
-const NavCtx = createContext<Counts & { openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, prices: 0, pricesDecide: false, openSheet: () => {} });
+const NavCtx = createContext<Counts & { pocket: boolean; openSheet: (group: string, from: HTMLElement) => void }>({ open: 0, alerts: 0, prices: 0, pricesDecide: false, pocket: false, openSheet: () => {} });
 const STORAGE_KEY = "nuitsignal.menu.ouvert";
 const alertsLabel = (n: number) => `${n} alerte${n > 1 ? "s" : ""} à traiter`;
 const pricesLabel = (n: number, decide: boolean) => `${n} prix ${decide ? "à valider" : "en attente de l'exploitant"}`;
@@ -83,11 +83,50 @@ function RailWithTab(props: { properties: NavProperty[]; counts: Counts }) {
 
 const foldedNodes = (groups: NavGroup[]) => groups.flatMap((g) => g.items).filter((n) => FOLDED_NODES.includes(n.id));
 
-/** Une seule source de navigation (lib/nav), trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). */
-export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, properties = [], demo = false, exitHref = "/demo", children }: { open: number; alerts?: number; prices?: number; pricesDecide?: boolean; properties?: NavProperty[]; demo?: boolean; exitHref?: string; children: React.ReactNode }) {
+/** Déconnexion (ou sortie de la démo), en bas de la feuille. */
+function Logout({ demo, exitHref, formClass, buttonClass }: { demo: boolean; exitHref: string; formClass: string; buttonClass: string }) {
+  return demo ? (
+    <div className={formClass}>
+      <a className={buttonClass} href={exitHref}><span data-icon><Icon name="logout" /></span><span>Quitter la démo</span></a>
+    </div>
+  ) : (
+    <form action={logoutAction} className={formClass}>
+      <button type="submit" className={buttonClass}><span data-icon><Icon name="logout" /></span><span>Se déconnecter</span></button>
+    </form>
+  );
+}
+
+/** Feuille « Plus » du mode poche : consultation, coupe-circuit, puis ce qui se fait sur ordinateur. */
+function PocketSheet({ groups, current, retour, demo, exitHref }: { groups: NavGroup[]; current: string | null; retour: string; demo: boolean; exitHref: string }) {
+  const menu = pocketMenu(groups);
+  return (
+    <div className="nav-sheet-body pk-sheet">
+      <ul className="pk-list">
+        {menu.links.map((l) => (
+          <li key={l.id}><Link href={l.href} aria-current={current === l.id ? "page" : undefined}><span>{l.label}{l.hint && <span className="pk-hint"> · {l.hint}</span>}</span></Link></li>
+        ))}
+      </ul>
+      <Link className="pk-kill" href={KILL_SWITCH_HREF}><span data-icon><Icon name="pause" /></span><span>Coupe-circuit des écritures</span></Link>
+      <div className="pk-on-desk" role="group" aria-labelledby="pk-on-desk-label">
+        <p className="pk-label" id="pk-on-desk-label">Sur ordinateur</p>
+        <ul>{menu.desk.map((l) => <li key={l.id}><Link href={l.href}>{l.label}</Link></li>)}</ul>
+      </div>
+      <div className="pk-actions">
+        {/* lien simple, jamais préchargé : l'ouvrir change de mode */}
+        <a className="btn btn-ghost" href={viewHref("complet", retour)}>Version complète</a>
+        <Logout demo={demo} exitHref={exitHref} formClass="pk-logout" buttonClass="btn btn-ghost" />
+      </div>
+    </div>
+  );
+}
+
+/** Une seule source de navigation (lib/nav), trois présentations : colonne, rangée (tablette), barre basse + feuille (mobile). `pocket` : mode poche, feuille « Plus » allégée. */
+export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, properties = [], demo = false, exitHref = "/demo", pocket = false, children }: { open: number; alerts?: number; prices?: number; pricesDecide?: boolean; properties?: NavProperty[]; demo?: boolean; exitHref?: string; pocket?: boolean; children: React.ReactNode }) {
   const path = usePathname();
   const sheet = useRef<HTMLDialogElement>(null);
   const opener = useRef<HTMLElement | null>(null);
+  // page à retrouver après une bascule de version, relevée à l'ouverture de la feuille (paramètres compris)
+  const [retour, setRetour] = useState(path);
   // null : feuille fermée ; "" : tous les groupes (mobile) ; identifiant : un seul groupe (tablette)
   const [sheetGroup, setSheetGroup] = useState<string | null>(null);
 
@@ -124,8 +163,19 @@ export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, prop
   const trail = ancestorIds(groups, current);
   // la rubrique elle-même compte aussi : l'accueil des Paramètres est une page, pas un ancêtre
   const inFolded = [current, ...trail].some((id) => !!id && FOLDED_NODES.includes(id));
-  const openSheet = (group: string, from: HTMLElement) => { opener.current = from; setSheetGroup(group); };
+  const openSheet = (group: string, from: HTMLElement) => { opener.current = from; setRetour(window.location.pathname + window.location.search); setSheetGroup(group); };
   const close = () => sheet.current?.close();
+  const onSheetClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest("a")) return close();
+    if (e.target !== sheet.current) return;
+    // toucher hors de la feuille : elle se ferme. En mode poche, la barre basse reste visible : le toucher agit sur l'entrée visée
+    const under = pocket && Array.from(document.querySelectorAll<HTMLElement>(".bottombar a")).find((a) => {
+      const r = a.getBoundingClientRect();
+      return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+    });
+    close();
+    if (under) under.click();
+  };
   const bottom = [
     { href: "/portefeuille", icon: "chart", label: "Accueil", id: "tableau-de-bord" },
     { href: "/", icon: "inbox", label: "Opportunités", id: "opportunites", badge: "open" as const },
@@ -140,7 +190,7 @@ export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, prop
   );
 
   return (
-    <NavCtx.Provider value={{ ...counts, openSheet }}>
+    <NavCtx.Provider value={{ ...counts, pocket, openSheet }}>
       <div className="app">
         <nav className="rail" aria-label="Navigation du cockpit">
           <Link className="brand" href="/" aria-label="NuitSignal — accueil"><Logo /></Link>
@@ -159,16 +209,18 @@ export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, prop
         ))}
         <button type="button" className="bottombar-link" aria-haspopup="dialog" aria-current={inFolded ? "true" : undefined} onClick={(e) => openSheet("", e.currentTarget)}>
           <span data-icon><Icon name="sliders" /></span><span className="bottombar-label">Plus</span>
-          <Count badge={foldedNodes(groups).some(hasPriceBadge) ? "prices" : undefined} counts={counts} className="bottombar-count" />
+          {/* le Catalogue, où se valident les prix, est réservé à l'ordinateur : pas de pastille en mode poche */}
+          <Count badge={!pocket && foldedNodes(groups).some(hasPriceBadge) ? "prices" : undefined} counts={counts} className="bottombar-count" />
         </button>
       </nav>
-      <dialog className="nav-sheet" ref={sheet} aria-labelledby="nav-sheet-title"
-        onClick={(e) => { if (e.target === sheet.current || (e.target as HTMLElement).closest("a")) close(); }}
+      <dialog className={pocket ? "nav-sheet nav-sheet-pocket" : "nav-sheet"} ref={sheet} aria-labelledby="nav-sheet-title"
+        onClick={onSheetClick}
         onClose={() => { setSheetGroup(null); opener.current?.focus(); }}>
         <div className="nav-sheet-head">
-          <h2 id="nav-sheet-title">{(sheetGroup && shown[0]?.label) || "Tous les écrans"}</h2>
+          <h2 id="nav-sheet-title">{pocket ? "Plus" : (sheetGroup && shown[0]?.label) || "Tous les écrans"}</h2>
           <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: "auto" }} onClick={close}>Fermer</button>
         </div>
+        {pocket ? <PocketSheet groups={groups} current={current} retour={retour} demo={demo} exitHref={exitHref} /> : (
         <div className="nav-sheet-body">
           {shown.map((n) => (
             // la clé change à chaque ouverture : le groupe courant (ou demandé) est déplié, les autres repliés
@@ -184,20 +236,9 @@ export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, prop
               ))}
             </details>
           ))}
-          {!sheetGroup && (demo ? (
-            <div className="nav-sheet-logout">
-              <a className="nav-sheet-link nav-sheet-logout-btn" href={exitHref}>
-                <span data-icon><Icon name="logout" /></span><span>Quitter la démo</span>
-              </a>
-            </div>
-          ) : (
-            <form action={logoutAction} className="nav-sheet-logout">
-              <button type="submit" className="nav-sheet-link nav-sheet-logout-btn">
-                <span data-icon><Icon name="logout" /></span><span>Se déconnecter</span>
-              </button>
-            </form>
-          ))}
+          {!sheetGroup && <Logout demo={demo} exitHref={exitHref} formClass="nav-sheet-logout" buttonClass="nav-sheet-link nav-sheet-logout-btn" />}
         </div>
+        )}
       </dialog>
     </NavCtx.Provider>
   );
@@ -206,7 +247,7 @@ export function Shell({ open, alerts = 0, prices = 0, pricesDecide = false, prop
 /** Rangée de navigation tablette (premier niveau seulement), placée entre la barre de titre et le fil d'Ariane. */
 export function TabletNav() {
   const path = usePathname();
-  const { openSheet, ...counts } = useContext(NavCtx);
+  const { openSheet, pocket, ...counts } = useContext(NavCtx);
   const groups = buildNav([], null);
   const current = currentNodeId(path, null);
   // sur une fiche logement, c'est « Logements » qui reste allumé
@@ -217,13 +258,13 @@ export function TabletNav() {
         <span key={g.label} style={{ display: "contents" }}>
           {i > 0 && <span className="navbar-sep" aria-hidden="true" />}
           {g.items.map((n) => {
-            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge ?? (FOLDED_NODES.includes(n.id) && hasPriceBadge(n) ? "prices" : undefined)} counts={counts} /></>;
+            const inner = <><span data-icon><Icon name={n.icon ?? "dot"} /></span><span>{n.label}</span><Count badge={n.badge ?? (!pocket && FOLDED_NODES.includes(n.id) && hasPriceBadge(n) ? "prices" : undefined)} counts={counts} /></>;
             const link = n.href && <Link key={n.id} className="navbar-link" href={n.href} aria-current={active === n.id ? (current === n.id ? "page" : "true") : undefined}>{inner}</Link>;
             // rubrique repliée avec sa propre page : le libellé y mène, le chevron ouvre la liste de ses sous-écrans
             if (link && n.children && FOLDED_NODES.includes(n.id)) return (
               <span key={n.id} style={{ display: "contents" }}>
                 {link}
-                <button type="button" className="navbar-link navbar-more" aria-haspopup="dialog" aria-label={`Sous-menu ${n.label}`} onClick={(e) => openSheet(n.id, e.currentTarget)}><span className="navbar-chevron" aria-hidden="true"><Icon name="caret" /></span></button>
+                <button type="button" className="navbar-link navbar-more" aria-haspopup="dialog" aria-label={pocket ? `Menu Plus (${n.label})` : `Sous-menu ${n.label}`} onClick={(e) => openSheet(n.id, e.currentTarget)}><span className="navbar-chevron" aria-hidden="true"><Icon name="caret" /></span></button>
               </span>
             );
             return link
