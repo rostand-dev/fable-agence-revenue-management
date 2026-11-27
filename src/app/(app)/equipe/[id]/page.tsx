@@ -88,7 +88,7 @@ export default async function Fiche({ params, searchParams }: { params: Promise<
               )}
             </div>
           </section>
-          <div className="blocks" style={{ ["--cols" as any]: 2 }}>
+          <div className="blocks" style={{ ["--cols-large" as any]: 2 }}>
             <div className="block block-faits"><h3>Responsabilités</h3><ul className="muted" style={{ margin: "8px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{a.responsibilities.map((r) => <li key={r}>{r}</li>)}</ul></div>
             <div className="block block-interpretations"><h3>Limites du poste</h3><ul className="muted" style={{ margin: "8px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{a.limits.map((r) => <li key={r}>{r}</li>)}</ul></div>
             <div className="block block-comparaisons"><h3>Ce qu'il reçoit</h3><ul className="muted" style={{ margin: "8px 0 0", paddingLeft: 18, display: "grid", gap: 6 }}>{a.inputs.map((r) => <li key={r}>{r}</li>)}</ul></div>

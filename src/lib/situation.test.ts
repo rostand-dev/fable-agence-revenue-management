@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Candidate } from "./engine/types";
-import { needsComment, quickApprovable, situationRole } from "./situation";
+import { decisionOptions, followUpPending, needsComment, quickApprovable, situationRole } from "./situation";
 
 const candidate = (over: { type?: string; risk?: string; verdict?: string } = {}) =>
   ({ type: over.type ?? "PRICE_OVERRIDE", risk: over.risk ?? "LOW", audit: { verdict: over.verdict ?? "APPROVE", checks: [] }, parameters: {} }) as unknown as Candidate;
@@ -36,5 +36,44 @@ describe("situationRole", () => {
     expect(situationRole({ veto: true, playbook: "PB-10" }, candidate()).label).toBe("Veto économique");
     expect(situationRole(open, candidate({ verdict: "NEEDS_HUMAN" })).label).toBe("Validation renforcée");
     expect(situationRole(open, candidate()).label).toBe("Option conforme");
+  });
+});
+
+describe("decisionOptions (boutons d'un dossier, version complète et mode décision)", () => {
+  const may = (o: { status: string; veto: boolean }, c = candidate(), rights: { canDecide?: boolean; hasAction?: boolean } = {}) =>
+    decisionOptions(o, c, { canDecide: rights.canDecide ?? true, hasAction: rights.hasAction ?? false });
+  const nothing = { approve: false, reject: false, defer: false, reopen: false };
+
+  it("dossier ouvert, option conforme : approuver, rejeter, différer", () => {
+    expect(may(open)).toEqual({ approve: true, reject: true, defer: true, reopen: false });
+  });
+  it("sous veto : pas de report", () => {
+    expect(may({ ...open, veto: true })).toEqual({ approve: true, reject: true, defer: false, reopen: false });
+  });
+  it("option rejetée par l'auditeur : jamais approuvable", () => {
+    expect(may(open, candidate({ verdict: "REJECT" }))).toEqual({ approve: false, reject: true, defer: true, reopen: false });
+  });
+  it("sans le droit de décision : aucun bouton", () => {
+    expect(may(open, candidate(), { canDecide: false })).toEqual(nothing);
+    expect(may({ ...open, status: "DECIDED" }, candidate(), { canDecide: false })).toEqual(nothing);
+  });
+  it.each(["DECIDED", "DEFERRED"])("%s sans action : réouverture seule", (status) => {
+    expect(may({ ...open, status })).toEqual({ ...nothing, reopen: true });
+  });
+  it("décidé avec une action : rien à reprendre ici", () => {
+    expect(may({ ...open, status: "DECIDED" }, candidate(), { hasAction: true })).toEqual(nothing);
+  });
+  it("expiré : aucune réouverture", () => {
+    expect(may({ ...open, status: "EXPIRED" })).toEqual(nothing);
+  });
+});
+
+describe("followUpPending (suivi d'application déplié dans le mode décision)", () => {
+  it.each(["APPROVED", "EXECUTING", "EXECUTED", "FAILED"])("%s attend un geste ou une vérification", (status) => {
+    expect(followUpPending(status, 0)).toBe(true);
+  });
+  it.each(["MEASURING", "CLOSED"])("%s reste replié sans alerte", (status) => {
+    expect(followUpPending(status, 0)).toBe(false);
+    expect(followUpPending(status, 1)).toBe(true);
   });
 });

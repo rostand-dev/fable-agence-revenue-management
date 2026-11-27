@@ -1025,7 +1025,8 @@ td .vq, th .vq { font-size: 12.5px; }
 .rank > header .rank-note { font-size: 12.5px; color: var(--faint); }
 
 /* --- grille générique de blocs --- */
-.blocks { display: grid; gap: 14px; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); }
+/* --cols-large : nombre de colonnes voulu sur grand écran (--cols, posé par les points de rupture, l'emporte) */
+.blocks { display: grid; gap: 14px; grid-template-columns: repeat(var(--cols, var(--cols-large, 3)), minmax(0, 1fr)); }
 .block {
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -1045,12 +1046,13 @@ td .vq, th .vq { font-size: 12.5px; }
 .block-comparaisons { border-left: 3px solid var(--violet); }
 .block-interpretations { border-left: 3px solid var(--amber); background: rgb(251 191 36 / 5%); }
 .block dl { margin: 0; display: grid; gap: 8px; }
-.block dl > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: baseline; }
-.block dt { font-size: 13px; color: var(--quiet); min-width: 0; overflow-wrap: anywhere; }
-.block dd { margin: 0; font-family: var(--mono); font-size: 13.5px; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+/* valeur à droite du libellé ; faute de place, elle passe dessous plutôt que d'écraser le libellé */
+.block dl > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 10px; align-items: baseline; }
+.block dt { flex: 1 1 9rem; font-size: 13px; color: var(--quiet); min-width: 0; overflow-wrap: anywhere; }
+.block dd { margin: 0 0 0 auto; font-family: var(--mono); font-size: 13.5px; text-align: right; min-width: 0; overflow-wrap: anywhere; }
 /* valeur longue (formule, phrase) : sous son libellé, lisible, jamais superposée au libellé */
-.block dl > div.is-long { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-.block dl > div.is-long dd { text-align: left; font-family: inherit; font-size: 13px; line-height: 1.45; color: var(--text, inherit); }
+.block dl > div.is-long { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.block dl > div.is-long dd { margin-left: 0; text-align: left; font-family: inherit; font-size: 13px; line-height: 1.45; color: var(--text, inherit); }
 
 /* ============================================================
    DOSSIER — frise, registre, preuves, cascade, décision

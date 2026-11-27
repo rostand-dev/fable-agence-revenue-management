@@ -10,7 +10,9 @@ import { approveAction, deferAction, executeAction, rejectAction, reopenAction, 
 import { ActionForm, Submit } from "@/components/forms";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
-import { needsComment } from "@/lib/situation";
+import { decisionOptions, needsComment } from "@/lib/situation";
+import { DossierDecision, DossierHeader } from "@/components/DossierDecision";
+import { getViewContext } from "@/lib/view-mode";
 import { approvalRequirement } from "@/lib/engine/approval";
 import { deterministicAnalysis, type MarketAnalysis } from "@/lib/agents/market-analysis";
 import type { IndependentReview } from "@/lib/agents/independent-review";
@@ -98,18 +100,23 @@ export default async function Dossier({ params, searchParams }: { params: Promis
   const target = providerOfTarget(action?.target?.system);
   const blocked = action ? executionBlock(mode, { actionType: action.type, provider: target, isDemo: p.isDemo, killSwitch: !!ints.find((i) => i.provider === target)?.killSwitch, flagOff: (await flagFor(user.tenantId, "write.api", { propertyId: p.id, provider: target })).reason }) : null;
 
-  return (
-    <Page title={`Dossier ${o.code} · ${p.name}`} sub={`${o.playbook} · ouvert le ${fmtDateTime(o.createdAt)} · ${fmtPeriod(o.stayFrom, o.stayTo)}`}
-      crumbs={[{ label: "Opportunités", href: "/" }, { label: `Dossier ${o.code}` }]} right={<OppStatus status={o.status} decision={o.decision} actionStatus={action?.status} />}>
-      <div className="page-head">
-        <h1>{o.title}</h1>
-        <p>{nar?.summary}</p>
-        <p style={{ marginTop: 10 }} className="row-wrap">
-          <Byline agent="direction" names={names} what={nar?.mode === "LLM" ? "a rédigé cette synthèse à partir des faits du dossier" : "synthèse composée par règles, sans modèle de langage"} />
-          {p.isDemo && <span className="demo-pill">démonstration</span>}
-        </p>
-      </div>
+  // mêmes règles de boutons pour le bloc « Décision » et la barre du mode poche
+  const may = decisionOptions(o, c, { canDecide, hasAction: !!action });
+  const readOnlyNote = "Vous pouvez lire le dossier et poser une question à l'équipe.";
+  // mode poche : la décision d'abord (DossierDecision), les mêmes sections repliées ensuite ; chaque bloc n'est écrit qu'une fois
+  const poche = (await getViewContext()).mode === "poche";
 
+  const synthesis = (
+    <>
+      <p>{nar?.summary}</p>
+      <p style={{ marginTop: 10 }} className="row-wrap">
+        <Byline agent="direction" names={names} what={nar?.mode === "LLM" ? "a rédigé cette synthèse à partir des faits du dossier" : "synthèse composée par règles, sans modèle de langage"} />
+        {p.isDemo && <span className="demo-pill">démonstration</span>}
+      </p>
+    </>
+  );
+
+  const cycleSection = (
       <section className="section" aria-labelledby="frise-h" style={{ marginTop: 0 }}>
         <h2 id="frise-h">Avancement du cycle</h2>
         <p className="section-note">Huit étapes, d'observer à mesurer. Chaque transition est contrôlée : aucune étape ne peut être sautée.</p>
@@ -126,8 +133,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           })}
         </ol>
       </section>
+  );
 
-      {(linked.length > 0 || restUntil) && (
+  const linkedSection = (linked.length > 0 || restUntil) ? (
         <section className="section" aria-labelledby="lies-h" data-testid="dossiers-lies" style={{ marginTop: 0 }}>
           <h2 id="lies-h">{linked.length > 0 ? "Dossiers liés" : "Période de repos"}</h2>
           {linked.length > 0 && (
@@ -144,8 +152,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             <p className="section-note" data-testid="repos">Après cette décision, le même signal ne rouvre pas de dossier {cooldownLabel(restUntil)} ({cooldownDaysOf(o.playbook)} jours de repos pour ce playbook). Rouvrir le dossier à la main reste possible.</p>
           )}
         </section>
-      )}
+  ) : null;
 
+  const reasoningSection = (
       <section className="section" aria-labelledby="raison-h">
         <h2 id="raison-h">Raisonnement et preuves</h2>
         <p className="section-note">À gauche, la chaîne du raisonnement. À droite, les pièces qui la soutiennent, avec leur source.</p>
@@ -231,7 +240,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           </aside>
         </div>
       </section>
+  );
 
+  const optionsSection = (
       <section className="section" aria-labelledby="options-h">
         <h2 id="options-h">Options instruites</h2>
         <p className="section-note">Chaque option a été simulée en revenu net puis auditée. L'inaction est présentée au même niveau que les autres, pas comme un repoussoir.</p>
@@ -253,7 +264,7 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 </div>
                 <Byline agent={x.agent} names={names} />
                 <span className="spacer" />
-                {open && i !== idx && <Link className="btn btn-ghost btn-sm" href={`/dossier/${o.code}?option=${i}#options-h`} scroll={false}><Icon name="search" />Examiner cette option</Link>}
+                {open && i !== idx && <Link className="btn btn-ghost btn-sm" href={`/dossier/${o.code}?option=${i}${poche ? "" : "#options-h"}`} scroll={poche}><Icon name="search" />Examiner cette option</Link>}
                 {i === idx && <span className="metric-source">option examinée ci-dessous</span>}
               </div>
               {(["pricing", "distribution"] as const).map((a) => {
@@ -302,8 +313,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           ))}
         </div>
       </section>
+  );
 
-      {ref && (
+  const economySection = ref ? (
         <section className="section" aria-labelledby="eco-h">
           <h2 id="eco-h">Économie</h2>
           <p className="section-note">Cascade identique sur les deux colonnes, du prix publié à la contribution. Calcul déterministe : aucun modèle de langage n'intervient ici.</p>
@@ -330,21 +342,35 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             )}
           </div>
         </section>
-      )}
+  ) : null;
 
+  // ce qui se lit avant de décider, ou le résultat d'un dossier qui n'est plus ouvert
+  const decisionNotes = (
+    <>
+      <p>{idx === o.selected ? nar?.recommendation : c.detail} {c.type !== "NO_ACTION" && "L'approbation prépare l'action : rien n'est écrit à l'instant de l'approbation."}</p>
+      {(o.signals.independentReview as IndependentReview | undefined)?.concern && idx === o.selected && c.audit.rules.some((r) => r.code === "INDEPENDENT_REVIEW") && <p className="muted" data-testid="reserve-seconde-lecture" style={{ margin: "0 0 12px" }}>Réserve de la seconde lecture : {(o.signals.independentReview as IndependentReview).reason}</p>}
+      {nar?.caveats?.length > 0 && idx === o.selected && <ul className="muted" style={{ margin: "0 0 16px", paddingLeft: 18 }}>{nar.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>}
+    </>
+  );
+  const readOnlyBanner = open && !canDecide ? <div data-testid="lecture-seule"><Banner role="tech" title="Lecture seule : décision réservée">{denyMessage(user.role, "decision.decide")} Cette décision revient à : {who("decision.decide")}.</Banner></div> : null;
+  const rejectedBanner = open && c.audit.verdict === "REJECT" ? <Banner role="veto" title="Option rejetée par l'auditeur">Elle ne peut pas être approuvée. {c.audit.rules.find((r) => r.outcome === "FAIL")?.detail}</Banner> : null;
+  const outcomeBanner = open ? null : (
+    <Banner role={o.decision === "REJECTED" || o.status === "EXPIRED" ? "tech" : "sain"} icon={o.status === "DEFERRED" ? "clock" : undefined}
+      title={o.status === "DEFERRED" ? `Dossier différé jusqu'au ${o.deferUntil ? fmtDate(o.deferUntil) : "—"}` : o.status === "EXPIRED" ? "Dossier expiré : le signal a disparu ou la période est passée" : o.decision === "REJECTED" ? "Proposition rejetée" : o.decision === "NO_ACTION" ? "Inaction retenue" : `Option approuvée : ${action?.label ?? c.label}`}>
+      {o.decision === "NO_ACTION" && <>Aucune écriture. {o.deferUntil && `Réévaluation prévue le ${fmtDate(o.deferUntil)}.`}</>}
+      {action?.approvalComment && <>Commentaire : « {action.approvalComment} »</>}
+      {o.decision === "APPROVED_SHADOW" && <> Logement en période d'observation : jugement hypothétique, aucune écriture externe.</>}
+    </Banner>
+  );
+
+  const decisionSection = (
       <section className="section" aria-labelledby="dec-h" id="decision">
         <h2 id="dec-h">Décision</h2>
         {open ? (
           <div className="decision">
             <h3>{c.type === "NO_ACTION" ? "Ne rien faire et réévaluer" : c.label}</h3>
-            <p>{idx === o.selected ? nar?.recommendation : c.detail} {c.type !== "NO_ACTION" && "L'approbation prépare l'action : rien n'est écrit à l'instant de l'approbation."}</p>
-            {(o.signals.independentReview as IndependentReview | undefined)?.concern && idx === o.selected && c.audit.rules.some((r) => r.code === "INDEPENDENT_REVIEW") && <p className="muted" data-testid="reserve-seconde-lecture" style={{ margin: "0 0 12px" }}>Réserve de la seconde lecture : {(o.signals.independentReview as IndependentReview).reason}</p>}
-            {nar?.caveats?.length > 0 && idx === o.selected && <ul className="muted" style={{ margin: "0 0 16px", paddingLeft: 18 }}>{nar.caveats.map((x: string, i: number) => <li key={i}>{x}</li>)}</ul>}
-            {!canDecide ? (
-              <div data-testid="lecture-seule"><Banner role="tech" title="Lecture seule : décision réservée">{denyMessage(user.role, "decision.decide")} Cette décision revient à : {who("decision.decide")}.</Banner></div>
-            ) : c.audit.verdict === "REJECT" ? (
-              <Banner role="veto" title="Option rejetée par l'auditeur">Elle ne peut pas être approuvée. {c.audit.rules.find((r) => r.outcome === "FAIL")?.detail}</Banner>
-            ) : (
+            {decisionNotes}
+            {readOnlyBanner ?? rejectedBanner ?? (
               <ActionForm action={approveAction} hidden={{ opportunityId: o.id, candidate: idx }}>
                 {needsComment(c, o.playbook) && (
                   <div className="field" style={{ marginBottom: 14 }}>
@@ -364,28 +390,24 @@ export default async function Dossier({ params, searchParams }: { params: Promis
                 </div>
               </ActionForm>
             )}
-            {canDecide && <div className="decision-secondary">
+            {may.reject && <div className="decision-secondary">
               <ActionForm action={rejectAction} hidden={{ opportunityId: o.id, comment: "" }} className="inline"><Submit className="btn btn-danger" icon="cross">Rejeter la proposition</Submit></ActionForm>
-              {!o.veto && <ActionForm action={deferAction} hidden={{ opportunityId: o.id }} className="inline"><Submit className="btn btn-ghost" icon="clock">Différer de 3 jours</Submit></ActionForm>}
+              {may.defer && <ActionForm action={deferAction} hidden={{ opportunityId: o.id }} className="inline"><Submit className="btn btn-ghost" icon="clock">Différer de 3 jours</Submit></ActionForm>}
             </div>}
-            <p className="decision-note">{canDecide ? <>Une seule commande primaire. {o.veto ? "Un dossier sous veto ne peut pas être différé." : "Rejeter et différer sont consignés au journal."}</> : "Vous pouvez lire le dossier et poser une question à l'équipe."}</p>
+            <p className="decision-note">{canDecide ? <>Une seule commande primaire. {o.veto ? "Un dossier sous veto ne peut pas être différé." : "Rejeter et différer sont consignés au journal."}</> : readOnlyNote}</p>
           </div>
         ) : (
           <>
-            <Banner role={o.decision === "REJECTED" || o.status === "EXPIRED" ? "tech" : "sain"} icon={o.status === "DEFERRED" ? "clock" : undefined}
-              title={o.status === "DEFERRED" ? `Dossier différé jusqu'au ${o.deferUntil ? fmtDate(o.deferUntil) : "—"}` : o.status === "EXPIRED" ? "Dossier expiré : le signal a disparu ou la période est passée" : o.decision === "REJECTED" ? "Proposition rejetée" : o.decision === "NO_ACTION" ? "Inaction retenue" : `Option approuvée : ${action?.label ?? c.label}`}>
-              {o.decision === "NO_ACTION" && <>Aucune écriture. {o.deferUntil && `Réévaluation prévue le ${fmtDate(o.deferUntil)}.`}</>}
-              {action?.approvalComment && <>Commentaire : « {action.approvalComment} »</>}
-              {o.decision === "APPROVED_SHADOW" && <> Logement en période d'observation : jugement hypothétique, aucune écriture externe.</>}
-            </Banner>
-            {!action && o.status !== "EXPIRED" && canDecide && (
+            {outcomeBanner}
+            {may.reopen && (
               <ActionForm action={reopenAction} hidden={{ opportunityId: o.id }} style={{ marginTop: 12 }}><Submit className="btn btn-ghost btn-sm" icon="undo">Rouvrir le dossier</Submit></ActionForm>
             )}
           </>
         )}
       </section>
+  );
 
-      {action && (
+  const followUpSection = action ? (
         <section className="section" aria-labelledby="suivi-h">
           <h2 id="suivi-h">Suivi d'application</h2>
           <p className="section-note">État de l'action : <strong>{STATE_LABEL[action.status as ActionState]}</strong>. Quatre strates, dans ce même dossier.</p>
@@ -523,9 +545,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             </details>
           )}
         </section>
-      )}
+  ) : null;
 
-      {action && history.length > 0 && (
+  const transitionsSection = action && history.length > 0 ? (
         <section className="section" aria-labelledby="transitions-h" data-testid="transitions">
           <h2 id="transitions-h">Historique des transitions</h2>
           <p className="section-note">Chaque changement d'état de l'action est consigné par la base elle-même : un état ne peut pas être sauté ni rétabli.</p>
@@ -539,8 +561,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             ))}
           </ol>
         </section>
-      )}
+  ) : null;
 
+  const traceSection = (
       <section className="section" aria-labelledby="trace-h" data-testid="trace-audit">
         <h2 id="trace-h">Traçabilité</h2>
         {trail === null ? <p className="section-note">{denyMessage(user.role, "audit.read")}</p> : (
@@ -553,7 +576,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           </>
         )}
       </section>
+  );
 
+  const talkSection = (
       <section className="section" aria-labelledby="talk-h">
         <div className="agent-talk">
           <header>
@@ -565,7 +590,9 @@ export default async function Dossier({ params, searchParams }: { params: Promis
             initial={talk.map((m) => ({ id: m.id, role: m.role === "user" ? "user" as const : "agent" as const, content: m.content, mode: m.mode ?? null, createdAt: m.createdAt.toISOString() }))} />
         </div>
       </section>
+  );
 
+  const whoSection = (
       <section className="section" aria-labelledby="who-h">
         <h2 id="who-h">Qui a fait quoi</h2>
         <p className="section-note">Chaque poste intervient une fois, dans un ordre fixe. Aucun agent n'en appelle un autre.</p>
@@ -583,7 +610,65 @@ export default async function Dossier({ params, searchParams }: { params: Promis
           <li><span className="n">→</span><span className="who is-you">Vous</span><span>{open ? "Décision attendue" : o.decision === "REJECTED" ? "Proposition rejetée" : o.decision === "NO_ACTION" ? "Inaction retenue" : o.status === "DEFERRED" ? "Dossier différé" : o.status === "EXPIRED" ? "Aucune décision avant expiration" : "Option approuvée"}</span></li>
         </ol>
       </section>
-      <p className="foot">Montants en euros, hors taxes de séjour. Les valeurs marquées « simulation » reposent sur l'hypothèse citée à côté d'elles et ne constituent pas un revenu acquis.{p.isDemo && " Logement de démonstration : données synthétiques."}</p>
+  );
+
+  const foot = <p className="foot">Montants en euros, hors taxes de séjour. Les valeurs marquées « simulation » reposent sur l'hypothèse citée à côté d'elles et ne constituent pas un revenu acquis.{p.isDemo && " Logement de démonstration : données synthétiques."}</p>;
+  const frame = {
+    title: `Dossier ${o.code} · ${p.name}`, sub: `${o.playbook} · ouvert le ${fmtDateTime(o.createdAt)} · ${fmtPeriod(o.stayFrom, o.stayTo)}`,
+    crumbs: [{ label: "Opportunités", href: "/" }, { label: `Dossier ${o.code}` }], right: <OppStatus status={o.status} decision={o.decision} actionStatus={action?.status} />,
+  };
+
+  if (poche) {
+    const direction = agentName("direction", names);
+    return (
+      <Page {...frame} pocketHeader={<DossierHeader o={o} c={c} recommended={idx === o.selected} propertyName={p.name} actionStatus={action?.status} />}>
+        {/* la clé repart de zéro quand on change de dossier : sections repliées comme à l'arrivée */}
+        <DossierDecision key={o.id} o={o} c={c} recommended={idx === o.selected} index={idx} may={may} canDecide={canDecide}
+          banner={readOnlyBanner ?? outcomeBanner} rejected={canDecide ? rejectedBanner : null} notes={decisionNotes} readOnlyNote={readOnlyNote}
+          followUp={followUpSection && action ? { node: followUpSection, status: action.status, alerts: actionAlerts.length } : null}
+          folds={[
+            { id: "lies", label: linked.length > 0 ? `Dossiers liés (${linked.length})` : "Période de repos", node: linkedSection },
+            { id: "options", label: `Options et audit (${cands.length})`, node: optionsSection },
+            { id: "raisonnement", label: "Raisonnement et preuves", node: <><div className="pk-synthesis" data-testid="synthese">{synthesis}</div>{reasoningSection}</> },
+            { id: "economie", label: "Simulation économique", node: economySection },
+            { id: "cycle", label: "Avancement du cycle", node: cycleSection },
+            { id: "conversation", label: `Conversation avec ${direction}`, node: talkSection },
+            { id: "tracabilite", label: "Traçabilité", node: <><p className="pk-opened">Dossier ouvert le {fmtDateTime(o.createdAt)}</p>{transitionsSection}{traceSection}{whoSection}</> },
+          ]}
+          foot={foot} />
+      </Page>
+    );
+  }
+
+  return (
+    <Page {...frame}>
+      <div className="page-head">
+        <h1>{o.title}</h1>
+        {synthesis}
+      </div>
+
+      {cycleSection}
+
+      {linkedSection}
+
+      {reasoningSection}
+
+      {optionsSection}
+
+      {economySection}
+
+      {decisionSection}
+
+      {followUpSection}
+
+      {transitionsSection}
+
+      {traceSection}
+
+      {talkSection}
+
+      {whoSection}
+      {foot}
     </Page>
   );
 }

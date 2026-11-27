@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { deplierDossier } from "./helpers/dossier";
 
 // US-083 : la revue d'action montre la cascade du revenu net en barres, la jauge des planchers, les promotions empilées et la trace d'audit.
 async function dossierHrefs(page: import("@playwright/test").Page, from: string) {
   await page.goto(from);
-  return page.locator('a[href^="/dossier/"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  return page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
 }
 
 test("Dossier ouvert : cascade en barres, planchers, promotions empilées, sans débordement", async ({ page }) => {
@@ -13,6 +14,7 @@ test("Dossier ouvert : cascade en barres, planchers, promotions empilées, sans 
   let seen = 0;
   for (const href of hrefs.slice(0, 8)) {
     await page.goto(href);
+    await deplierDossier(page);
     const wfs = page.getByTestId("waterfall");
     if (!(await wfs.count())) continue; // dossier sans simulation chiffrée (investigation, donnée à vérifier…)
     seen++;
@@ -41,6 +43,7 @@ test("Dossier tranché : la trace d'audit liste les événements du dossier", as
   let found = false;
   for (const href of hrefs.slice(0, 15)) {
     await page.goto(href);
+    await deplierDossier(page);
     const t = page.getByTestId("trace-audit");
     await expect(t.getByRole("heading", { name: "Traçabilité" })).toBeVisible();
     if (await t.locator("ol.trace-list li").count()) {
