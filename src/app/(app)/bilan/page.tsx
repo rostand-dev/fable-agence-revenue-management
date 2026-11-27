@@ -50,7 +50,7 @@ export default async function Bilan({ searchParams }: { searchParams: Promise<{ 
           </div>
           <section className="section">
             <h2>Faits marquants</h2>
-            <div className="blocks" style={{ ["--cols" as any]: 3 }}>
+            <div className="blocks" style={{ ["--cols-large" as any]: 3 }}>
               <div className="block block-faits"><h3>Performance</h3><p className="muted" style={{ margin: "6px 0 0" }}>{cur.nights} nuits vendues sur {cur.available}. {netTrendOk ? <>Le revenu net par nuit disponible est en tendance <strong>{trend(cur.netRevpanCents, prev.netRevpanCents)}</strong> par rapport à {fmtMonth(m0)}.</> : "La tendance du revenu net est inconnue : le net est partiel."}</p></div>
               <div className="block block-comparaisons"><h3><Term id="canal">Canaux</Term></h3><p className="muted" style={{ margin: "6px 0 0" }}>{cur.netCents > 0 && mix.length ? `${mix.map(([c, v]) => `${CHANNEL_LABEL[c] ?? c} ${pct(v / cur.netCents)}`).join(" · ")} du revenu net${cur.netIncomplete ? " connu" : ""}.` : "Répartition inconnue."}</p></div>
               <div className="block block-interpretations"><h3>Décisions</h3><p className="muted" style={{ margin: "6px 0 0" }}>{month.length} décision{month.length > 1 ? "s" : ""} enregistrée{month.length > 1 ? "s" : ""} depuis le début du mois, dont {month.filter((o) => o.decision === "NO_ACTION").length} inaction{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""} retenue{month.filter((o) => o.decision === "NO_ACTION").length > 1 ? "s" : ""}. <Term id="effet-incremental">Effet incrémental</Term> : <Vq>inconnu</Vq></p></div>
