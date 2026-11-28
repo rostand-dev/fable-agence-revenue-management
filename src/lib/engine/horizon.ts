@@ -1,3 +1,4 @@
+import { addDays } from "../dates";
 import type { Day } from "./types";
 
 export type HorizonSummary = {
@@ -23,4 +24,15 @@ export function horizonSummary(days: Pick<Day, "date" | "state" | "priceCents">[
   }
   const sellable = booked + free;
   return { nights: days.length, booked, blocked, free, sellable, occupancy: sellable ? booked / sellable : null, flagged: fl, vetoed: veto, freeUnpriced: unpriced };
+}
+
+/** Playbooks dont la période n'est pas une affaire de nuits à vendre : ils ne colorent pas le calendrier. */
+const NOT_ON_CALENDAR = new Set(["PB-10", "PB-13"]);
+export const coversNights = (playbook: string) => !NOT_ON_CALENDAR.has(playbook);
+
+/** Nuits couvertes par un dossier ouvert : date → true si un veto la couvre, false si un dossier sans veto. */
+export function flaggedNights(opps: { playbook: string; stayFrom: string; stayTo: string; veto: boolean }[]): Map<string, boolean> {
+  const flagged = new Map<string, boolean>();
+  for (const o of opps.filter((x) => coversNights(x.playbook))) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
+  return flagged;
 }

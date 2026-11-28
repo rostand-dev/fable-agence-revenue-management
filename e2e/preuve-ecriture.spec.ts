@@ -2,14 +2,13 @@ import { expect, test } from "@playwright/test";
 import { Client } from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
-import { deplierDossier } from "./helpers/dossier";
+import { deplierDossier, dossiersTranches } from "./helpers/dossier";
 
 // US-092 : la fiche dossier montre la preuve d'une écriture PriceLabs (reçu, empreintes, état avant / après) sans défilement horizontal, sur les trois formats.
 // Le jeu de test insère une ligne de journal d'écriture sur une action de démonstration existante, puis la retire.
 test("Dossier : preuve d'écriture PriceLabs lisible (avant / après, reçu, empreintes)", async ({ page }, info) => {
   test.skip(!hasDatabase(), "Ligne de journal insérée en base : DATABASE_URL requis.");
-  await page.goto("/historique");
-  const hrefs = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  const hrefs = await dossiersTranches(page);
   expect(hrefs.length).toBeGreaterThan(0);
   const c = new Client({ connectionString: process.env.DATABASE_URL });
   const tag = info.project.name.replace(/\W/g, ""), stamp = Date.now().toString(36);

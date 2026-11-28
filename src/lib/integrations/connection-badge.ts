@@ -3,6 +3,10 @@ export type ConnectionBadge = { role: "sain" | "attention" | "neutre"; label: st
 export type Integration = "superhote" | "pricelabs";
 const NAME: Record<Integration, string> = { superhote: "SuperHote", pricelabs: "PriceLabs" };
 
+/** Connexion rattachée dont la dernière lecture a échoué (jamais pour un logement de démonstration). */
+export const readFailed = (kind: Integration, conn: Record<string, any> | null | undefined, isDemo: boolean): boolean =>
+  !isDemo && !!(kind === "superhote" ? conn?.rentalId : conn?.listingId) && conn?.lastSync?.ok === false;
+
 /**
  * Déduit le badge d'une connexion (`properties.superhote` ou `properties.pricelabs`).
  * Le rattachement est `rentalId` (SuperHote) ou `listingId` (PriceLabs). null = pas de badge (logement de démonstration).
@@ -11,7 +15,7 @@ const NAME: Record<Integration, string> = { superhote: "SuperHote", pricelabs: "
 export function connectionBadge(kind: Integration, conn: Record<string, any> | null | undefined, isDemo: boolean): ConnectionBadge {
   if (isDemo) return null;
   const name = NAME[kind], linked = kind === "superhote" ? conn?.rentalId : conn?.listingId;
-  if (linked) return conn?.lastSync?.ok === false ? { role: "attention", label: `${name} : lecture en échec` } : { role: "sain", label: `${name} connecté` };
+  if (linked) return readFailed(kind, conn, isDemo) ? { role: "attention", label: `${name} : lecture en échec` } : { role: "sain", label: `${name} connecté` };
   if (conn?.apiKeyEnc) return { role: "attention", label: `Rattachement ${name} à confirmer` };
   return { role: "neutre", label: `${name} non connecté` };
 }

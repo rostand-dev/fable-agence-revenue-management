@@ -64,6 +64,16 @@ export function pickDefaultChannel(markups: ChannelMarkup[], wantedKey?: string 
   return known.find((m) => m.key === wantedKey) ?? known.find((m) => m.key.includes("airbnb")) ?? known[0] ?? null;
 }
 
+/**
+ * Prix montré pour une nuit libre (calendrier et fiche de poche), en centimes : estimé sur le canal choisi à partir du prix
+ * recommandé ; sans canal (aucune majoration renseignée), prix du calendrier, envoyé à SuperHote avant majoration ; null : inconnu.
+ */
+export function shownPriceCents(day: { state: PublishableDay["state"]; priceCents?: number | null; recommendedPriceCents?: number | null }, channel: ChannelMarkup | null): number | null {
+  if (!channel) return day.priceCents ?? null;
+  const e = estimatePublishedPrice({ state: day.state, recommendedPriceCents: day.priceCents ?? day.recommendedPriceCents }, channel.pct);
+  return e ? e.displayEuros * 100 : null;
+}
+
 /** Identifiant stable d'un canal à partir de son nom (sans accents ni casse). */
 export const markupKey = (label: string) => label.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 

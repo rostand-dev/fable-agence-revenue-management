@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { cache } from "react";
 import { db, schema } from "@/db";
 
@@ -20,3 +20,13 @@ export async function listOpportunities(tenantId: string, statuses: string[]) {
   return rows.map((o) => ({ ...o, action: byOpp.get(o.id) ?? null }));
 }
 export type OppWithAction = Awaited<ReturnType<typeof listOpportunities>>[number];
+
+export const RECENT_DECISIONS = 10;
+/** Dernières décisions rendues (approbations, rejets, inactions retenues), de la plus récente à la plus ancienne, avec leur action. */
+export async function recentDecisions(tenantId: string, limit = RECENT_DECISIONS) {
+  const rows = await db.select().from(opportunities).where(and(eq(opportunities.tenantId, tenantId), eq(opportunities.status, "DECIDED"), isNotNull(opportunities.decidedAt))).orderBy(desc(opportunities.decidedAt), desc(opportunities.id)).limit(limit);
+  const acts = rows.length ? await db.select().from(revenueActions).where(and(eq(revenueActions.tenantId, tenantId), inArray(revenueActions.opportunityId, rows.map((r) => r.id)))) : [];
+  const byOpp = new Map(acts.map((a) => [a.opportunityId, a]));
+  return rows.map((o) => ({ ...o, action: byOpp.get(o.id) ?? null }));
+}
+export type Decision = Awaited<ReturnType<typeof recentDecisions>>[number];

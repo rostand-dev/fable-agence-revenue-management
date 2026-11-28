@@ -2,13 +2,13 @@ import { expect, test } from "@playwright/test";
 import { Client } from "pg";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
+import { dossiersTranches } from "./helpers/dossier";
 
 // US-094 : l'écran « Alertes » (pastille de menu, cartes, prise en compte) et le rappel sur la fiche du dossier, lisibles sans défilement horizontal sur les trois formats.
 // Le jeu de test insère deux alertes sur une action de démonstration existante, puis les retire.
 test("Alertes d'exécution : liste, pastille, prise en compte, rappel sur le dossier", async ({ page }, info) => {
   test.skip(!hasDatabase(), "Alertes insérées en base : DATABASE_URL requis.");
-  await page.goto("/historique");
-  const hrefs = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => Array.from(new Set(as.map((a) => (a as HTMLAnchorElement).getAttribute("href")!))));
+  const hrefs = await dossiersTranches(page);
   expect(hrefs.length).toBeGreaterThan(0);
   const c = new Client({ connectionString: process.env.DATABASE_URL });
   const tag = info.project.name.replace(/\W/g, ""), stamp = Date.now().toString(36);

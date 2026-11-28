@@ -70,10 +70,13 @@ export function viewContext(h: HeaderReader, cookie: (name: string) => string | 
   const mode = viewMode(cookie(VIEW_COOKIE), h);
   const asked = h.get(PATH_HEADER) ?? "/";
   // le chemin se lit à part : des paramètres refusés comme adresse de retour (trop longs, « \ ») ne doivent pas faire oublier l'écran demandé
-  const pathname = safeReturnPath(asked.split(/[?#]/)[0]);
+  const [rawPath] = asked.split(/[?#]/);
+  const pathname = safeReturnPath(rawPath);
   const full = safeReturnPath(asked);
   const current = full === "/" ? pathname : full;
-  const desk = mode === "poche" ? deskScreen(pathname) : null;
+  // l'onglet décide aussi : il se lit dans l'adresse demandée, même quand elle est refusée comme adresse de retour
+  const [beforeHash] = asked.split("#");
+  const desk = mode === "poche" ? deskScreen(pathname + beforeHash.slice(rawPath.length)) : null;
   const blocked = desk && !parseForced(cookie(FORCE_COOKIE)).includes(desk.key) ? desk : null;
   return { mode, phone: isPhone(h), current, pathname, blocked };
 }

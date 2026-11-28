@@ -2,6 +2,10 @@ import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import pg from "pg";
 import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// onglets de la fiche réservés à l'ordinateur en mode poche
+test.use(VERSION_COMPLETE);
 
 // US-100 : registre des promotions d'un logement : déclaration, modification, vérification, fin ; cumul inconnu signalé ; rôle en lecture seule.
 // Lisible sans défilement horizontal sur bureau, 390 px et 360 px. Chaque projet (largeur) crée ses propres promotions, repérées par une étiquette, et les retire.

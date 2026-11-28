@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ancestorIds, buildNav, currentNodeId, deskScreen, KILL_SWITCH_HREF, menuProperties, pocketMenu, PROPERTY_SECTIONS, propertyIdOf, sectionHref, viewHref, type NavNode, hasPriceBadge } from "./nav";
+import { ancestorIds, buildNav, currentNodeId, deskScreen, KILL_SWITCH_HREF, menuProperties, pocketMenu, PROPERTY_SECTIONS, propertyIdOf, sectionHref, viewHref, type NavNode, hasPriceBadge, coversRubric } from "./nav";
 
 const props = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `p${i + 1}`, name: `Logement ${i + 1}`, status: "ACTIVE" }));
 const flat = (nodes: NavNode[]): NavNode[] => nodes.flatMap((n) => [n, ...flat(n.children ?? [])]);
@@ -94,7 +94,35 @@ describe("mode poche : écrans réservés à l'ordinateur", () => {
   it("le menu porte le champ desk sur ces écrans", () => {
     const nodes = flat(buildNav(props(1)).flatMap((g) => g.items));
     for (const id of ["parametres", "compte", "proprietaires", "integrations", "modeles", "ia-cles", "priorisation", "demonstration", "ajouter-logement", "bilan", "methode"]) expect(nodes.find((n) => n.id === id)?.desk, id).toBe(true);
-    for (const id of ["tableau-de-bord", "opportunites", "alertes", "logements", "historique", "rapports", "equipe", "glossaire", "section:p1:apercu", "section:p1:calendrier"]) expect(nodes.find((n) => n.id === id)?.desk, id).toBeUndefined();
+    for (const id of ["tableau-de-bord", "opportunites", "alertes", "logements", "historique", "rapports", "equipe", "glossaire", "section:p1:apercu", "section:p1:historique"]) expect(nodes.find((n) => n.id === id)?.desk, id).toBeUndefined();
+    for (const id of ["calendrier", "strategie", "economie", "donnees"]) expect(nodes.find((n) => n.id === `section:p1:${id}`)?.desk, id).toBe(true);
+  });
+  it("sur la fiche, l'onglet décide : seules la vue d'ensemble, la performance et l'historique restent sur téléphone", () => {
+    for (const s of PROPERTY_SECTIONS) for (const tab of s.tabs) {
+      const found = deskScreen(`/logements/p1?tab=${tab}`);
+      if (s.key === "apercu" || s.key === "historique") expect(found, tab).toBeNull();
+      else expect(found, tab).toMatchObject({ section: s.label, back: "/logements/p1", address: `/logements/p1?tab=${tab}` });
+    }
+    for (const a of ["/logements/p1", "/logements/p1?tab=inconnu", "/logements/p1?tab=", "/logements/p1?canal=airbnb", "/logements/p1/performance?tab=calendrier", "/logements?tab=calendrier", "/historique?tab=calendrier"]) expect(deskScreen(a), a).toBeNull();
+    // autres paramètres, ancre et barre finale ne changent rien
+    expect(deskScreen("/logements/p1/?canal=airbnb&tab=calendrier&jour=2026-12-01#x")?.address).toBe("/logements/p1?tab=calendrier");
+  });
+  it("sur la fiche, le choix vaut pour une rubrique d'un logement", () => {
+    const key = (a: string) => deskScreen(a)!.key;
+    expect(key("/logements/p1?tab=hub-donnees")).toBe(key("/logements/p1?tab=superhote"));
+    expect(key("/logements/p1?tab=hub-donnees")).not.toBe(key("/logements/p1?tab=hub-strategie"));
+    expect(key("/logements/p1?tab=calendrier")).not.toBe(key("/logements/p2?tab=calendrier"));
+    expect(key("/logements/p1?tab=calendrier")).not.toContain(",");
+  });
+  it("les sous-pages d'une rubrique partagent le choix de ses onglets", () => {
+    for (const s of PROPERTY_SECTIONS.filter((x) => x.key !== "apercu")) for (const page of s.pages) {
+      const screen = deskScreen(`/logements/p1/${page}`)!;
+      expect(screen.key, page).toBe(deskScreen(`/logements/p1${s.query}`)!.key);
+      expect(coversRubric(screen), page).toBe(true);
+      expect(screen.address, page).toBe(`/logements/p1/${page}`);
+    }
+    // ce qui n'appartient à aucune rubrique réservée garde son propre choix
+    for (const a of ["/logements/p1/modifier", "/logements/p1/supprimer", "/logements/p1/creation", "/bilan"]) expect(coversRubric(deskScreen(a)!), a).toBe(false);
   });
   it("feuille « Plus » : consultation d'un côté, ordinateur de l'autre", () => {
     const m = pocketMenu(buildNav(props(1)));

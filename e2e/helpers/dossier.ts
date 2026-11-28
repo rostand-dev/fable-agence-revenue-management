@@ -55,3 +55,13 @@ export async function deplierDossier(page: Page): Promise<void> {
     await expect(pli).toHaveAttribute("open", "");
   }
 }
+
+/**
+ * Adresses des dossiers de démonstration tranchés (codes « S-… »), lues dans l'historique de la version complète, sans changer le mode de la page :
+ * en mode poche, l'historique ne montre que les dix dernières décisions, que les copies des tests en parallèle peuvent toutes occuper.
+ */
+export async function dossiersTranches(page: Page): Promise<string[]> {
+  const res = await page.request.get("/historique", { headers: { "Sec-CH-UA-Mobile": "?0" } });
+  expect(res.status(), "historique en version complète").toBe(200);
+  return Array.from(new Set(Array.from((await res.text()).matchAll(/href="(\/dossier\/S-[^"?#]+)"/g), (m) => m[1])));
+}

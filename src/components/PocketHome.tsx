@@ -1,17 +1,14 @@
 import Link from "next/link";
 import { Banner, State } from "./ui";
-import { fmtDay, fmtMonth } from "@/lib/dates";
-import { TREND_KEYS, TREND_NAME, trendLabel, trendMonths, type MonthTrend, type TrendDirection } from "@/lib/metrics/trend";
+import { fmtDay } from "@/lib/dates";
+import { monthName, TREND_ARROW, TREND_KEYS, TREND_NAME, trendLabel, trendMonths, type MonthTrend } from "@/lib/metrics/trend";
 import { PROPERTY_STATUS } from "@/lib/labels";
 import type { PortfolioSummary } from "@/lib/portfolio-summary";
 import type { OppWithAction } from "@/lib/queries";
 import { situationRole } from "@/lib/situation";
 import type { Candidate } from "@/lib/engine/types";
 
-const ARROW: Record<TrendDirection, string> = { UP: "↗", STABLE: "→", DOWN: "↘", UNKNOWN: "?" };
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n > 1 ? many : one}`;
-/** « novembre 2026 » → « novembre » */
-const monthName = (key: string) => fmtMonth(key).split(" ")[0];
 
 function Trends({ t }: { t: MonthTrend }) {
   const reasons = [...new Set(TREND_KEYS.map((k) => t[k].reason).filter((r): r is string => !!r))];
@@ -21,7 +18,7 @@ function Trends({ t }: { t: MonthTrend }) {
         {TREND_KEYS.map((k) => (
           <span key={k} className={`pk-trend is-${t[k].direction.toLowerCase()}`} data-trend={k}>
             <span className="pk-trend-name">{TREND_NAME[k]}</span>
-            <span className="pk-trend-value"><span aria-hidden="true">{ARROW[t[k].direction]} </span>{trendLabel(k, t[k].direction)}</span>
+            <span className="pk-trend-value"><span aria-hidden="true">{TREND_ARROW[t[k].direction]} </span>{trendLabel(k, t[k].direction)}</span>
           </span>
         ))}
       </span>

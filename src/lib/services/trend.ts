@@ -2,19 +2,15 @@ import { and, eq, gte, inArray, lt, min } from "drizzle-orm";
 import { db, schema } from "@/db";
 import { todayISO, type ISODate } from "../dates";
 import { computeKpi, monthPeriod, type NightFact } from "../metrics/kpi";
-import { compareMonths, trendMonths, type MonthTrend, type ReservationSource } from "../metrics/trend";
+import { compareMonths, monthValues, trendMonths, type MonthTrend, type MonthValues, type ReservationSource } from "../metrics/trend";
 import { reservationsFresh, reservationsLinked } from "./experiments";
 import { coverageOf } from "./performance";
 import { PortfolioError } from "./portfolio";
 
 const { properties, reservationNights, calendarDays } = schema;
 
-/**
- * Tendances de plusieurs logements en trois lectures, filtrées sur l'espace : un identifiant d'un autre espace
- * est absent du résultat. Mêmes nuits que `getPerformance` (ventes confirmées, blocages des réservations et du calendrier).
- */
-export async function monthTrends(tenantId: string, propertyIds: string[], now = new Date()): Promise<Map<string, MonthTrend>> {
-  if (!propertyIds.length) return new Map();
+/** Lecture des deux mois comparés, en trois lectures filtrées sur l'espace : un identifiant d'un autre espace est absent du résultat. */
+async function readMonths(tenantId: string, propertyIds: string[], now: Date) {
   const { month, previousMonth } = trendMonths(todayISO(now));
   const current = monthPeriod(month), previous = monthPeriod(previousMonth);
   const [own, nightRows, calBlocked, firstRows] = await Promise.all([
@@ -27,20 +23,33 @@ export async function monthTrends(tenantId: string, propertyIds: string[], now =
       .where(and(eq(reservationNights.tenantId, tenantId), inArray(reservationNights.propertyId, propertyIds))).groupBy(reservationNights.propertyId),
   ]);
   const first = new Map<string, ISODate | null>(firstRows.map((r) => [r.propertyId, r.first]));
-  return new Map(own.map((p) => {
+  return own.map((p) => {
     const { id } = p;
     // même règle de fraîcheur que la mesure des actions : sans lecture récente, une absence de réservation ne prouve rien
     const source: ReservationSource = !reservationsFresh(p, now) ? "STALE" : p.isDemo || reservationsLinked(p) ? "FRESH" : "UNLINKED";
     const rows = nightRows.filter((r) => r.propertyId === id);
     const sold: NightFact[] = rows.filter((r) => r.status === "CONFIRMED").map((r) => ({ night: r.night, channel: r.channel, grossRoomCents: r.gross, commissionCents: r.commission, paymentFeeCents: r.fee }));
     const blocked = [...rows.filter((r) => r.status === "BLOCKED").map((r) => r.night), ...calBlocked.filter((r) => r.propertyId === id).map((r) => r.date)];
-    return [id, compareMonths(computeKpi(current, sold, blocked), computeKpi(previous, sold, blocked), coverageOf(previous, first.get(id) ?? null), source)] as const;
-  }));
+    const firstNight = first.get(id) ?? null;
+    const cur = computeKpi(current, sold, blocked), prev = computeKpi(previous, sold, blocked);
+    return { id, source, cur, trend: compareMonths(cur, prev, coverageOf(previous, firstNight), source), coverage: coverageOf(current, firstNight) };
+  });
+}
+
+/** Tendances de plusieurs logements. Mêmes nuits que `getPerformance` (ventes confirmées, blocages des réservations et du calendrier). */
+export async function monthTrends(tenantId: string, propertyIds: string[], now = new Date()): Promise<Map<string, MonthTrend>> {
+  if (!propertyIds.length) return new Map();
+  return new Map((await readMonths(tenantId, propertyIds, now)).map((m) => [m.id, m.trend] as const));
+}
+
+/** Tendance et valeurs du mois en cours d'un logement de l'espace ; logement inconnu ou d'un autre espace : 404. */
+export async function monthOverview(tenantId: string, propertyId: string, now = new Date()): Promise<{ trend: MonthTrend; values: MonthValues }> {
+  const [m] = await readMonths(tenantId, [propertyId], now);
+  if (!m) throw new PortfolioError("NOT_FOUND", "Logement introuvable.");
+  return { trend: m.trend, values: monthValues(m.cur, m.coverage, m.source) };
 }
 
 /** Tendance d'un logement de l'espace ; logement inconnu ou d'un autre espace : 404. */
 export async function monthTrend(tenantId: string, propertyId: string, now = new Date()): Promise<MonthTrend> {
-  const t = (await monthTrends(tenantId, [propertyId], now)).get(propertyId);
-  if (!t) throw new PortfolioError("NOT_FOUND", "Logement introuvable.");
-  return t;
+  return (await monthOverview(tenantId, propertyId, now)).trend;
 }

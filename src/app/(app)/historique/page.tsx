@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Term } from "@/components/Term";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
+import { PocketHistory } from "@/components/PocketHistory";
 import { Banner, Metric, OppStatus, State, Vq } from "@/components/ui";
 import { agentName } from "@/lib/agents/registry";
 import { withTenant } from "@/db/tenant";
@@ -12,10 +13,11 @@ import { can, denyMessage, rolesWith, ROLE_LABEL } from "@/lib/rbac";
 import { fmtDateTime, fmtDay } from "@/lib/dates";
 import { STATE_LABEL, type ActionState } from "@/lib/engine/stateMachine";
 import { signedEuro } from "@/lib/format";
-import { listOpportunities, listProperties } from "@/lib/queries";
+import { OUTCOME } from "@/lib/labels";
+import { listOpportunities, listProperties, recentDecisions } from "@/lib/queries";
+import { getViewContext } from "@/lib/view-mode";
 
 export const metadata = { title: "Historique" };
-const OUT: Record<string, [string, "sain" | "neutre" | "attention" | "tech"]> = { POSITIVE: ["Positif · corrélation", "sain"], NEUTRAL: ["Neutre", "neutre"], NEGATIVE: ["Négatif", "attention"], INCONCLUSIVE: ["Non concluant", "tech"] };
 
 const PAGE = 30;
 export default async function Historique({ searchParams }: { searchParams: Promise<{ cat?: string; apres?: string; de?: string; au?: string; qui?: string }> }) {
@@ -29,6 +31,16 @@ export default async function Historique({ searchParams }: { searchParams: Promi
   const names = user.settings.agentNames ?? null;
   // US-084 : le journal d'audit est réservé à certains rôles ; la requête n'est même pas lancée pour les autres
   const canAudit = can(user.role, "audit.read");
+  const view = await getViewContext();
+  // mode poche : les dernières décisions seulement ; ni tableau, ni journal, ni leurs lectures
+  if (view.mode === "poche") {
+    const [props, decisions] = await Promise.all([listProperties(user.tenantId), recentDecisions(user.tenantId)]);
+    return (
+      <Page title="Historique" sub="Dernières décisions" crumbs={[{ label: "Historique" }]}>
+        <PocketHistory decisions={decisions} names={new Map(props.map((p) => [p.id, p.name]))} audit={canAudit ? null : denyMessage(user.role, "audit.read")} journalReturn={`${view.current.split("#")[0]}#journal`} />
+      </Page>
+    );
+  }
   const [props, opps, journal] = await Promise.all([listProperties(user.tenantId), listOpportunities(user.tenantId, ["DECIDED", "DEFERRED", "EXPIRED"]), canAudit ? withTenant(user.tenantId, (tx) => listAuditEvents(user.tenantId, { category: cat, from: de, to: au, actorKind: qui, limit: PAGE, cursor: sp.apres ?? null }, tx)) : Promise.resolve({ events: [], nextCursor: null as string | null })]);
   const events = journal.events;
   const href = (c?: string, apres?: string | null) => `/historique?${[c ? `cat=${c}` : "", de ? `de=${de}` : "", au ? `au=${au}` : "", qui ? `qui=${qui}` : "", apres ? `apres=${apres}` : ""].filter(Boolean).join("&")}#journal`;
@@ -60,7 +72,7 @@ export default async function Historique({ searchParams }: { searchParams: Promi
                 <td>{pname.get(o.propertyId)}</td><td>{o.playbook}</td>
                 <td className="num sim-cell">{a.simulation.expectedDeltaCents === null ? "n. c." : signedEuro(a.simulation.expectedDeltaCents)}</td>
                 <td>{STATE_LABEL[a.status as ActionState]}</td>
-                <td>{m ? <><State role={OUT[m.outcome]?.[1] ?? "neutre"}>{OUT[m.outcome]?.[0] ?? m.outcome}</State><span className="src">{m.observed}</span></> : <Vq>pas encore mesuré</Vq>}</td></tr>
+                <td>{m ? <><State role={OUTCOME[m.outcome]?.[1] ?? "neutre"}>{OUTCOME[m.outcome]?.[0] ?? m.outcome}</State><span className="src">{m.observed}</span></> : <Vq>pas encore mesuré</Vq>}</td></tr>
             ); })}</tbody></table></div>
         )}
       </section>

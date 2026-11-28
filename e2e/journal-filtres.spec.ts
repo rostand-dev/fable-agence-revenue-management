@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { httpCredentials } from "./helpers/env";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// journal et filtres : en mode poche, ils sont derrière « Version complète »
+test.use(VERSION_COMPLETE);
 
 // US-085 : le journal d'audit se filtre par période et par auteur, en plus de la famille. Bureau, 390 et 360 px.
 test("Journal : filtres période et auteur visibles, sans débordement", async ({ page }) => {

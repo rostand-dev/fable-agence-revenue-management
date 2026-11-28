@@ -4,6 +4,10 @@ import { fingerprintToken, sign } from "../src/lib/integrations/superhote-webhoo
 import { encryptSecret } from "../src/lib/secret";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { useCreated } from "./helpers/properties";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// onglets de la fiche réservés à l'ordinateur en mode poche
+test.use(VERSION_COMPLETE);
 
 /** supprimés après chaque test */
 const toRemove = useCreated();

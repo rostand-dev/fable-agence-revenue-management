@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { Icon } from "@/components/Icon";
 import { Page } from "@/components/Page";
+import { PocketProperty, PocketPropertyHeader, pocketLines } from "@/components/PocketProperty";
 import { ListingsPanel } from "@/components/ListingsPanel";
 import { ManageMenu } from "@/components/ManageMenu";
 import { PriceLabsPanel } from "@/components/PriceLabsPanel";
@@ -13,21 +14,26 @@ import { TodoCard } from "@/components/TodoCard";
 import { Badge, Banner, State } from "@/components/ui";
 import { db, schema } from "@/db";
 import { requireUser } from "@/lib/auth";
-import { fmtDate, fmtMonth, todayISO } from "@/lib/dates";
+import { addDays, fmtDate, fmtMonth, todayISO } from "@/lib/dates";
 import { missingEconomics } from "@/lib/engine/economics";
 import { lastMonths, monthlyKpis } from "@/lib/engine/metrics";
 import type { EconomicModel, Strategy } from "@/lib/engine/types";
-import { badgeHref, pricelabsBadge, superhoteBadge } from "@/lib/integrations/connection-badge";
+import { badgeHref, pricelabsBadge, readFailed, superhoteBadge } from "@/lib/integrations/connection-badge";
 import { PROPERTY_STATUS as STATUS } from "@/lib/labels";
 import { PROPERTY_SECTIONS, sectionHref, sectionOfTab } from "@/lib/nav";
+import { NEXT_NIGHTS, nextNights } from "@/lib/next-nights";
+import { pickDefaultChannel, type ChannelMarkup } from "@/lib/pricing/published";
 import { can } from "@/lib/rbac";
 import { hubByTab, HUBS, hubScreens, isLaunched } from "@/lib/property-hubs";
+import { calendarReadOn } from "@/lib/services/calendar";
 import { linkedElsewhere } from "@/lib/services/pricelabs-sync";
 import { listListings } from "@/lib/services/portfolio";
 import { loadEngineInput } from "@/lib/services/review";
 import { getSnapshotState } from "@/lib/services/snapshots";
 import { rentalLinkedElsewhere } from "@/lib/services/superhote-sync";
 import { webhookStatus } from "@/lib/services/superhote-webhook";
+import { monthOverview } from "@/lib/services/trend";
+import { getViewContext } from "@/lib/view-mode";
 import { Apercu } from "./_sections/Apercu";
 import { Calendrier } from "./_sections/Calendrier";
 import type { Fiche, FicheParams } from "./_sections/context";
@@ -57,6 +63,11 @@ export default async function Logement({ params, searchParams }: { params: Promi
   const tab = sp.tab ?? "apercu";
   const [p] = await db.select().from(schema.properties).where(and(eq(schema.properties.id, id), eq(schema.properties.tenantId, user.tenantId)));
   if (!p) notFound();
+  const view = await getViewContext();
+  const sub = `${[p.kind, p.city].filter(Boolean).join(" · ") || "dossier en cours de saisie"} · stratégie v${p.strategyVersion}`;
+  const crumbs = [{ label: "Logements", href: "/logements" }, { label: p.name }];
+  // mode poche, rubrique réservée à l'ordinateur : l'encart, sans aucune lecture de la rubrique
+  if (view.blocked) return <Page title={p.name} sub={sub} crumbs={crumbs}>{null}</Page>;
   const today = todayISO(), now = new Date();
   const input = (await loadEngineInput(user.tenantId, p.id, today, now))!;
   const opps = await db.select().from(schema.opportunities).where(and(eq(schema.opportunities.propertyId, p.id), eq(schema.opportunities.status, "OPEN")));
@@ -73,10 +84,23 @@ export default async function Logement({ params, searchParams }: { params: Promi
     user, p, sp, today, now, input, opps, model, strat: p.strategy as Strategy, names: user.settings.agentNames ?? null, miss, onboarding, hasHistory, hasCal,
     months, kpis, period: `${fmtMonth(months[0])} → ${fmtMonth(months[months.length - 1])}`, trend,
   };
-  const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
   const section = sectionOfTab(tab);
-  const hub = hubByTab(tab);
   const canDelete = can(user.role, "property.delete"), canManage = can(user.role, "property.manage");
+  if (view.mode === "poche" && section.key === "apercu" && tab !== "performance") {
+    const [overview, readOn] = await Promise.all([monthOverview(user.tenantId, p.id, now), calendarReadOn(user.tenantId, p.id, today, addDays(today, NEXT_NIGHTS - 1))]);
+    const channel = pickDefaultChannel((p.channelMarkups ?? []) as ChannelMarkup[]);
+    const failed = ([["superhote", p.superhote, "SuperHote"], ["pricelabs", p.pricelabs, "PriceLabs"]] as const).filter(([k, c]) => readFailed(k, c, p.isDemo)).map(([, , name]) => name);
+    return (
+      <Page title={p.name} sub={sub} crumbs={crumbs} pocketHeader={<PocketPropertyHeader p={p} open={opps.length} vetoes={opps.filter((o) => o.veto).length} />}>
+        <PocketProperty p={p} today={today} trend={overview.trend} values={overview.values}
+          calendar={hasCal ? { ...nextNights(input.days, opps, channel, today), channel, readOn } : null}
+          todo={todoItems(fiche, tab)} lines={pocketLines(p, { missing: miss.length, failed, calendarEnd: hasCal ? input.days[input.days.length - 1].date : null })}
+          onboarding={onboarding} canManage={canManage} canDelete={canDelete} launched={!!sp.lance} />
+      </Page>
+    );
+  }
+  const [owner] = p.ownerId ? await db.select({ name: schema.owners.name }).from(schema.owners).where(and(eq(schema.owners.id, p.ownerId), eq(schema.owners.tenantId, user.tenantId))) : [];
+  const hub = hubByTab(tab);
   // lien de retour d'un écran vers sa rubrique (les hubs et les écrans de premier niveau n'en ont pas)
   const parent = tab === "performance" ? { href: `/logements/${p.id}`, label: "Vue d'ensemble" }
     : !hub && HUBS.some((h) => h.key === section.key) ? { href: sectionHref(p.id, section.key), label: section.label } : null;
@@ -86,7 +110,7 @@ export default async function Logement({ params, searchParams }: { params: Promi
   });
 
   return (
-    <Page title={p.name} sub={`${[p.kind, p.city].filter(Boolean).join(" · ") || "dossier en cours de saisie"} · stratégie v${p.strategyVersion}`} crumbs={[{ label: "Logements", href: "/logements" }, { label: p.name }]}>
+    <Page title={p.name} sub={sub} crumbs={crumbs}>
       <div className="idhead">
         <div>
           <h1>{p.name} {p.isDemo && <span className="demo-pill" style={{ verticalAlign: "middle" }}>démonstration</span>}</h1>

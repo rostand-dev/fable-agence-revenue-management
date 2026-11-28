@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { httpCredentials } from "./helpers/env";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
+import { versionComplete } from "./helpers/view";
 
 // US-050 : KPI canoniques (API et fiche du logement), bureau, mobile 390 et 360 px, sur le logement de démonstration.
 async function demoPropertyId(page: Page): Promise<string> {
@@ -46,6 +47,7 @@ test("API performance : refuse sans session", async ({ browser, baseURL }) => {
 });
 
 test("fiche du logement : quatre indicateurs, période précisée, sans débordement", async ({ page }) => {
+  await versionComplete(page.context()); // vue d'ensemble complète : le téléphone reçoit la fiche de poche (poche-fiche-historique.spec.ts)
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const id = await demoPropertyId(page);
   await page.goto(`/logements/${id}`);

@@ -3,6 +3,10 @@ import pg from "pg";
 import { withApprovedManualDossier } from "./helpers/dossier";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { hasDatabase } from "./helpers/roles";
+import { VERSION_COMPLETE } from "./helpers/view";
+
+// onglets de la fiche réservés à l'ordinateur en mode poche
+test.use(VERSION_COMPLETE);
 
 // US-104 : période de repos visible au registre, expiration sans repos, seconde relecture d'une action confirmée à la main. Trois largeurs, sans débordement.
 test.skip(!hasDatabase(), "DATABASE_URL absent : données de test non créables sur cet environnement");

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { viewHref } from "@/lib/nav";
+import { coversRubric, viewHref } from "@/lib/nav";
 import type { ViewContext } from "@/lib/view-mode";
 import { ForceLink } from "./ForceLink";
 import { Icon } from "./Icon";
@@ -13,9 +13,9 @@ export function DeskOnly({ view, heading: Heading = "h1" }: { view: ViewContext 
         <Heading className="pk-card-title">Cet écran est conçu pour l'ordinateur</Heading>
         <p>{view.blocked.why} Rien ne presse : vos décisions restent possibles depuis le téléphone.</p>
         <Link href="/" className="btn btn-primary">Revenir aux opportunités</Link>
-        <ForceLink className="btn btn-ghost" href={`/vue?afficher=${encodeURIComponent(view.pathname)}&retour=${encodeURIComponent(view.current)}`}>Afficher quand même</ForceLink>
+        <ForceLink className="btn btn-ghost" href={`/vue?afficher=${encodeURIComponent(view.blocked.address)}&retour=${encodeURIComponent(view.current)}`}>Afficher quand même</ForceLink>
       </div>
-      <p className="pk-foot-note">Le choix « Afficher quand même » est retenu pour cet écran jusqu'à la fin de la session.</p>
+      <p className="pk-foot-note">Le choix « Afficher quand même » est retenu pour {coversRubric(view.blocked) ? "cette rubrique du logement" : "cet écran"} jusqu'à la fin de la session.</p>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
-import { deplierDossier } from "./helpers/dossier";
+import { deplierDossier, dossiersTranches } from "./helpers/dossier";
 
 // US-083 : la revue d'action montre la cascade du revenu net en barres, la jauge des planchers, les promotions empilées et la trace d'audit.
 async function dossierHrefs(page: import("@playwright/test").Page, from: string) {
@@ -38,7 +38,7 @@ test("Dossier ouvert : cascade en barres, planchers, promotions empilées, sans 
 });
 
 test("Dossier tranché : la trace d'audit liste les événements du dossier", async ({ page }) => {
-  const hrefs = await dossierHrefs(page, "/historique");
+  const hrefs = await dossiersTranches(page);
   expect(hrefs.length).toBeGreaterThan(0);
   let found = false;
   for (const href of hrefs.slice(0, 15)) {
