@@ -2,30 +2,21 @@ import Link from "next/link";
 import { IfRight } from "@/components/Rights";
 import { Fragment } from "react";
 import { Metric, Vq } from "@/components/ui";
-import { addDays, fmtDate, fmtDay } from "@/lib/dates";
-import { horizonSummary } from "@/lib/engine/horizon";
-import { euro, pct, signedEuro } from "@/lib/format";
-import { estimateAllChannels, estimatePublishedPrice, pickDefaultChannel, sentMinusRecommended, type ChannelMarkup } from "@/lib/pricing/published";
+import { fmtDate, fmtDay } from "@/lib/dates";
+import { flaggedNights, horizonSummary } from "@/lib/engine/horizon";
+import { euro, insecable, pct, signedEuro } from "@/lib/format";
+import { estimateAllChannels, pickDefaultChannel, sentMinusRecommended, shownPriceCents, type ChannelMarkup } from "@/lib/pricing/published";
 import type { Fiche } from "./context";
-
-/** Case étroite : un nombre ne se coupe ni entre ses milliers ni avant « % » ; le symbole « € », lui, peut passer à la ligne. */
-const insecable = (v: string) => v.replace(/(\d) (?=[\d%])/g, "$1\u00a0");
 
 /** Calendrier à 90 jours : synthèse de l'horizon, prix par nuit et détail d'une date. */
 export function Calendrier({ p, sp, input, opps, hasCal }: Fiche) {
   if (!hasCal) return <div className="empty"><h3>Aucun calendrier</h3><p>Le calendrier apparaît dès que les intégrations sont connectées.</p></div>;
-  const flagged = new Map<string, boolean>();
-  for (const o of opps.filter((x) => x.playbook !== "PB-10" && x.playbook !== "PB-13")) for (let d = o.stayFrom; d < o.stayTo; d = addDays(d, 1)) flagged.set(d, flagged.get(d) || o.veto);
+  const flagged = flaggedNights(opps);
   const markups = (p.channelMarkups ?? []) as ChannelMarkup[];
   const channel = pickDefaultChannel(markups, sp.canal);            // null tant qu'aucune majoration n'est renseignée
   const unknownChannels = markups.filter((m) => m.pct === null).map((m) => m.label);
   const calHref = (extra: { canal?: string; jour?: string }) => `/logements/${p.id}?tab=calendrier${extra.canal ? "&canal=" + encodeURIComponent(extra.canal) : ""}${extra.jour ? "&jour=" + extra.jour : ""}`;
-  /** Prix affiché pour une nuit libre, en centimes : estimé sur le canal choisi (à partir du prix recommandé), sinon prix du calendrier (SuperHote, avant majoration) ; null = inconnu. */
-  const shownCents = (d: (typeof input.days)[number]): number | null => {
-    if (!channel) return d.priceCents ?? null;
-    const e = estimatePublishedPrice({ state: d.state, recommendedPriceCents: d.priceCents ?? d.recommendedPriceCents }, channel.pct);
-    return e ? e.displayEuros * 100 : null;
-  };
+  const shownCents = (d: (typeof input.days)[number]) => shownPriceCents(d, channel);
   const stateLabel = (st: string) => (st === "BOOKED" ? "réservé" : st === "BLOCKED" ? "bloqué" : "libre");
   const detailDay = sp.jour ? input.days.find((d) => d.date === sp.jour) : undefined;
   const hz = horizonSummary(input.days.map((d) => ({ date: d.date, state: d.state, priceCents: d.state === "FREE" ? shownCents(d) : d.priceCents })), flagged);

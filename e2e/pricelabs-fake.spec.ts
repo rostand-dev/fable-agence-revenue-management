@@ -1,10 +1,12 @@
 import { expect as baseExpect, test, type Page, type TestInfo } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
-import { versionComplete } from "./helpers/view";
+import { VERSION_COMPLETE } from "./helpers/view";
 
 // Chaque lecture PriceLabs est suivie de la revue du portefeuille démo, qui ralentit quand d'autres tests y ont laissé des logements : attentes généreuses.
 const expect = baseExpect.configure({ timeout: 30_000 });
 test.setTimeout(120_000);
+// onglets « PriceLabs » et « 90 jours » : réservés à l'ordinateur en mode poche
+test.use(VERSION_COMPLETE);
 
 // US-044 : le parcours PriceLabs (clé, rattachement, lecture) passe par le faux serveur de l'API PriceLabs, sans réseau ni clé réelle.
 // Le scénario est choisi par la clé saisie : fake-<scénario>-<suffixe alphanumérique>.
@@ -209,7 +211,6 @@ test("PriceLabs (faux serveur) : marché illisible, la lecture réussit et les s
 // US-090 : l'écriture chez PriceLabs est fermée par défaut (verrou d'environnement). Sur un logement réel branché, la page Intégrations le dit clairement
 // et le faux serveur ne reçoit aucune écriture. Contrôle sur bureau et mobile (390 et 360 px).
 test("PriceLabs (faux serveur) : écriture désactivée sur cet environnement, affichée clairement et sans écriture", async ({ page }, info) => {
-  await versionComplete(page.context()); // écran réservé à l'ordinateur
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   await linked(page, info, "nominal", "write off");
   await expect(page.getByText("réussie")).toBeVisible();

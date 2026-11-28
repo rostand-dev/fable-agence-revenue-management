@@ -4,7 +4,8 @@ import { db, newId, schema } from "@/db";
 import { makeProperty, makeTenant } from "@/test/db";
 import type { Snap } from "../reservations/nights";
 import { writeNights } from "./reservations-store";
-import { monthTrend, monthTrends } from "./trend";
+import { calendarReadOn } from "./calendar";
+import { monthOverview, monthTrend, monthTrends } from "./trend";
 
 const NOW = new Date("2026-11-27T10:00:00Z"); // novembre comparé à octobre
 async function addResa(tenantId: string, propertyId: string, s: Partial<Snap> & Pick<Snap, "checkIn" | "checkOut" | "grossRoomCents">) {
@@ -59,5 +60,37 @@ describe("monthTrends", () => {
     expect((await monthTrends(b.tenantId, [p], NOW)).size).toBe(0);
     await expect(monthTrend(b.tenantId, p, NOW)).rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(await monthTrends(a.tenantId, [], NOW)).toEqual(new Map());
+  });
+});
+
+describe("monthOverview", () => {
+  it("donne les valeurs du mois en cours avec la même tendance que monthTrend, dans son seul espace", async () => {
+    const t = await makeTenant("trend6"), other = await makeTenant("trend7"), p = await makeProperty(t.tenantId);
+    await addResa(t.tenantId, p, { checkIn: "2026-10-01", checkOut: "2026-10-05", grossRoomCents: 40000 });
+    await addResa(t.tenantId, p, { checkIn: "2026-11-02", checkOut: "2026-11-08", grossRoomCents: 60000, commissionCents: 6000 }); // 6 nuits, 540 € nets
+    const o = await monthOverview(t.tenantId, p, NOW);
+    expect(o.values).toEqual({ revenue: { value: 54000, reason: null }, occupancy: { value: 0.2, reason: null }, price: { value: 9000, reason: null } });
+    expect(o.trend).toEqual(await monthTrend(t.tenantId, p, NOW));
+    await expect(monthOverview(other.tenantId, p, NOW)).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("historique commencé en cours de mois : les valeurs du mois sont inconnues", async () => {
+    const t = await makeTenant("trend8"), p = await makeProperty(t.tenantId);
+    await addResa(t.tenantId, p, { checkIn: "2026-11-12", checkOut: "2026-11-14", grossRoomCents: 20000 });
+    expect((await monthOverview(t.tenantId, p, NOW)).values.revenue).toEqual({ value: null, reason: "historique incomplet en novembre 2026" });
+  });
+});
+
+describe("calendarReadOn", () => {
+  it("rend la lecture la plus ancienne de la fenêtre, à l'heure de Paris ; rien sans nuit lue ni dans un autre espace", async () => {
+    const t = await makeTenant("cal1"), other = await makeTenant("cal2"), p = await makeProperty(t.tenantId);
+    expect(await calendarReadOn(t.tenantId, p, "2026-11-27", "2026-12-10")).toBeNull();
+    await db.insert(schema.calendarDays).values([
+      { tenantId: t.tenantId, propertyId: p, date: "2026-11-27", state: "FREE", observedAt: new Date("2026-11-26T23:30:00Z") },
+      { tenantId: t.tenantId, propertyId: p, date: "2026-11-28", state: "FREE", observedAt: new Date("2026-11-27T08:00:00Z") },
+      { tenantId: t.tenantId, propertyId: p, date: "2027-01-15", state: "FREE", observedAt: new Date("2026-11-01T08:00:00Z") },
+    ]);
+    expect(await calendarReadOn(t.tenantId, p, "2026-11-27", "2026-12-10")).toBe("2026-11-27");
+    expect(await calendarReadOn(other.tenantId, p, "2026-11-27", "2026-12-10")).toBeNull();
   });
 });

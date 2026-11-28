@@ -1,5 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { deplierDossier } from "./helpers/dossier";
+import { deplierDossier, dossiersTranches } from "./helpers/dossier";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { createRoleUser, deleteUser, hasDatabase } from "./helpers/roles";
 import { loginNewTenant, sql } from "./helpers/tenant";
@@ -139,8 +139,7 @@ test.describe("Sur téléphone, compte de démonstration", () => {
       const s = document.querySelector(`section[aria-labelledby="${id}"]`);
       return [id, s ? (s.textContent ?? "").replace(/\s+/g, " ").trim() : null];
     })), ids);
-    await page.goto("/historique");
-    const tranches = await page.locator('a[href^="/dossier/S-"]').evaluateAll((as) => [...new Set(as.map((a) => a.getAttribute("href")!))]);
+    const tranches = await dossiersTranches(page);
     expect(tranches.length, "dossiers de l'historique de démonstration").toBeGreaterThan(0);
     const ouverts = await dossiers(page, "/");
     const comparees = new Set<string>();

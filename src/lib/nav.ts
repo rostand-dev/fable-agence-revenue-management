@@ -61,15 +61,50 @@ export const DESK_RULES: DeskRule[] = [
   { path: /^\/methode$/, section: "Agence IA", why: "Cette lecture longue est plus confortable sur un grand écran." },
 ];
 
-export type DeskScreen = { /** clé du choix « Afficher quand même » */ key: string; section: string | null; why: string; /** retour vers un écran disponible sur téléphone */ back: string };
+/**
+ * Rubriques de la fiche d'un logement (`?tab=`) réservées à l'ordinateur, avec leur motif.
+ * « Vue d'ensemble » (performance comprise) et « Historique » restent consultables sur téléphone.
+ */
+export const DESK_SECTION_WHY: Record<string, string> = {
+  calendrier: "Quatre-vingt-dix jours de prix se lisent mieux sur un grand écran ; la fiche montre les quatorze prochains.",
+  strategie: "La stratégie et les canaux se règlent avec de nombreuses saisies chiffrées.",
+  economie: "Les coûts et les planchers demandent de la place et de l'attention.",
+  donnees: "Les connexions et les contrôles des données demandent de la place et de l'attention.",
+};
 
-/** L'écran réservé à l'ordinateur qui correspond à ce chemin (sans paramètres), ou null. */
-export function deskScreen(pathname: string): DeskScreen | null {
+/** Clé du choix « Afficher quand même » partagée par les onglets et les sous-pages d'une rubrique de la fiche. */
+const rubricKey = (propertyPath: string, section: string) => `${propertyPath}?rubrique=${section}`;
+/** Vrai quand le choix « Afficher quand même » vaut pour toute une rubrique du logement, et pas pour un seul écran. */
+export const coversRubric = (screen: Pick<DeskScreen, "key">) => screen.key.includes("?rubrique=");
+
+export type DeskScreen = {
+  /** clé du choix « Afficher quand même » (une rubrique de la fiche : un seul choix pour tous ses écrans) */ key: string;
+  section: string | null; why: string;
+  /** retour vers un écran disponible sur téléphone */ back: string;
+  /** adresse de l'écran à transmettre à la route de bascule : chemin, plus l'onglet quand c'est lui qui est réservé */ address: string;
+};
+
+/** L'écran réservé à l'ordinateur qui correspond à cette adresse (chemin, avec ou sans paramètres), ou null. */
+export function deskScreen(address: string): DeskScreen | null {
+  const [target] = address.split("#");
+  const mark = target.indexOf("?");
+  const pathname = mark < 0 ? target : target.slice(0, mark);
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
-  const rule = DESK_RULES.find((r) => r.path.test(path));
-  if (!rule) return null;
   const property = propertyIdOf(path);
-  return { key: rule.group ?? path, section: rule.section, why: rule.why, back: rule.group ? "/logements" : property ? `/logements/${property}` : "/" };
+  const rule = DESK_RULES.find((r) => r.path.test(path));
+  if (rule) {
+    // la sous-page d'une rubrique réservée (`/couts`, `/mapping`…) partage le choix de cette rubrique ; le parcours de création garde le sien
+    const rubrique = property && !rule.group ? PROPERTY_SECTIONS.find((s) => DESK_SECTION_WHY[s.key] && s.pages.includes(path.split("/")[3])) : undefined;
+    const key = rubrique ? rubricKey(`/logements/${property}`, rubrique.key) : rule.group ?? path;
+    return { key, section: rule.section, why: rule.why, back: rule.group ? "/logements" : property ? `/logements/${property}` : "/", address: path };
+  }
+  // la fiche elle-même : c'est l'onglet qui décide
+  if (!property || path !== `/logements/${property}` || mark < 0) return null;
+  const tab = new URLSearchParams(target.slice(mark + 1)).get("tab");
+  if (!tab) return null;
+  const section = sectionOfTab(tab);
+  const why = DESK_SECTION_WHY[section.key];
+  return why ? { key: rubricKey(path, section.key), section: section.label, why, back: path, address: `${path}?tab=${encodeURIComponent(tab)}` } : null;
 }
 
 /** Feuille « Plus » en mode poche : [identifiant du nœud, libellé, précision]. */
@@ -137,7 +172,7 @@ export function buildNav(properties: NavProperty[], currentPropertyId: string | 
   ];
   const mark = (n: NavNode): NavNode => ({
     ...n,
-    ...(n.href && deskScreen(n.href.split("?")[0]) ? { desk: true } : {}),
+    ...(n.href && deskScreen(n.href) ? { desk: true } : {}),
     ...(n.children ? { children: n.children.map(mark) } : {}),
   });
   return groups.map((g) => ({ ...g, items: g.items.map(mark) }));

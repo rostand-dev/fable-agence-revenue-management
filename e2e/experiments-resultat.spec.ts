@@ -49,6 +49,7 @@ for (const [outcome, label, reasons] of [
 }
 
 test("Historique : les quatre résultats sont comptés, la mesure d'une action refermée est lisible", async ({ page }) => {
+  await versionComplete(page.context()); // décompte et tableau : version complète
   await page.goto("/historique");
   await expect(page.getByText(/négative\(s\)/).first()).toBeVisible();
   await expect(page.getByText(/non concluante\(s\)/).first()).toBeVisible();

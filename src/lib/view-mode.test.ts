@@ -82,7 +82,7 @@ describe("contexte d'une page", () => {
     expect(ctx("/alertes").blocked).toBeNull();
   });
   it("respecte « Afficher quand même » pour cet écran seulement", () => {
-    const cookies = { [FORCE_COOKIE]: "/logements/p1/couts,creation" };
+    const cookies = { [FORCE_COOKIE]: "/logements/p1?rubrique=economie,creation" };
     expect(ctx("/logements/p1/couts?x=1", cookies).blocked).toBeNull();
     expect(ctx("/logements/p2/couts", cookies).blocked).not.toBeNull();
     expect(ctx("/logements/nouveau", cookies).blocked).toBeNull();
@@ -94,6 +94,17 @@ describe("contexte d'une page", () => {
       expect(c.blocked, q.slice(0, 20)).not.toBeNull();
       expect(c).toMatchObject({ pathname: "/bilan", current: "/bilan" });
     }
+  });
+  it("réserve une rubrique de la fiche d'après son onglet, et retient le choix pour toute la rubrique", () => {
+    expect(ctx("/logements/p1").blocked).toBeNull();
+    expect(ctx("/logements/p1?tab=performance").blocked).toBeNull();
+    expect(ctx("/logements/p1?tab=pricelabs").blocked).toMatchObject({ section: "Données & connexions", back: "/logements/p1" });
+    const key = ctx("/logements/p1?tab=hub-donnees").blocked!.key;
+    expect(ctx("/logements/p1?tab=pricelabs", { [FORCE_COOKIE]: key }).blocked).toBeNull();
+    expect(ctx("/logements/p1?tab=calendrier", { [FORCE_COOKIE]: key }).blocked).not.toBeNull();
+    // paramètres refusés comme adresse de retour : l'onglet reste lu
+    expect(ctx(`/logements/p1?tab=calendrier&x=${"a".repeat(2100)}`).blocked).not.toBeNull();
+    expect(ctx("/logements/p1?tab=calendrier", {}, UA.bureau).blocked).toBeNull();
   });
   it("sans en-tête de chemin, rien n'est bloqué et le retour mène à l'accueil", () => {
     const c = viewContext(h({ "user-agent": UA.iphone }), () => undefined);

@@ -294,6 +294,12 @@ export const MONEY_DICTIONARY: MoneyField[] = [
     definition: "Valeur d'affichage de `price.published_estimate`, en euros entiers (et non en centimes) ; multipliée par 100 pour l'écran du logement.",
     taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: false, toVerify: PRICE_TO_VERIFY,
   }),
+  f({
+    id: "price.shown_night", label: "Prix montré pour une nuit libre", names: ["shownPriceCents"], group: "PRICE",
+    location: "fonction shownPriceCents (calendrier à 90 jours et fiche de poche)", sources: ["COMPUTED"], derivation: "DERIVED",
+    definition: "Avec un canal dont la majoration est renseignée : `price.display_euros` × 100, calculé à partir de `price.engine` (à défaut du prix recommandé). Sans majoration renseignée : `price.engine` tel quel, avant majoration de canal. Inconnu = « ? », jamais zéro.",
+    taxes: { cityTax: UNK, vat: UNK }, fees: { cleaning: UNK, commission: INC, paymentFee: INC }, currency: "EUR", sign: "NON_NEGATIVE", nullable: true, toVerify: PRICE_TO_VERIFY,
+  }),
   // ───────────── Planchers et simulation ─────────────
   f({
     id: "floor.unrecovered_stay_cost", label: "Coût de séjour non récupéré", names: ["unrecoveredStayCostCents"], group: "FLOOR_SIMULATION",

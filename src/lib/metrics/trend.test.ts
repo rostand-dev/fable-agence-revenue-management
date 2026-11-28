@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { computeKpi, monthPeriod, type NightFact } from "./kpi";
-import { compareMonths, direction, trendLabel, trendMonths } from "./trend";
+import { compareMonths, direction, monthName, monthValues, trendLabel, trendMonths } from "./trend";
 
 const nights = (month: string, n: number, grossRoomCents = 10000, commissionCents: number | null = 0): NightFact[] =>
   Array.from({ length: n }, (_, i) => ({ night: `${month}-${String(i + 1).padStart(2, "0")}`, channel: "AIRBNB", grossRoomCents, commissionCents, paymentFeeCents: null }));
@@ -90,5 +90,42 @@ describe("trendLabel", () => {
     expect(trendLabel("occupancy", "UNKNOWN")).toBe("inconnue");
     expect(trendLabel("revenue", "UNKNOWN")).toBe("inconnu");
     expect(trendLabel("price", "DOWN")).toBe("en baisse");
+  });
+});
+
+describe("monthValues", () => {
+  it("donne le revenu net, l'occupation et le prix moyen net du mois", () => {
+    expect(monthValues(nov(nights("2026-11", 15, 10000, 2000)), "FULL", "FRESH")).toEqual({
+      revenue: { value: 120000, reason: null }, occupancy: { value: 0.5, reason: null }, price: { value: 8000, reason: null },
+    });
+  });
+  it.each([
+    ["NO_HISTORY", "FRESH", "aucune réservation lue"],
+    ["PARTIAL", "FRESH", "historique incomplet en novembre 2026"],
+    ["BEFORE_HISTORY", "FRESH", "aucun historique en novembre 2026"],
+    ["FULL", "STALE", "réservations pas à jour"],
+  ] as const)("%s / %s : aucune valeur, avec le motif", (coverage, source, reason) => {
+    const v = monthValues(nov(nights("2026-11", 5)), coverage, source);
+    for (const k of ["revenue", "occupancy", "price"] as const) expect(v[k]).toEqual({ value: null, reason });
+  });
+  it("mois lu sans nuit vendue : revenu et occupation à zéro (vrai zéro), prix inconnu", () => {
+    expect(monthValues(nov([]), "FULL", "FRESH")).toEqual({
+      revenue: { value: 0, reason: null }, occupancy: { value: 0, reason: null }, price: { value: null, reason: "aucune nuit vendue en novembre 2026" },
+    });
+  });
+  it("sans source reliée, un mois vide est inconnu", () => {
+    expect(monthValues(nov([]), "FULL", "UNLINKED").revenue).toEqual({ value: null, reason: "aucune réservation enregistrée en novembre 2026" });
+    expect(monthValues(nov(nights("2026-11", 3)), "FULL", "UNLINKED").revenue.value).toBe(30000);
+  });
+  it("commission inconnue : revenu et prix inconnus, occupation lue ; mois entièrement bloqué : occupation inconnue", () => {
+    const v = monthValues(nov(nights("2026-11", 3, 10000, null)), "FULL", "FRESH");
+    expect(v.revenue).toEqual({ value: null, reason: "commissions manquantes" });
+    expect(v.price).toEqual({ value: null, reason: "commissions manquantes" });
+    expect(v.occupancy.value).toBeCloseTo(0.1);
+    const blocked = Array.from({ length: 30 }, (_, i) => `2026-11-${String(i + 1).padStart(2, "0")}`);
+    expect(monthValues(nov([], blocked), "FULL", "FRESH").occupancy).toEqual({ value: null, reason: "aucune nuit disponible" });
+  });
+  it("nomme un mois sans son année", () => {
+    expect(monthName("2026-11")).toBe("novembre");
   });
 });

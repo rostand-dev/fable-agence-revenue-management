@@ -1,6 +1,8 @@
 const eur0 = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const eur2 = new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const clean = (s: string) => s.replace(/[  ]/g, " ");
+/** Nombres insécables dans les cases étroites : « 1 000 » ne se coupe pas entre ses milliers (le « € » peut passer à la ligne). */
+export const insecable = (v: string) => v.replace(/(\d) (?=[\d%])/g, "$1\u00a0");
 /** Montant en euros depuis des centimes. Une valeur absente n'est jamais rendue comme zéro. */
 export function euro(cents: number | null | undefined, precise = false): string {
   if (cents === null || cents === undefined || Number.isNaN(cents)) return "inconnu";

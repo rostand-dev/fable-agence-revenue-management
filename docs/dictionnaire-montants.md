@@ -157,6 +157,7 @@ Signe : Signe non fixé par SuperHote : positif observé, négatif d'après la d
 | Prix publié constaté chez SuperHote | `actualCents` | SuperHote | lu | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 | Prix de nuit d'une action simulée | `nightlyCents` | Calcul | calculé | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 | Prix publié estimé arrondi à l'euro | `displayEuros` | Calcul | estimé | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
+| Prix montré pour une nuit libre | `shownPriceCents` | Calcul | calculé | **inconnu** | **inconnu** | **inconnu** | inclus | inclus | ≥ 0 | à confirmer |
 
 ### Prix retenu par le moteur (nuit)
 
@@ -232,6 +233,14 @@ Prix par nuit porté par une action. Appliqué sur la nuit comme prix retenu seu
 Valeur d'affichage de `price.published_estimate`, en euros entiers (et non en centimes) ; multipliée par 100 pour l'écran du logement.
 
 Unité : euros (pas des centimes).
+
+### Prix montré pour une nuit libre
+
+`price.shown_night` · fonction shownPriceCents (calendrier à 90 jours et fiche de poche)
+
+Avec un canal dont la majoration est renseignée : `price.display_euros` × 100, calculé à partir de `price.engine` (à défaut du prix recommandé). Sans majoration renseignée : `price.engine` tel quel, avant majoration de canal. Inconnu = « ? », jamais zéro.
+
+`null` = inconnu.
 
 ## Réglages de prix du logement
 
@@ -605,7 +614,7 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 
 ## À confirmer
 
-46 montants sur 52 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
+47 montants sur 53 ont au moins une inclusion non établie. Aucune valeur n'est supposée : tant qu'ils restent inconnus, toute décision qui en dépend devra demander une validation humaine (US-003, pas encore implémenté).
 
 - TVA : SuperHote ne dit pas si `total_price` est TTC. Lire `vat_rate` des lignes `price_details` sur des réservations réelles. — `reservation.gross_room`
 - TVA sur le ménage : lire `vat_rate` de la ligne `cleaning_fee` sur des réservations réelles. — `reservation.cleaning`
@@ -613,7 +622,7 @@ Signe : Positif = le montant de gauche dépasse celui de droite.
 - TVA : non précisée par la documentation SuperHote. — `superhote.total_price`
 - Taxe de séjour, ménage, frais de paiement et TVA : non établis. Comparer Comparer `host_payout` à `total_price` sur une réservation sans commission ni taxe. — `superhote.host_payout`
 - Taxe, TVA, ménage : non précisés par SuperHote. Comparer à ce qu'affiche chaque canal pour la même nuit. — `superhote.calendar_price`
-- La documentation PriceLabs (Customer API) ne dit pas si les prix incluent taxe de séjour, TVA ou ménage. À lever par un cas concret : comparer le prix d'une nuit à ce que voit le voyageur sur le canal. — `price.engine`, `price.recommended`, `price.sent`, `price.published_estimate`, `price.shown_in_calendar`, `price.published_actual`, `price.night_in_action`, `strategy.base_price`, `strategy.min_price`, `strategy.max_price`, `price.display_euros`, `sim.sold_nightly`, `kpi.avg_free_price`
+- La documentation PriceLabs (Customer API) ne dit pas si les prix incluent taxe de séjour, TVA ou ménage. À lever par un cas concret : comparer le prix d'une nuit à ce que voit le voyageur sur le canal. — `price.engine`, `price.recommended`, `price.sent`, `price.published_estimate`, `price.shown_in_calendar`, `price.published_actual`, `price.night_in_action`, `strategy.base_price`, `strategy.min_price`, `strategy.max_price`, `price.display_euros`, `price.shown_night`, `sim.sold_nightly`, `kpi.avg_free_price`
 - Taxes, TVA et ménage non précisés par PriceLabs pour les données de voisinage. — `market.adr`
 - Préciser dans le parcours « Coûts et seuils » si les montants saisis s'entendent TTC ou HT. — `economics.cleaning_fee_charged`, `economics.cleaning_cost`, `economics.linen_cost`, `economics.nightly_variable_cost`, `economics.hard_contribution`, `economics.strategy_contribution`, `economics.target_contribution`, `economics.answers`, `floor.unrecovered_stay_cost`, `economics.fixed_monthly`, `floor.gross_nightly`, `floor.break_even`, `sim.contribution`, `sim.expected_delta`, `sim.incremental`
 - Selon le type de ligne, le montant est ou non TTC : à lire avec `vat_rate` sur des réservations réelles. — `superhote.fee_line`

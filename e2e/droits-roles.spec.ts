@@ -93,6 +93,7 @@ test("Analyste : le serveur refuse l'approbation par l'API (403) et le journal d
 });
 
 test("Auditeur : lit le journal d'audit, sans aucun bouton de décision", async ({ page }) => {
+  await versionComplete(page.context()); // le journal est dans la version complète
   const u = await createRoleUser("AUDITOR", tag());
   try {
     await login(page, u);

@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { expectNoHorizontalOverflow } from "./helpers/layout";
 import { httpCredentials } from "./helpers/env";
 import { createRoleUser, deleteUser, hasDatabase, seedPropertyEvent } from "./helpers/roles";
+import { versionComplete } from "./helpers/view";
 
 // US-081 : espace logement à 90 jours : synthèse de l'horizon et chronologie du logement. Bureau, 390 et 360 px.
 async function premierLogement(page: Page): Promise<string> {
@@ -12,6 +13,7 @@ async function premierLogement(page: Page): Promise<string> {
 }
 
 test("90 jours : la synthèse de l'horizon est lisible et cohérente, sans débordement", async ({ page }) => {
+  await versionComplete(page.context()); // écran réservé à l'ordinateur
   const href = await premierLogement(page);
   await page.goto(`${href}?tab=calendrier`);
   const s = page.getByTestId("horizon-synthese");

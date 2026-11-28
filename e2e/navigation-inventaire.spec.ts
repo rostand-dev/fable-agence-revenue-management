@@ -28,7 +28,9 @@ const SCREENS: Screen[] = [
   ordinateur("/methode"), { route: "/glossaire" },
   ...["/proprietaires", "/integrations", "/integrations/erreurs", "/modeles", "/modeles/cles", "/modeles/agents", "/modeles/budget", "/modeles/catalogue", "/parametres", "/parametres/compte", "/parametres/priorisation", "/parametres/demo"].map((r) => ordinateur(r)),
   { route: "/dossier/[code]", needs: "dossier" }, { route: "/rapports/[id]", needs: "rapport" },
-  { route: P }, ...["performance", "calendrier", "hub-strategie", "strategie", "canaux", "hub-economie", "economie", "hub-donnees", "donnees", "annonces", "pricelabs", "superhote", "historique"].map((tab) => ({ route: P, tab })),
+  { route: P }, { route: P, tab: "performance" }, { route: P, tab: "historique" },
+  // rubriques de la fiche réservées à l'ordinateur en mode poche
+  ...["calendrier", "hub-strategie", "strategie", "canaux", "hub-economie", "economie", "hub-donnees", "donnees", "annonces", "pricelabs", "superhote"].map((tab) => ({ route: P, tab, desk: true as const })),
   ordinateur(`${P}/creation`, "brouillon"),
   ...["modifier", "supprimer", "mapping", "qualite", "validations", "couts", "strategie", "compilateur", "saisons", "versions-economie", "ecarts-reservations"].map((x) => ordinateur(`${P}/${x}`, "propriete")),
 ];
@@ -226,11 +228,11 @@ async function parcours(page: Page, largeur: string, poche: boolean) {
     if (!poche) return;
     for (const s of SCREENS.filter((x) => x.desk)) {
       if (s.needs && !own) continue; // environnement distant : logement non créable
-      const url = s.route.replace("[id]", (s.needs === "brouillon" ? own?.brouillon : own?.reel) ?? "");
+      const url = s.route.replace("[id]", (s.needs === "brouillon" ? own?.brouillon : own?.reel) ?? demos[0] ?? "") + (s.tab ? `?tab=${s.tab}` : "");
       const res = await page.goto(url);
       expect(res?.status(), `${url} : statut HTTP`).toBeLessThan(400);
-      await expect(page.getByTestId("ecran-ordinateur"), `${s.route} : encart attendu`).toBeVisible();
-      await expectNoHorizontalOverflow(page, s.route);
+      await expect(page.getByTestId("ecran-ordinateur"), `${keyOf(s)} : encart attendu`).toBeVisible();
+      await expectNoHorizontalOverflow(page, keyOf(s));
     }
   } finally {
     try { if (ids.length) await remove(ids); } finally { if (db) await removeRapport(mois); }
